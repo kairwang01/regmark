@@ -47,6 +47,7 @@ line replaces it.
 | `--seed` | whole number, 0 or more | `1` | Changes which products the sample picks. The same seed on the same catalogue picks the same products. |
 | `--datum` | surface names, comma-separated | `checkout,platform,page` | The surfaces to believe, most trusted first. See [Which surface is believed](#which-surface-is-believed). |
 | `--budget` | `rule=n`, repeatable | see [Budgets](#budgets) | The most findings allowed for one rule. The rule must exist (`regmark rules` lists them) and the value is a whole number. Replaces the same rule in the config file. |
+| `--max-age` | `surface=age`, repeatable | none | The oldest a feed may be, as a whole number of minutes, hours or days: `feed=90m`, `feed=24h`, `feed=7d`. The surface is `feed` or `acp`, and that feed must be read in the same run. Turns on [`availability.stale`](rules.md#availabilitystale-warn), which compares the time the feed says it was generated with the time of the audit. Replaces the same surface in the config file. |
 | `--strict` | switch | off | Treat any collection issue as an incomplete audit: set report `ok` to `false` and exit `2`. Reports are still written when collection completes. New since `v0.1.0`; use a current source build until released. |
 
 #### Output
@@ -79,8 +80,8 @@ given. Without a terminal, nothing is printed unless `--verbose` is given.
 
 Audits a fixture shop that ships with the tool. The shop runs on a local port
 for the length of the run. The settings are fixed in code: the WooCommerce
-platform, a feed, the checkout probe and a sample of 50. The config file is
-not read.
+platform, a feed with a `maxAge` of 24 hours, the checkout probe and a sample
+of 50. The config file is not read.
 
 | Flag | Default | What it does |
 |---|---|---|
@@ -187,6 +188,8 @@ A flag replaces the file's value, one field at a time:
 - `strict`: `--strict` sets it to true. No CLI flag sets a configured true value back to false.
 - `budget`: the file's entries are kept. Each rule given with `--budget`
   replaces its own entry.
+- `maxAge`: the file's entries are kept. Each surface given with `--max-age`
+  replaces its own entry.
 - `fetch`: the file's entries are kept. `--interval` replaces
   `fetch.minIntervalMs`. `--allow-private-network` sets
   `fetch.allowPrivateNetwork` to true. No flag sets it back to false.
@@ -230,6 +233,7 @@ exit code 2 and a message naming the mistake.
 | `strict` | boolean | `false` | Incomplete collection sets report `ok` to false and CLI exit code to 2. Same as `--strict`; current source feature. |
 | `datum` | array of surface names | `["checkout", "platform", "page"]` | The surfaces to believe, most trusted first. Same as `--datum`. |
 | `budget` | object: rule id to whole number | defaults in [Budgets](#budgets) | The most findings allowed per rule. Same as `--budget`. |
+| `maxAge` | object: `feed` or `acp` to a duration string | none | The oldest each feed may be, such as `{ "feed": "24h" }`. A duration is a whole number followed by `m`, `h` or `d`, greater than zero. The named feed must be read in the same run (`feed` needs `feed`, `acp` needs `acpFeed`), or the run stops with exit 2. Without it, `availability.stale` is skipped. Same as `--max-age`. |
 | `ownershipToken` | string | none | The ownership token. It must be 16 to 128 characters: letters, digits, `_` and `-`. Prefer `REGMARK_OWNERSHIP_TOKEN`, which keeps the secret out of the file. |
 | `fetch` | object | see [How requests are made](#how-requests-are-made) | The request policy. |
 | `fetch.minIntervalMs` | integer, 0–2,147,483,647 | `1000` | The minimum gap in milliseconds between two requests to one host. Same as `--interval`. |

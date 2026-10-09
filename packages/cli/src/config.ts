@@ -104,8 +104,13 @@ export function checkConfig(config: AuditConfig, rules: readonly Rule[]): void {
   }
   if (config.maxAge !== undefined) {
     fields(config.maxAge, 'maxAge', AGEABLE_SURFACES);
+    // A limit for a feed the run does not read would check nothing, and the
+    // report would not say so.
+    const source = { feed: ['feed', '--feed'], acp: ['acpFeed', '--acp-feed'] } as const;
     for (const [surface, value] of Object.entries(config.maxAge)) {
       if (parseDuration(value) === undefined) throw new ConfigError(`maxAge.${surface} must be a duration such as "90m", "24h" or "7d"; got ${JSON.stringify(value)}`);
+      const [field, flag] = source[surface as keyof typeof source];
+      if (config[field] === undefined) throw new ConfigError(`maxAge.${surface} is set, but no ${surface} is read; give ${flag} or the ${field} field`);
     }
   }
   if (config.cloaking !== undefined && typeof config.cloaking !== 'boolean') {

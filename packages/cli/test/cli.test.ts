@@ -219,6 +219,18 @@ test('--budget with no number exits 2', async () => {
   await failsFast(['audit', target(), '--budget', 'nonsense'], /--budget wants rule=number/);
 });
 
+test('--max-age that is not surface=duration exits 2', async () => {
+  await failsFast(['audit', target(), '--feed', '/feed.xml', '--max-age', '24h'], /--max-age wants surface=duration, such as feed=24h; got "24h"/);
+  await failsFast(['audit', target(), '--feed', '/feed.xml', '--max-age', 'feed='], /--max-age wants surface=duration/);
+  await failsFast(['audit', target(), '--feed', '/feed.xml', '--max-age', 'feed=soon'], /maxAge\.feed must be a duration such as "90m", "24h" or "7d"; got "soon"/);
+  await failsFast(['audit', target(), '--feed', '/feed.xml', '--max-age', 'page=24h'], /unknown maxAge field "page"/);
+});
+
+test('--max-age for a feed the audit does not read exits 2', async () => {
+  await failsFast(['audit', target(), '--max-age', 'feed=24h'], /maxAge\.feed is set, but no feed is read/);
+  await failsFast(['audit', target(), '--feed', '/feed.xml', '--max-age', 'acp=24h'], /maxAge\.acp is set, but no acp is read/);
+});
+
 test('--ship-to with a country name exits 2 (checkout requested)', async () => {
   await failsFast(['audit', target(), '--checkout', '--ship-to', 'USA'], /two-letter country code/);
 });
@@ -260,7 +272,7 @@ test('demo runs the bundled shop and writes an HTML report with no local address
   assert.equal(res.code, 0, res.stderr);
   assert.ok(res.stdout.includes('demo-shop.example'));
   assert.ok(res.stdout.includes('price.mismatch'));
-  assert.ok(res.stdout.includes('12 errors, 9 warnings, 1 note. 7 rules over budget.'));
+  assert.ok(res.stdout.includes('12 errors, 10 warnings, 1 note. 7 rules over budget.'));
   assert.ok(!res.stdout.includes('127.0.0.1'));
 
   const html = await readFile(path.join(dir, 'regmark-demo.html'), 'utf8');
@@ -438,4 +450,21 @@ test('--ship-to replaces the destination of a checkout the config file asks for'
   const bad = await withConfig({ ...config, checkout: { shipTo: { country: 'Canada' } } }, ['--quiet']);
   assert.equal(bad.code, 2);
   assert.match(bad.stderr, /checkout\.shipTo\.country must be a two-letter country code/);
+});
+
+test('--max-age reports a feed older than its limit once, and replaces the same surface from the config file', async () => {
+  // The misprinted feed says it was generated nine days before the shop's clock.
+  const config = { store: misprint.origin, feed: '/feeds/google.xml', platform: 'woocommerce', sample: 50, maxAge: { feed: '10d' }, ...local };
+  const stale = (json: Record<string, any>) => (json.findings as Array<{ rule: string; product: string; surface?: string }>).filter((f) => f.rule === 'availability.stale');
+
+  const fromFile = await withConfig(config, ['--json', 'out.json', '--quiet']);
+  assert.equal(fromFile.code, 1, fromFile.stderr);
+  const lenient = await readJson(path.join(fromFile.dir, 'out.json'));
+  assert.deepEqual(stale(lenient), []);
+  assert.equal(lenient.rules.find((r: { id: string }) => r.id === 'availability.stale').skipped, undefined, 'the rule ran');
+
+  const fromFlag = await withConfig(config, ['--max-age', 'feed=24h', '--json', 'out.json', '--quiet']);
+  assert.equal(fromFlag.code, 1, fromFlag.stderr);
+  const strict = await readJson(path.join(fromFlag.dir, 'out.json'));
+  assert.deepEqual(stale(strict).map((f) => [f.product.split('/').pop(), f.surface]), [['canvas-tote', 'feed']]);
 });
