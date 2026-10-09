@@ -101,9 +101,18 @@ function visit(node: unknown, ptr: string, ctx: Ctx): void {
     emitProduct({ node, ptr }, undefined, ctx);
     return;
   }
-  // Products can sit under @graph, mainEntity or anything else, so search every property.
-  for (const key of Object.keys(node)) visit(node[key], `${ptr}/${escapePointer(key)}`, ctx);
+  // Products can sit under @graph, mainEntity or anything else, so search
+  // every property, except the ones that hold other products: a list of
+  // related or recently viewed items is not the product the page sells, and
+  // reading it as such would compare their prices with this one.
+  for (const key of Object.keys(node)) {
+    if (ELSEWHERE.has(key)) continue;
+    visit(node[key], `${ptr}/${escapePointer(key)}`, ctx);
+  }
 }
+
+/** Properties whose values are other products than the one the page is about. */
+const ELSEWHERE: ReadonlySet<string> = new Set(['itemListElement', 'isRelatedTo', 'isSimilarTo', 'isAccessoryOrSparePartFor', 'isConsumableFor']);
 
 function emitGroup(group: Src, ctx: Ctx): void {
   // Only the variants are products here; the group itself has no offers of its own.

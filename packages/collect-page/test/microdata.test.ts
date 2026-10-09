@@ -145,3 +145,42 @@ describe('extractMicrodata', () => {
     assert.deepEqual(issues, []);
   });
 });
+
+describe('extractMicrodata: products that are not the page’s own', () => {
+  it('leaves out the miniatures of a related-products block', () => {
+    const card = (name: string, price: string) => `
+      <article itemprop="item" itemscope itemtype="https://schema.org/Product">
+        <a itemprop="url" href="/${name}">${name}</a>
+        <div itemprop="offers" itemscope itemtype="https://schema.org/Offer">
+          <meta itemprop="priceCurrency" content="USD"><meta itemprop="price" content="${price}">
+        </div>
+      </article>`;
+    const { sightings } = run(
+      body(`
+        <div itemscope itemtype="https://schema.org/Product">
+          <h1 itemprop="name">Linen Tee</h1>
+          <span itemprop="sku">TEE</span>
+          <div itemprop="offers" itemscope itemtype="https://schema.org/Offer">
+            <meta itemprop="priceCurrency" content="USD"><span itemprop="price" content="39.00">$39.00</span>
+          </div>
+        </div>
+        <section itemscope itemtype="https://schema.org/ItemList">${card('mug', '16.00')}${card('cap', '22.00')}</section>`),
+    );
+    assert.deepEqual(sightings.map((s) => s.price?.raw), ['39.00']);
+  });
+
+  it('still reads a product that is the main entity of the page', () => {
+    const { sightings } = run(
+      body(`
+        <div itemscope itemtype="https://schema.org/WebPage">
+          <div itemprop="mainEntity" itemscope itemtype="https://schema.org/Product">
+            <span itemprop="name">Linen Tee</span>
+            <div itemprop="offers" itemscope itemtype="https://schema.org/Offer">
+              <meta itemprop="priceCurrency" content="USD"><meta itemprop="price" content="39.00">
+            </div>
+          </div>
+        </div>`),
+    );
+    assert.deepEqual(sightings.map((s) => s.price?.raw), ['39.00']);
+  });
+});

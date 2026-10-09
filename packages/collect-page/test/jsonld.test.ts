@@ -582,3 +582,18 @@ describe('identifiers when a product has several offers', () => {
   assert.equal(sightings[0]!.ids.aliases, undefined);
 });
 });
+
+describe('extractJsonLd: products that are not the page’s own', () => {
+  it('leaves out a list of related products and the products a Product points to', () => {
+    const own = { '@type': 'Product', name: 'Linen Tee', sku: 'TEE', offers: { '@type': 'Offer', price: '39.00', priceCurrency: 'USD' } };
+    const related = {
+      '@type': 'ItemList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, item: { '@type': 'Product', name: 'Mug', offers: { '@type': 'Offer', price: '16.00', priceCurrency: 'USD' } } },
+      ],
+    };
+    const pointing = { ...own, isRelatedTo: { '@type': 'Product', name: 'Cap', offers: { '@type': 'Offer', price: '22.00', priceCurrency: 'USD' } } };
+    const { sightings } = run(page(related, pointing));
+    assert.deepEqual(sightings.map((s) => s.price?.raw), ['39.00']);
+  });
+});

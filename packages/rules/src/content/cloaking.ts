@@ -48,10 +48,15 @@ const readStock: Read<Availability> = (s) => (s.availability && isBuyable(s.avai
  *
  * A statement about an item both sides identify is held to what the reference
  * says about that item, and when the reference names the item but states
- * nothing about this fact, there is nothing to hold it to. Any other statement
- * is held to everything the reference states on the surface, and is
- * contradicted only when it agrees with none of it: a view that states a price
- * the reference does not state at all.
+ * nothing about this fact, there is nothing to hold it to. An item the view
+ * identifies and the reference identifies as something else is not one the
+ * reference describes at all: a related product that a rotating block showed
+ * one client and not the other.
+ *
+ * Statements no identifier ties to an item are held to the reference as a
+ * set. A rotating block can change some of them between two reads, so they
+ * are a difference only when not one of them is something the reference
+ * states: the page's own price told differently, not a card swapped for another.
  */
 function contradiction<T>(
   view: readonly Sighting[],
@@ -61,17 +66,22 @@ function contradiction<T>(
 ): { actual: Observation<T>; expected: Observation<T> } | undefined {
   const stated = reference.filter((r) => read(r) !== undefined);
   if (stated.length === 0) return undefined;
+  const loose: Observation<T>[] = [];
   for (const v of view) {
     const actual = read(v);
     if (!actual) continue;
     const paired = reference.filter((r) => sameItem(v, r) === true);
-    // An item the view identifies and the reference identifies as something
-    // else is not one the reference describes: a related product that a
-    // rotating block showed to one client and not the other. Silence.
-    if (paired.length === 0 && reference.some((r) => sameItem(v, r) === false)) continue;
-    const against = paired.length > 0 ? paired.filter((r) => read(r) !== undefined) : stated;
+    if (paired.length === 0) {
+      if (reference.some((r) => sameItem(v, r) === false)) continue;
+      loose.push(actual);
+      continue;
+    }
+    const against = paired.filter((r) => read(r) !== undefined);
     if (against.length === 0) continue;
     if (!against.some((r) => agree(actual.value, read(r)!.value))) return { actual, expected: read(against[0]!)! };
+  }
+  if (loose.length > 0 && !loose.some((a) => stated.some((r) => agree(a.value, read(r)!.value)))) {
+    return { actual: loose[0]!, expected: read(stated[0]!)! };
   }
   return undefined;
 }

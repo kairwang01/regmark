@@ -59,6 +59,15 @@ test('a related product that a rotating block shows one client and not the other
   assert.deepEqual(run(rule, [...ordinary(), ...browser, ...agent]), []);
 });
 
+test('statements no identifier ties to an item differ only when none of them is stated to the reference', () => {
+  // Cards with no SKU, rotated between the two reads: the page's own price is told to both.
+  const loose = (via: string, amounts: string[]) => amounts.map((a) => whole('microdata', URL, { price: price('microdata', a), via }));
+  assert.deepEqual(run(rule, [...ordinary(), ...loose('browser', ['22.00', '30.00', '45.00']), ...loose('agent', ['22.00', '45.00', '12.00'])]), []);
+  // The page's own price told differently, with nothing else in common, is a difference.
+  const found = run(rule, [...ordinary(), ...loose('browser', ['22.00']), ...loose('agent', ['19.00'])]);
+  assert.deepEqual(found.map((f) => f.surface), ['microdata']);
+});
+
 test('the same facts in another order are the same facts', () => {
   const reordered = view('agent').reverse();
   assert.deepEqual(run(rule, [...ordinary(), ...view('browser'), ...reordered]), []);
