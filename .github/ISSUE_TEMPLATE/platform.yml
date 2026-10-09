@@ -7,8 +7,8 @@ body:
     attributes:
       value: |
         The storefront API is read from a public endpoint. The checkout probe
-        is implemented for WooCommerce only in this release. Shopify is read
-        only. Describe what the platform exposes.
+        is implemented for WooCommerce and Shopify. Describe what the platform
+        exposes, ideally with one product's API response.
   - type: input
     id: platform
     attributes:
