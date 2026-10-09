@@ -32,6 +32,7 @@ after(async () => {
 const config = (origin: string, extra: Partial<AuditConfig> = {}): AuditConfig => ({
   store: origin,
   feed: '/feeds/google.xml',
+  acpFeed: '/feeds/acp.jsonl.gz',
   platform: 'woocommerce',
   checkout: { shipTo: { country: 'US', postcode: '94103' } },
   ownershipToken: OWNERSHIP_TOKEN,
@@ -64,7 +65,7 @@ test('misprinted shop: every seeded defect is found and nothing else is reported
   assert.deepEqual(missed.map((e) => `${e.defect} ${e.rule}`), [], `recall is ${(recall * 100).toFixed(1)}%`);
   assert.deepEqual(extra.map(show), [], 'the tool reported findings that are not seeded defects');
   assert.equal(result.ok, false);
-  assert.deepEqual(result.surfaces.sort(), ['checkout', 'feed', 'jsonld', 'opengraph', 'page', 'platform']);
+  assert.deepEqual(result.surfaces.sort(), ['acp', 'checkout', 'feed', 'jsonld', 'opengraph', 'page', 'platform']);
   assert.equal(result.counts.variants, 20, '19 real variants plus the feed-only scarf');
   // The only thing that may get in the way of reading this shop is the page it no longer has.
   assert.deepEqual(result.issues.map((i) => `${i.surface} ${i.code}`), ['page not-found']);

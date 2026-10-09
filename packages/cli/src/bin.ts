@@ -23,7 +23,7 @@ const DOCS = 'https://github.com/kairwang01/regmark/blob/main/docs';
 const USAGE = `regmark: catch ecommerce product-data mismatches across pages, feeds and store APIs
 
 Usage
-  regmark demo                      audit a bundled shop that has 20 defects planted in it
+  regmark demo                      audit a bundled shop that has 22 defects planted in it
   regmark demo --clean              the same shop with nothing wrong in it
   regmark audit <store-url>         audit a real shop
   regmark explain <rule>            the usual cause of a finding, and the fix
@@ -32,7 +32,7 @@ Usage
 
 Surfaces (audit)
   --feed <url>              product feed in Google Merchant format
-  --acp-feed <url>          product feed in Agentic Commerce Protocol format
+  --acp-feed <url>          agent product feed (ACP): JSON Lines, CSV or TSV, may be .gz
   --platform <name>         woocommerce, shopify, auto or none; default auto
   --ucp                     read the shop's UCP catalogue (/.well-known/ucp)
   --mcp                     read the shop's storefront MCP server
@@ -204,6 +204,7 @@ async function demo(clean: boolean, html: string | undefined, color: boolean): P
       {
         store: shop.origin,
         feed: '/feeds/google.xml',
+        acpFeed: '/feeds/acp.jsonl.gz',
         platform: 'woocommerce',
         checkout: { shipTo: { country: 'US', postcode: '94103' } },
         ownershipToken: OWNERSHIP_TOKEN,
@@ -229,7 +230,7 @@ async function demo(clean: boolean, html: string | undefined, color: boolean): P
   out(
     clean
       ? `  That was the same shop with nothing wrong in it: every surface agrees with the checkout.\n`
-      : `  That was a shop bundled with Regmark, with 20 defects planted in it. Each one is a\n  way real shops go wrong; run  regmark explain price.mismatch  to read about one.\n`,
+      : `  That was a shop bundled with Regmark, with 22 defects planted in it. Each one is a\n  way real shops go wrong; run  regmark explain price.mismatch  to read about one.\n`,
   );
   out(`\n  The full report is in ${file}\n  Now a real one:  regmark audit https://your-shop.example\n\n`);
   return 0;

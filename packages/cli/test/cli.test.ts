@@ -272,7 +272,7 @@ test('demo runs the bundled shop and writes an HTML report with no local address
   assert.equal(res.code, 0, res.stderr);
   assert.ok(res.stdout.includes('demo-shop.example'));
   assert.ok(res.stdout.includes('price.mismatch'));
-  assert.ok(res.stdout.includes('12 errors, 10 warnings, 1 note. 7 rules over budget.'));
+  assert.ok(res.stdout.includes('14 errors, 10 warnings, 1 note. 7 rules over budget.'));
   assert.ok(!res.stdout.includes('127.0.0.1'));
 
   const html = await readFile(path.join(dir, 'regmark-demo.html'), 'utf8');
@@ -467,4 +467,25 @@ test('--max-age reports a feed older than its limit once, and replaces the same 
   assert.equal(fromFlag.code, 1, fromFlag.stderr);
   const strict = await readJson(path.join(fromFlag.dir, 'out.json'));
   assert.deepEqual(stale(strict).map((f) => [f.product.split('/').pop(), f.surface]), [['canvas-tote', 'feed']]);
+});
+
+test('--acp-feed reads the agent feed as the acp surface, gzipped as published, and the config file can name it too', async () => {
+  const acpFindings = (json: Record<string, any>) =>
+    (json.findings as Array<{ rule: string; variant?: string; surface?: string }>).filter((f) => f.surface === 'acp').map((f) => `${f.rule} ${f.variant}`).sort();
+  const expected = ['availability.mismatch BEANIE-NVY', 'price.mismatch SOCK-M'];
+
+  const out = path.join(await freshDir(), 'acp.json');
+  const flag = await run(
+    ['audit', misprint.origin, '--acp-feed', '/feeds/acp.jsonl.gz', '--platform', 'woocommerce', '--allow-private-network', '--interval', '0', '--sample', '50', '--json', out, '--quiet'],
+  );
+  assert.equal(flag.code, 1, flag.stderr);
+  const json = await readJson(out);
+  assert.ok(json.surfaces.includes('acp'));
+  assert.ok(!json.surfaces.includes('feed'), 'the Google feed was not asked for');
+  assert.deepEqual(acpFindings(json), expected);
+  assert.deepEqual(json.issues, []);
+
+  const fromFile = await withConfig({ store: misprint.origin, acpFeed: '/feeds/acp.jsonl', platform: 'woocommerce', sample: 50, ...local }, ['--json', 'out.json', '--quiet']);
+  assert.equal(fromFile.code, 1, fromFile.stderr);
+  assert.deepEqual(acpFindings(await readJson(path.join(fromFile.dir, 'out.json'))), expected);
 });
