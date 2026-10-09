@@ -99,3 +99,72 @@ test('the protocol collectors ask about the sampled product only, by the storefr
     await shop.close();
   }
 });
+
+/** A shop of fixed responses on a local port, for cases the fixture shop does not cover. */
+async function tinyShop(routes: Record<string, { type: string; body: string }>): Promise<{ origin: string; requests: string[]; close: () => Promise<void> }> {
+  const { createServer } = await import('node:http');
+  const requests: string[] = [];
+  const server = createServer((req, res) => {
+    requests.push(`${req.method} ${req.url}`);
+    const route = routes[req.url ?? ''];
+    if (!route) return void res.writeHead(404, { 'content-type': 'text/plain' }).end('not found');
+    res.writeHead(200, { 'content-type': route.type }).end(route.body);
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as { port: number };
+  return { origin: `http://127.0.0.1:${port}`, requests, close: () => new Promise((resolve) => server.close(() => resolve())) };
+}
+
+const productPage = (name: string, sku: string) =>
+  `<html><head><script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@type': 'Product', name, sku, offers: { '@type': 'Offer', price: '20.00', priceCurrency: 'USD', availability: 'https://schema.org/InStock' } })}</script></head><body><h1>${name}</h1></body></html>`;
+
+test('a sitemap that lists paths, not URLs, is read against its own URL, with the agent endpoints on too', async () => {
+  const shop = await tinyShop({
+    '/sitemap.xml': { type: 'application/xml', body: '<urlset><url><loc>/products/blue-shirt</loc></url></urlset>' },
+    '/products/blue-shirt': { type: 'text/html', body: productPage('Blue shirt', 'SHIRT-B') },
+  });
+  try {
+    const result = await runAudit({ store: shop.origin, ucp: true, mcp: true, fetch: { allowPrivateNetwork: true, minIntervalMs: 0, respectRobots: false } });
+    assert.equal(result.counts.products, 1);
+    assert.ok(shop.requests.includes('GET /products/blue-shirt'));
+    assert.deepEqual(result.issues.filter((i) => i.surface === 'page'), []);
+    assert.deepEqual(result.issues.map((i) => `${i.surface} ${i.code}`).sort(), ['mcp not-found', 'ucp not-found']);
+  } finally {
+    await shop.close();
+  }
+});
+
+test('a sitemap entry that is no URL at all is reported by the page reader, and the agent endpoints still run', async () => {
+  const shop = await tinyShop({ '/sitemap.xml': { type: 'application/xml', body: '<urlset><url><loc>http://[oops</loc></url></urlset>' } });
+  try {
+    const result = await runAudit({ store: shop.origin, ucp: true, fetch: { allowPrivateNetwork: true, minIntervalMs: 0, respectRobots: false } });
+    assert.deepEqual(result.issues.map((i) => `${i.surface} ${i.code} ${i.message}`), ['page fetch-failed bad-url: http://[oops', 'ucp not-found business profile: HTTP 404; the shop publishes no UCP profile here']);
+  } finally {
+    await shop.close();
+  }
+});
+
+test('ACP rows held back from buyers are not fetched as strays, so the rows on offer get the stray budget', async () => {
+  const row = (id: string, path: string, extra: Record<string, unknown> = {}) =>
+    JSON.stringify({ item_id: id, url: path, title: id, description: 'd', brand: 'b', seller_name: 's', image_url: '/i.jpg', price: '20.00 USD', availability: 'in_stock', ...extra });
+  const shop = await tinyShop({
+    '/products.json?limit=250&page=1': {
+      type: 'application/json',
+      body: JSON.stringify({ products: [{ id: 1, handle: 'mug', title: 'Mug', variants: [{ id: 11, sku: 'MUG-1', price: '20.00', available: true }] }] }),
+    },
+    '/acp.jsonl': {
+      type: 'application/jsonl',
+      body: [row('MUG-1', '/products/mug'), row('OLD-1', '/products/old1', { is_eligible_search: false }), row('OLD-2', '/products/old2', { is_eligible_search: false }), row('GHOST-1', '/products/ghost')].join('\n'),
+    },
+    '/products/mug': { type: 'text/html', body: productPage('Mug', 'MUG-1') },
+  });
+  try {
+    const result = await runAudit({ store: shop.origin, platform: 'shopify', acpFeed: '/acp.jsonl', sample: 1, fetch: { allowPrivateNetwork: true, minIntervalMs: 0, respectRobots: false } });
+    assert.ok(shop.requests.includes('GET /products/ghost'));
+    assert.ok(!shop.requests.some((r) => r.startsWith('GET /products/old')));
+    const unmatched = result.findings.filter((f) => f.rule === 'identity.unmatched');
+    assert.deepEqual(unmatched.map((f) => f.product.split('/').pop()), ['ghost']);
+  } finally {
+    await shop.close();
+  }
+});

@@ -70,6 +70,14 @@ describe before, probes Shopify carts, and installs from npm.
   wrong variant. Keep query-based WooCommerce product identities distinct.
 - Fix currency and shipping disclosure blind spots, oversized hidden-text
   crashes, malformed TSV handling and delimiter collisions in SARIF identities.
+- Keep variants that share one SKU, as shops that put the style number on
+  every size do, apart by their backend ids, instead of comparing each with
+  the first.
+- Read prices in BIF, DJF, GNF, KMF, RWF, UYI and VUV (no minor unit) and CLF
+  and UYW (four digits) by their ISO 4217 exponent.
+- Resolve a sitemap `<loc>` written as a path against the sitemap's URL. A
+  collector that stops on something it cannot read now costs that surface
+  only (`collect-failed`), not the whole run.
 
 ### Performance
 

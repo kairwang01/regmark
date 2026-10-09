@@ -268,9 +268,9 @@ The checkout quote `d` is the cart's shipping total for the probe destination
 on WooCommerce, and the cheapest rate the cart offers for it on Shopify. Its
 country is the destination's.
 
-An ACP feed's `shipping_price` names no country, so it is compared with the
-checkout's quote whatever the destination; its four-position `shipping` tuple
-names one.
+An ACP feed's `shipping_price` is the charge to the US, the market OpenAI's
+standard upload targets, so it is compared with a quote for a US destination
+only; its four-position `shipping` tuple names its own country.
 
 ### `shipping.undisclosed` (warn)
 *A buyer cannot learn the shipping cost before checkout.*
@@ -297,11 +297,17 @@ Applies only when `platform` or `checkout` was collected.
   real variant: fire once, with `variant`; `surface` is that variant's only
   surface when it has exactly one.
 
+A sighting marked `withheld`, an ACP row with `is_eligible_search=false`, does
+not count as listing anything here: holding a row back is how a feed is told
+to stop offering it. The surfaces named, and whether the rule fires at all,
+come from the other sightings.
+
 ### `identity.gtin-invalid` (warn)
 *A GTIN that fails its check digit, has an impossible length, or is given to
 two different variants.*
 
-For each variant and each of its `sightings` that has `ids.gtin`:
+For each variant and each of its `sightings` that has `ids.gtin` and is not
+`withheld` (a row held back from buyers shows its GTIN to no one):
 - if `normalizeGtin` returns null, or `isValidGtin` is false, fire for that
   `(variant, surface)`;
 - otherwise, if the same GTIN (compare with `gtinKey`) appears on the same

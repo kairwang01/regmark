@@ -320,10 +320,17 @@ gzipped (`.jsonl.gz`, `.csv.gz`, `.tsv.gz`), as OpenAI asks for it:
 - **OpenAI's Google-compatible profile**, a CSV or TSV file with Google's
   column names (`id`, `link`, `image_link`, `item_group_id`) and spellings
   (`preorder`). A delimited file with a `url` column is read in the format
-  above; one with `link` and no `url`, in this profile.
+  above; one with `link` and no `url`, in this profile. A grouped row's
+  options are its `color`, `size`, `material` and `pattern`, the attributes a
+  shopper picks between; `gender`, `age_group` and `size_type` describe the
+  item and are not options the shop's variants are named by.
 - **The protocol's Product and Variant model**, as `products.jsonl` (one
   Product per line) or a `{"products": [...]}` document as the Feed API
   returns it. Prices are whole minor units: `{"amount": 1999, "currency": "USD"}`.
+  A variant's `availability.available` says whether it can be bought now, and
+  its `status` refines that when the two agree: `{"available": true,
+  "status": "discontinued"}` is the last of a line still on sale, read as in
+  stock.
 
 Parquet, which OpenAI also accepts, is not read; nor are XML and a bare JSON
 array, which no ACP format uses. Each stops the read with a `parse-error` that
@@ -339,7 +346,16 @@ The ACP formats are not Google's, and are read by their own rules:
   regular price is.
 - A row with `is_eligible_search=false` is held back from agents on purpose.
   It still lists its variant, so `variant.missing` does not fire for it, but
-  none of its facts are compared.
+  none of its facts are compared. It is how a feed is told to stop offering
+  something, so it is no claim that the shop sells it either:
+  `identity.unmatched` and `identity.gtin-invalid` pass over it, and its page
+  is not fetched as a stray.
+- `shipping_price` is the charge to the US: OpenAI's standard upload targets
+  the US whatever a row says. The four-position `shipping` tuple names its own
+  country.
+- An id written as a JSON number too large to hold exactly (past 2^53, as an
+  int64 column exported without quotes) is reported, not read as the nearby
+  number it would round to. Write ids as strings.
 - Money is read only as the spec writes it, `79.99 USD`. `$79.99` and
   `1,299.00 USD` are reported as unreadable rather than guessed at. An amount
   with no currency is kept, for `price.currency-ambiguous` to report.
@@ -749,8 +765,12 @@ or at `mcp.url`, over MCP's Streamable HTTP transport, revisions `2025-11-25`,
 `notifications/initialized` notification and `tools/list` (at most five pages),
 then the same lookups and searches as above as `tools/call`. It returns the
 session id and the protocol version the server chose on every later request,
-and reads an answer sent as JSON or as an event stream. A server that answers
-with another protocol version is a `version-unsupported` issue.
+and reads an answer sent as JSON or as an event stream. A stream is read only
+until the answer is in it, so a server that keeps it open is not waited on; one
+the server closes before answering, having sent an event id, is resumed with a
+GET that names the last event id, up to three times, as revision `2025-11-25`
+lets a server ask. A server that answers with another protocol version is a
+`version-unsupported` issue.
 
 It calls two tools only, `lookup_catalog` and `search_catalog`, and only when
 `tools/list` gives them UCP's input shape (a `catalog` argument) and does not
@@ -769,10 +789,12 @@ and `get_product_details`, are not read: their shapes are no longer published.
 
 **What is read.** From each variant a lookup found by its own id, or a search
 returned: the price and the list price, in whole minor units of the currency
-(cents for USD, none for JPY); the list price only when it is above the price,
+as ISO 4217 counts them (cents for USD, none for JPY or RWF); the list price
+only when it is above the price,
 so Shopify's `0` for "none" is not one; the stock, from `available` qualified by
-a well-known `status`; the SKU; a GTIN from a `barcodes` entry of type `GTIN`,
-`EAN`, `UPC`, `JAN` or `ISBN`; the options; and the variant id, bare or from a
+a well-known `status`; the SKU; a GTIN from the first `barcodes` entry of type
+`GTIN`, `EAN`, `UPC` or `JAN`, or `ISBN` when it is an ISBN-13 (an ISBN-10 is
+no GTIN, and is passed over); the options; and the variant id, bare or from a
 Shopify gid, as an alias that joins the platform's variant. Every statement
 carries the URL of the sampled page, so it joins the product the other surfaces
 describe. A variant a lookup found only as the product's featured variant (a
@@ -793,7 +815,10 @@ plus one search per product no lookup found. MCP adds three requests for the
 handshake. For 25 products of two variants each, UCP makes 6 requests and MCP 8.
 
 **Issues.** `not-found`: no profile or no MCP server at the URL (404 or 410),
-or a sampled product the catalogue has nothing for. `not-supported`: no usable
+or a sampled product the catalogue was asked about and has nothing for.
+`not-asked`: a sampled product that was not put to the catalogue, because it
+offers only search and the storefront gave exact variant ids, or because
+nothing known about the page is something it can be asked by. `not-supported`: no usable
 service or catalogue capability, or no catalogue tool. `version-unsupported`:
 no protocol version in common, including a UCP `version_unsupported` error.
 `parse-error`: an answer that is not JSON, not a UCP profile or payload, or not

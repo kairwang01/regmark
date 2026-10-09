@@ -130,6 +130,20 @@ const LOC = /<loc>\s*([^<\s]+)\s*<\/loc>/g;
 const decodeXml = (s: string) => s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'");
 
 /**
+ * A <loc> must be absolute, and some sitemaps write a path anyway: it is read
+ * against the sitemap's own URL, as a browser would. One that still names no
+ * http or https page is passed on as written, for the page reader to refuse.
+ */
+function resolveLoc(loc: string, sitemapUrl: string): string {
+  try {
+    const url = new URL(loc, sitemapUrl);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : loc;
+  } catch {
+    return loc;
+  }
+}
+
+/**
  * Product page URLs from a sitemap. Follows a sitemap index one level down,
  * product sitemaps first, and reads at most four files: this is discovery,
  * not a crawl.
@@ -138,7 +152,7 @@ async function discoverFromSitemap(ctx: CollectContext, sitemapUrl: string, issu
   const locs = async (url: string): Promise<{ index: boolean; urls: string[] }> => {
     const res = await ctx.fetcher.get(url);
     if (res.status < 200 || res.status > 299) throw new Error(`HTTP ${res.status}`);
-    return { index: /<sitemapindex[\s>]/i.test(res.body), urls: [...res.body.matchAll(LOC)].map((m) => decodeXml(m[1]!)) };
+    return { index: /<sitemapindex[\s>]/i.test(res.body), urls: [...res.body.matchAll(LOC)].map((m) => resolveLoc(decodeXml(m[1]!), url)) };
   };
   try {
     const top = await locs(sitemapUrl);
@@ -159,13 +173,28 @@ async function discoverFromSitemap(ctx: CollectContext, sitemapUrl: string, issu
 
 const unique = <T>(items: readonly T[]): T[] => [...new Set(items)];
 
+type Collected = { sightings: Sighting[]; issues: CollectIssue[] };
+
+/**
+ * Runs one collector. Each is written not to throw on anything a shop sends;
+ * should one throw anyway, that surface is lost and reported, and the other
+ * surfaces are still read and compared.
+ */
+async function guarded(surface: Surface, what: string, collect: () => Promise<Collected>): Promise<Collected> {
+  try {
+    return await collect();
+  } catch (err) {
+    return { sightings: [], issues: [{ surface, code: 'collect-failed', message: `${what}: ${err instanceof Error ? err.message : String(err)}` }] };
+  }
+}
+
 const PAGE_SURFACES: ReadonlySet<Surface> = new Set(['page', 'jsonld', 'microdata', 'opengraph']);
 
 /**
  * What the run already knows about each sampled product, for the protocol
  * collectors: they look up these products and nothing else.
  */
-function productRefs(pageUrls: readonly string[], sightings: readonly Sighting[], key: (url: string | undefined) => string | null): ProductRef[] {
+function productRefs(pageUrls: readonly string[], sightings: readonly Sighting[], key: (url: string | undefined) => string | null, store: URL): ProductRef[] {
   return pageUrls.map((url) => {
     const mine = sightings.filter((s) => key(s.ids.url) === key(url));
     const ref: ProductRef = { url };
@@ -173,7 +202,7 @@ function productRefs(pageUrls: readonly string[], sightings: readonly Sighting[]
     if (title) ref.title = title;
     const productId = mine.find((s) => s.surface === 'platform' && s.ids.productId)?.ids.productId;
     if (productId) ref.productId = productId;
-    const handle = new URL(url).pathname.split('/').filter(Boolean).pop();
+    const handle = pathOf(url, store).split('/').filter(Boolean).pop();
     if (handle) ref.handle = decodeSegment(handle);
     const skus = unique(mine.map((s) => s.ids.sku).filter((s): s is string => !!s));
     if (skus.length) ref.skus = skus;
@@ -181,6 +210,15 @@ function productRefs(pageUrls: readonly string[], sightings: readonly Sighting[]
     if (variantIds.length) ref.variantIds = variantIds;
     return ref;
   });
+}
+
+/** The path of a page URL. A URL that does not parse, which the page reader has already reported, has none. */
+function pathOf(url: string, store: URL): string {
+  try {
+    return new URL(url, store).pathname;
+  } catch {
+    return '';
+  }
 }
 
 /** A path segment as text. A malformed escape is a shop's mistake, not a reason to stop the audit, so it is kept as written. */
@@ -276,13 +314,13 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
   // 2. The feeds, each read whole (it is one file) and then cut down to the sample.
   let feedSightings: Sighting[] = [];
   if (feedUrl) {
-    const feed = await collectFeed(ctx, feedUrl);
+    const feed = await guarded('feed', 'feed', () => collectFeed(ctx, feedUrl));
     issues.push(...feed.issues);
     feedSightings = feed.sightings;
     log('info', `feed: ${feedSightings.length} items`);
   }
   if (acpFeedUrl) {
-    const acp = await collectFeed(ctx, acpFeedUrl, { surface: 'acp' });
+    const acp = await guarded('acp', 'acp feed', () => collectFeed(ctx, acpFeedUrl, { surface: 'acp' }));
     issues.push(...acp.issues);
     feedSightings = [...feedSightings, ...acp.sightings];
     log('info', `acp feed: ${acp.sightings.length} items`);
@@ -298,17 +336,18 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
     pageUrls = [];
   } else {
     const fromSitemap = await discoverFromSitemap(ctx, new URL(config.sitemap ?? '/sitemap.xml', store).href, issues);
-    const candidates = fromSitemap.length ? fromSitemap : unique(feedSightings.map((s) => s.ids.url).filter((u): u is string => !!u));
+    const candidates = fromSitemap.length ? fromSitemap : unique(feedSightings.filter((s) => !s.withheld).map((s) => s.ids.url).filter((u): u is string => !!u));
     pageUrls = sample(unique(candidates), size, config.seed ?? 1);
   }
   const inSample = new Set(pageUrls.map(key));
 
   // Feed items for a product the platform does not list at all are kept, up
   // to the sample size: either the feed is stale or the catalogue is, and
-  // fetching the page settles which.
+  // fetching the page settles which. A row the feed holds back from buyers
+  // offers nothing, so it is not worth a page.
   if (feedSightings.length) {
     const known = new Set(parents.map((p) => key(p.permalink)));
-    const strays = parents.length ? feedSightings.filter((s) => !known.has(key(s.ids.url))) : [];
+    const strays = parents.length ? feedSightings.filter((s) => !s.withheld && !known.has(key(s.ids.url))) : [];
     const strayUrls = unique(strays.map((s) => s.ids.url).filter((u): u is string => !!u)).slice(0, size);
     for (const url of strayUrls) {
       inSample.add(key(url));
@@ -320,7 +359,7 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
   // 4. The pages themselves.
   if (pageUrls.length) {
     log('info', `pages: reading ${pageUrls.length}`);
-    const pages = await collectPages(ctx, pageUrls, config.page);
+    const pages = await guarded('page', 'pages', () => collectPages(ctx, pageUrls, config.page));
     sightings.push(...pages.sightings);
     issues.push(...pages.issues);
   }
@@ -328,17 +367,19 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
   // 5. The endpoints a shopping agent calls directly: the Y plate. Read-only,
   //    and asked about the sampled products only.
   if (config.ucp || config.mcp) {
-    const refs = productRefs(pageUrls, sightings, key);
+    const refs = productRefs(pageUrls, sightings, key, store);
     // The variant ids in the refs come from this platform's storefront API.
     const from = platform === 'woocommerce' || platform === 'shopify' ? platform : undefined;
     if (config.ucp) {
-      const ucp = await collectUcp(ctx, { url: ucpUrl, agentProfile: agentProfile(config.ucp), platform: from, products: refs });
+      const ucp = await guarded('ucp', 'ucp', () => collectUcp(ctx, { url: ucpUrl, agentProfile: agentProfile(config.ucp), platform: from, products: refs }));
       sightings.push(...ucp.sightings);
       issues.push(...ucp.issues);
       log('info', `ucp: ${ucp.sightings.length} statements`);
     }
     if (config.mcp) {
-      const mcp = await collectMcp(ctx, { url: mcpUrl, agentProfile: agentProfile(config.mcp), platform: from, clientVersion: deps.version ?? DEFAULT_VERSION, products: refs });
+      const mcp = await guarded('mcp', 'mcp', () =>
+        collectMcp(ctx, { url: mcpUrl, agentProfile: agentProfile(config.mcp), platform: from, clientVersion: deps.version ?? DEFAULT_VERSION, products: refs }),
+      );
       sightings.push(...mcp.sightings);
       issues.push(...mcp.issues);
       log('info', `mcp: ${mcp.sightings.length} statements`);
@@ -361,9 +402,10 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
           .map((s) => ({ variantId: s.ids.variantId!, productId: s.ids.productId, sku: s.ids.sku, url: s.ids.url }));
         if (platform === 'woocommerce' || platform === 'shopify') {
           log('info', `checkout: probing ${targets.length} variants`);
-          const probe = platform === 'woocommerce'
-            ? await probeWooCheckout(ctx, targets, { shipTo: config.checkout.shipTo })
-            : await probeShopifyCart(ctx, targets, { shipTo: config.checkout.shipTo });
+          const shipTo = config.checkout.shipTo;
+          const probe = await guarded('checkout', 'checkout probe', () =>
+            platform === 'woocommerce' ? probeWooCheckout(ctx, targets, { shipTo }) : probeShopifyCart(ctx, targets, { shipTo }),
+          );
           sightings.push(...probe.sightings);
           issues.push(...probe.issues);
         } else {
@@ -376,7 +418,7 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
         const named = typeof config.cloaking === 'object' ? config.cloaking.userAgents : DEFAULT_CLOAKING_PROFILES;
         const profiles: ClientProfile[] = Object.entries(named).map(([name, userAgent]) => ({ name, userAgent }));
         log('info', `cloaking: reading ${urls.length} pages as ${profiles.map((p) => p.name).join(', ')}`);
-        const views = await collectViews(ctx, urls, profiles, config.page);
+        const views = await guarded('page', 'cloaking check', () => collectViews(ctx, urls, profiles, config.page));
         sightings.push(...views.sightings);
         issues.push(...views.issues);
       }

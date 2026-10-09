@@ -114,7 +114,7 @@ locator in `properties`.
 
 | Code | Surface | Meaning |
 |---|---|---|
-| `collect-failed` | platform | The storefront listing failed as a whole. The message says why. |
+| `collect-failed` | any | The storefront listing failed as a whole, or a reader stopped on something it could not cope with; that surface is then missing from the audit, and the others are still read. The message says why. |
 | `parse-error` | platform | A storefront response was not JSON, or did not have the expected shape. |
 | `parse-error` | feed | The feed is empty, or it is not readable XML. |
 | `parse-error` | acp | The feed is empty, or it is not in a format an ACP feed uses: Parquet, XML and a bare JSON array are refused, and so is a CSV or TSV header with no item id or page URL column. The message says what to export. |
@@ -127,7 +127,7 @@ locator in `properties`.
 | `feed-item-incomplete` | acp | A record has no item id or page URL, so it cannot be matched to a product and is left out. Also a record that lacks a field the format requires: it is still read, and the message names the fields, because an agent rejects such a row. |
 | `feed-field-unreadable` | feed, acp | A field, such as a price, could not be read as the value it should be. |
 | `feed-field-ignored` | acp | A value that reads, but that the format says is not used: a sale price that is not below the price, a `variant_dict` on a row that is not one of a group, a return window without `accepts_returns=true`, a shipping tuple beside `shipping_price`, or a second name for a value already given. |
-| `feed-line-unreadable` | acp | A line of a JSON Lines feed is not a JSON object. The other lines are read. |
+| `feed-line-unreadable` | acp | A line of a JSON Lines feed is not a JSON object, or a record holds a value too deeply nested to read. The other lines are read. |
 | `probe-failed` | checkout | A step of the checkout probe failed. The message names the variant and the step. Also used when something other than the cart answered, such as the shop's bot protection, a redirect or a page in place of the cart's JSON: the probe stops there, and no later variant is probed. |
 | `no-shipping-rate` | checkout | The shop offered no shipping rate for the destination, or refused the address. On Shopify the message quotes the shop's reason. |
 | `cart-not-emptied` | checkout | The probe could not empty the cart, or could not confirm that it is empty. On WooCommerce the message says to check the shop admin. A Shopify cart left behind is anonymous and holds no stock. |
@@ -136,7 +136,8 @@ locator in `properties`.
 | `view-failed` | page | The cloaking check could not read a page as one client profile: an HTTP error status, a refusal or a network error. The message starts with `as <profile>:`. |
 | `view-redirected` | page | A page read as one client profile was redirected to another origin, where Regmark does not pose as the profile, so it is not compared. |
 | `probe-unsupported` | checkout | The probe was skipped, because the platform is neither WooCommerce nor Shopify. |
-| `not-found` | ucp, mcp | No UCP profile or no MCP server at the URL (404 or 410), or the catalogue has nothing for a sampled product; then the locator is the product page. |
+| `not-found` | ucp, mcp | No UCP profile or no MCP server at the URL (404 or 410), or the catalogue was asked about a sampled product and has nothing for it; then the locator is the product page. |
+| `not-asked` | ucp, mcp | A sampled product was not put to the catalogue: the catalogue offers only search, which is not used for a product the storefront lists by variant id (a search may return part of its variants), or nothing known about the page is something the catalogue can be asked by. The locator is the product page. |
 | `not-supported` | ucp, mcp | The UCP profile offers no REST or MCP endpoint, or no catalogue capability, for the version spoken; or the MCP server lists no UCP catalogue tool, or does not know a method. The message names what the server does list. |
 | `version-unsupported` | ucp, mcp | The shop speaks no UCP version, or the server no MCP revision, that Regmark reads. The message lists both sides' versions. |
 | `parse-error` | ucp, mcp | An answer was not JSON, not a UCP profile or payload, or not a JSON-RPC answer to the request. |
