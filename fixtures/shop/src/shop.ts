@@ -86,6 +86,8 @@ export type Shop = {
   shipping: typeof SHIPPING;
   products: ProductSays[];
   feedGhosts: FeedGhost[];
+  /** When the feed says it was generated: its RSS lastBuildDate. */
+  feedBuiltAt: Date;
   defects: Defect[];
   expected: ExpectedFinding[];
 };
@@ -327,6 +329,17 @@ const DEFECTS: Applied[] = [
       for (const v of product(shop, 'linen-apron').jsonld) v.returnDays = null;
     },
   },
+  {
+    id: 'D20',
+    summary: 'The feed says it was generated nine days ago: its export job has stopped',
+    // The age belongs to the whole feed, so it is one finding, on the product
+    // that sorts first. The feed's prices still match today; only its date
+    // shows that they will not for long.
+    expected: [{ rule: 'availability.stale', product: 'canvas-tote', surface: 'feed' }],
+    apply(shop) {
+      shop.feedBuiltAt = addDays(shop.now, -9);
+    },
+  },
 ];
 
 export function buildShop(mode: 'clean' | 'misprint', now: Date = new Date()): Shop {
@@ -338,6 +351,7 @@ export function buildShop(mode: 'clean' | 'misprint', now: Date = new Date()): S
     shipping: SHIPPING,
     products: CATALOG.map((p) => cleanProduct(p, now)),
     feedGhosts: [],
+    feedBuiltAt: now,
     defects: [],
     expected: [],
   };

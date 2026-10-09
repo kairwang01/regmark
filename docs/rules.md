@@ -137,6 +137,40 @@ machine-readable surface is held to what the page shows, and fires once,
 without `variant`, when it states at least one known availability and none has
 the page's buyability.
 
+### `availability.stale` (warn)
+*A feed is older than the refresh interval set for it.*
+
+A feed that agrees with the shop today but was generated nine days ago will
+disagree as soon as a price or a stock level changes. `availability.mismatch`
+cannot see that while the values still match; the feed's own timestamp can.
+
+The rule reads `generatedAt`, which the feed collector puts on every item it
+reads from one feed: the RSS channel's `lastBuildDate`, else the channel's
+`pubDate`; the Atom feed's own `updated` (not an entry's); else the
+`Last-Modified` header of the response. A tab-separated feed can only be dated
+by the header. A timestamp is read only when it is a real RFC 822 date (RSS,
+HTTP) or RFC 3339 date-time (Atom) that names its zone; anything else is left
+out, never guessed.
+
+For each surface `S` with a limit in `ctx.options.maxAgeMs` (set by `maxAge` or
+`--max-age`): take the newest `generatedAt` on any of `S`'s sightings in the
+graph. Fire when `ctx.now` minus that instant is greater than the limit.
+
+One finding per surface per run, not one per product. The age belongs to the
+whole file, and a finding on each of its items would bury the rest of the
+report and swamp any budget set for this rule. The finding goes on the first
+product, in graph order, that has a sighting on `S` carrying `generatedAt`. It
+has `surface` `S`, no `variant`, and `actual` is the `generatedAt` observation,
+shown as `generated 2026-09-30T08:00:00Z, 9 days before the audit`. The message
+names the limit.
+
+Silent when the newest timestamp is within the limit or exactly at it, and when
+it is in the future. A timestamp on a surface without a limit is not judged.
+
+Skipped when no surface has a limit. Also skipped, rather than passed, when no
+surface with a limit states a readable time it was generated: a feed that does
+not say how old it is cannot be called fresh. Needs `feed` or `acp`.
+
 ### `variant.missing` (error)
 *A surface lists some of a product's variants and leaves others out.*
 
@@ -298,6 +332,5 @@ Fire once per sample when either holds:
 
 ## Not in this release
 
-`availability.stale` and `content.cloaking` are planned. They need information
-the collectors do not gather yet: feed export timestamps, and a second fetch
-with a different user agent.
+`content.cloaking` is planned. It needs information the collectors do not
+gather yet: a second fetch with a different user agent.

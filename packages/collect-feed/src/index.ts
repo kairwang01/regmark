@@ -1,4 +1,5 @@
-import { type CollectContext, type CollectIssue, type CollectResult, type Fetched, FetchRefused, type Sighting } from '@regmark/core';
+import { type CollectContext, type CollectIssue, type CollectResult, type Fetched, FetchRefused, type Observation, type Sighting } from '@regmark/core';
+import { type DateText, readDate } from './dates.ts';
 import { type FeedItem } from './item.ts';
 import { mapItem } from './map.ts';
 import { readTsv } from './tsv.ts';
@@ -13,7 +14,33 @@ export type FeedOptions = {
    * SKELETON: 'acp' is implemented in the ACP feed work.
    */
   surface?: 'feed' | 'acp';
+  /**
+   * The Last-Modified header of the response the feed came in, as sent.
+   * collectFeed fills it in. It dates the feed only when the document itself
+   * gives no time it was generated.
+   */
+  lastModified?: string;
 };
+
+/**
+ * When the feed says it was generated: the first of its own timestamps that
+ * reads as a date, else the Last-Modified header. Undefined when neither
+ * does; a feed with no readable timestamp is not given one.
+ */
+function generatedAt(
+  dates: readonly DateText[],
+  lastModified: string | undefined,
+  feedUrl: string,
+  fetchedAt: string,
+): Omit<Observation<string>, 'surface'> | undefined {
+  // HTTP dates are RFC 822 dates in GMT, so one reader serves both.
+  const candidates = lastModified?.trim() ? [...dates, { text: lastModified, path: 'header(last-modified)', syntax: 'rfc822' as const }] : dates;
+  for (const candidate of candidates) {
+    const value = readDate(candidate);
+    if (value) return { value, raw: candidate.text, locator: `${feedUrl}#${candidate.path}`, fetchedAt };
+  }
+  return undefined;
+}
 
 /** Pure. Parses a Google Merchant Center format feed: RSS 2.0, Atom, or tab-separated text. */
 export function parseFeed(
@@ -32,11 +59,14 @@ export function parseFeed(
   });
 
   let items: FeedItem[];
+  // Tab-separated text has nowhere to write a build time; only the header can date it.
+  let dates: DateText[] = [];
   if (detected === '') return parseError('feed is empty');
   if (detected.startsWith('<')) {
     const read = readXml(detected);
     if ('error' in read) return parseError(read.error);
     items = read.items;
+    dates = read.dates;
   } else {
     try {
       items = readTsv(text);
@@ -48,9 +78,15 @@ export function parseFeed(
   const sightings: Sighting[] = [];
   const issues: CollectIssue[] = [];
   const ctx = { feedUrl, fetchedAt, now, defaultCurrency: options.defaultCurrency ?? null };
+  // One timestamp for the whole file, carried on every item so that whichever
+  // items survive the sample, the time the feed was generated survives with them.
+  const stamp = generatedAt(dates, options.lastModified, feedUrl, fetchedAt);
   items.forEach((item, index) => {
     const mapped = mapItem(item, index + 1, ctx);
-    if (mapped.sighting) sightings.push(mapped.sighting);
+    if (mapped.sighting) {
+      if (stamp) mapped.sighting.generatedAt = { ...stamp, surface: mapped.sighting.surface };
+      sightings.push(mapped.sighting);
+    }
     issues.push(...mapped.issues);
   });
   return { sightings, issues };
@@ -74,5 +110,5 @@ export async function collectFeed(ctx: CollectContext, feedUrl: string, options:
     return fetchFailed(err instanceof Error ? err.message : String(err));
   }
   if (res.status < 200 || res.status > 299) return fetchFailed(`HTTP ${res.status}`);
-  return parseFeed(res.body, res.url, res.fetchedAt, ctx.now(), options);
+  return parseFeed(res.body, res.url, res.fetchedAt, ctx.now(), { ...options, lastModified: res.headers['last-modified'] });
 }

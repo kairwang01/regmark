@@ -30,6 +30,14 @@ test('clean feed: header and item count', () => {
   assert.equal(items(feed).length, 19);
 });
 
+test('clean feed: the channel says it was generated at the shop\'s own time', () => {
+  const feed = renderFeed(clean, 'http://shop.test');
+  assert.ok(feed.includes('<lastBuildDate>Fri, 09 Oct 2026 00:00:00 GMT</lastBuildDate>'));
+  // Once, in the channel, before any item: an item date would say when that item changed.
+  assert.equal(feed.split('<lastBuildDate>').length, 2);
+  assert.ok(feed.indexOf('<lastBuildDate>') < feed.indexOf('<item>'));
+});
+
 test('clean feed: TEE-BLU-M is on sale with a dated window and a flat shipping rate', () => {
   const item = itemFor(renderFeed(clean, 'http://shop.test'), 'TEE-BLU-M');
   assert.ok(item.includes('<g:title>Classic Tee - M</g:title>'));
@@ -90,6 +98,11 @@ test('D10: the feed promises free shipping on TEE-BLU-S', () => {
 
 test('D11: the mug feed item has no shipping element', () => {
   assert.equal(itemFor(renderFeed(misprint, 'http://shop.test'), 'MUG-WHT').includes('<g:shipping>'), false);
+});
+
+test('D20: the feed says it was generated nine days before the shop\'s clock', () => {
+  const feed = renderFeed(misprint, 'http://shop.test');
+  assert.ok(feed.includes('<lastBuildDate>Wed, 30 Sep 2026 00:00:00 GMT</lastBuildDate>'));
 });
 
 test('D12: both caps carry the same GTIN', () => {

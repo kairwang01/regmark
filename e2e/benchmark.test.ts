@@ -35,6 +35,7 @@ const config = (origin: string, extra: Partial<AuditConfig> = {}): AuditConfig =
   platform: 'woocommerce',
   checkout: { shipTo: { country: 'US', postcode: '94103' } },
   ownershipToken: OWNERSHIP_TOKEN,
+  maxAge: { feed: '24h' },
   sample: 50,
   fetch: { allowPrivateNetwork: true, minIntervalMs: 0 },
   ...extra,

@@ -2,7 +2,7 @@
 // builds the graph the way a real run would, and runs one rule over it.
 
 import { buildGraph, DEFAULT_DATUM, money, runRules } from '@regmark/core';
-import type { Availability, Finding, Money, Observation, ReturnPolicy, Rule, ShippingQuote, Sighting, Surface, TextSample, VariantIds } from '@regmark/core';
+import type { Availability, Finding, Money, Observation, ReturnPolicy, Rule, RuleOptions, ShippingQuote, Sighting, Surface, TextSample, VariantIds } from '@regmark/core';
 
 export const NOW = new Date('2026-10-09T12:00:00.000Z');
 const AT = '2026-10-09T00:00:00.000Z';
@@ -36,16 +36,17 @@ export const whole = (surface: Surface, url: string, rest: Partial<Sighting> = {
 
 export const sample = (text: string, rest: Partial<TextSample> = {}): TextSample => ({ field: 'description', text, hidden: false, locator: 'test://page#css(.description)', ...rest });
 
-export type RunOptions = { datum?: readonly Surface[]; now?: Date };
+/** `options` is the run's rule settings, such as maxAgeMs. */
+export type RunOptions = { datum?: readonly Surface[]; now?: Date; options?: RuleOptions };
 
 /** Build the graph from sightings and return the rule's findings. */
 export function run(rule: Rule, sightings: Sighting[], options: RunOptions = {}): Finding[] {
-  return runRules(buildGraph(sightings), [rule], { datum: options.datum ?? DEFAULT_DATUM, now: options.now ?? NOW }).findings;
+  return runFull(rule, sightings, options).findings;
 }
 
-/** The same, but also says whether the rule ran or was skipped for want of a surface. */
+/** The same, but also says whether the rule ran or was skipped for want of a surface or a setting. */
 export function runFull(rule: Rule, sightings: Sighting[], options: RunOptions = {}) {
-  return runRules(buildGraph(sightings), [rule], { datum: options.datum ?? DEFAULT_DATUM, now: options.now ?? NOW });
+  return runRules(buildGraph(sightings), [rule], { datum: options.datum ?? DEFAULT_DATUM, now: options.now ?? NOW, options: options.options });
 }
 
 /** Findings reduced to the fields a test usually asserts on. */
