@@ -103,6 +103,9 @@ locator in `properties`.
 | `microdata` | `<page URL>#microdata[<item index>]`, then `/offers[<n>]` and the field name | `https://shop.example/product/enamel-mug/#microdata[0]/offers[1]/price` |
 | `opengraph` | `<page URL>#meta[<attribute>="<key>"]` | `https://shop.example/product/enamel-mug/#meta[property="product:price:amount"]` |
 | `feed` | `<feed URL>#item[id="<item id>"]/<field>` | `https://shop.example/feeds/google.xml#item[id="TOTE-NAT"]/price` |
+| `acp`, a flat row | `<feed URL>#item[id="<item_id>"]/<field>`. A record with no id is located by its place: `#line[n]` in JSON Lines, `#row[n]` in CSV or TSV. | `https://shop.example/feeds/acp.jsonl.gz#item[id="SOCK-M"]/price` |
+| `acp`, a Product and its Variants | `<feed URL>#product[id="<product id>"]/variant[id="<variant id>"]/<field>` | `https://shop.example/feeds/products.jsonl#product[id="prod_classic_tee"]/variant[id="sku124-red-m"]/price` |
+| `feed`, `acp`, the time it was generated | `<feed URL>#<path>`: a path into the document, or `header(last-modified)` | `https://shop.example/feeds/google.xml#/rss/channel/lastBuildDate` |
 | `platform` | `<storefront API URL>#<JSON pointer>` | `https://shop.example/wp-json/wc/store/v1/products/403#/is_in_stock` |
 | `checkout` | `<cart API URL>#<JSON pointer>`. A refused add-to-cart has no pointer. | `https://shop.example/wp-json/wc/store/v1/cart/update-customer#/totals/total_shipping` |
 
@@ -113,13 +116,17 @@ locator in `properties`.
 | `collect-failed` | platform | The storefront listing failed as a whole. The message says why. |
 | `parse-error` | platform | A storefront response was not JSON, or did not have the expected shape. |
 | `parse-error` | feed | The feed is empty, or it is not readable XML. |
+| `parse-error` | acp | The feed is empty, or it is not in a format an ACP feed uses: Parquet, XML and a bare JSON array are refused, and so is a CSV or TSV header with no item id or page URL column. The message says what to export. |
 | `parse-error` | page | A JSON-LD block is not valid JSON. |
 | `extract-failed` | page | Reading the JSON-LD, the microdata or the page failed. |
-| `fetch-failed` | platform, feed, page | A request failed: an HTTP error status, a refusal other than robots, a network error, or a sitemap that could not be read. The message starts with the [refusal code](configuration.md#refusals), such as `foreign-host`. |
-| `robots-disallowed` | platform, feed, page | robots.txt does not allow the URL. |
+| `fetch-failed` | platform, feed, acp, page | A request failed: an HTTP error status, a refusal other than robots, a network error, or a sitemap that could not be read. The message starts with the [refusal code](configuration.md#refusals), such as `foreign-host`. |
+| `robots-disallowed` | platform, feed, acp, page | robots.txt does not allow the URL. |
 | `not-found` | page | The page returned 404 or 410. |
 | `feed-item-incomplete` | feed | A feed item has no `id`, or no `link`, so it cannot be matched to a product. |
-| `feed-field-unreadable` | feed | A field, such as a price, could not be read as the value it should be. |
+| `feed-item-incomplete` | acp | A record has no item id or page URL, so it cannot be matched to a product and is left out. Also a record that lacks a field the format requires: it is still read, and the message names the fields, because an agent rejects such a row. |
+| `feed-field-unreadable` | feed, acp | A field, such as a price, could not be read as the value it should be. |
+| `feed-field-ignored` | acp | A value that reads, but that the format says is not used: a sale price that is not below the price, a `variant_dict` on a row that is not one of a group, a return window without `accepts_returns=true`, a shipping tuple beside `shipping_price`, or a second name for a value already given. |
+| `feed-line-unreadable` | acp | A line of a JSON Lines feed is not a JSON object. The other lines are read. |
 | `probe-failed` | checkout | A step of the checkout probe failed. The message names the variant and the step. |
 | `no-shipping-rate` | checkout | The shop offered no shipping rate for the destination. |
 | `cart-not-emptied` | checkout | The probe could not empty the cart, or could not confirm that it is empty. The message says to check the shop admin. |
