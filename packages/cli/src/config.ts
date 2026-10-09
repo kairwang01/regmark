@@ -54,8 +54,41 @@ function httpUrl(value: unknown, name: string, base?: URL): URL {
   return url;
 }
 
+/** Surfaces that carry a timestamp of their own, and so can be given a maxAge. */
+export const AGEABLE_SURFACES = ['feed', 'acp'] as const;
+
+/**
+ * A duration as written in a config file or on the command line: a whole
+ * number followed by m, h or d, such as "90m", "24h" or "7d". Returns
+ * milliseconds, or undefined when the text is not one.
+ */
+export function parseDuration(text: unknown): number | undefined {
+  if (typeof text !== 'string') return undefined;
+  const m = /^\s*(\d{1,6})\s*(m|h|d)\s*$/i.exec(text);
+  if (!m) return undefined;
+  const n = Number(m[1]);
+  const unit = m[2]!.toLowerCase();
+  const ms = n * (unit === 'm' ? 60_000 : unit === 'h' ? 3_600_000 : 86_400_000);
+  return ms > 0 ? ms : undefined;
+}
+
+/** The default client profiles for the cloaking check: a desktop browser, and a shopping agent. */
+export const DEFAULT_CLOAKING_PROFILES: Readonly<Record<string, string>> = {
+  browser: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
+  agent: 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot',
+};
+
+function endpoint(value: unknown, name: string, store: URL): void {
+  if (value === undefined || typeof value === 'boolean') return;
+  fields(value, name, ['url']);
+  httpUrl(value.url, `${name}.url`, store);
+}
+
 export function checkConfig(config: AuditConfig, rules: readonly Rule[]): void {
-  fields(config, 'config', ['store', 'feed', 'platform', 'checkout', 'pages', 'sitemap', 'page', 'sample', 'maxVariants', 'seed', 'strict', 'datum', 'budget', 'ownershipToken', 'fetch']);
+  fields(config, 'config', [
+    'store', 'feed', 'acpFeed', 'platform', 'checkout', 'pages', 'sitemap', 'page', 'sample', 'maxVariants', 'seed', 'strict',
+    'datum', 'budget', 'maxAge', 'cloaking', 'ucp', 'mcp', 'ownershipToken', 'fetch',
+  ]);
   const store = httpUrl(config.store, 'store');
   const platforms = ['woocommerce', 'shopify', 'auto'];
   if (config.platform !== undefined && !platforms.includes(config.platform)) {
@@ -66,9 +99,28 @@ export function checkConfig(config: AuditConfig, rules: readonly Rule[]): void {
   whole(config.seed, 'seed', 0);
   boolean(config.strict, 'strict');
   text(config.ownershipToken, 'ownershipToken');
-  for (const key of ['feed', 'sitemap'] as const) {
+  for (const key of ['feed', 'acpFeed', 'sitemap'] as const) {
     if (config[key] !== undefined) httpUrl(config[key], key, store);
   }
+  if (config.maxAge !== undefined) {
+    fields(config.maxAge, 'maxAge', AGEABLE_SURFACES);
+    for (const [surface, value] of Object.entries(config.maxAge)) {
+      if (parseDuration(value) === undefined) throw new ConfigError(`maxAge.${surface} must be a duration such as "90m", "24h" or "7d"; got ${JSON.stringify(value)}`);
+    }
+  }
+  if (config.cloaking !== undefined && typeof config.cloaking !== 'boolean') {
+    fields(config.cloaking, 'cloaking', ['userAgents']);
+    configObject(config.cloaking.userAgents, 'cloaking.userAgents');
+    const profiles = Object.entries(config.cloaking.userAgents);
+    if (profiles.length === 0) throw new ConfigError('cloaking.userAgents must name at least one client');
+    for (const [name, ua] of profiles) {
+      if (!/^[a-z][a-z0-9-]{0,31}$/.test(name)) throw new ConfigError(`cloaking.userAgents: "${name}" must be a short lower-case name such as "agent"`);
+      text(ua, `cloaking.userAgents.${name}`);
+      if (/[^\x20-\x7e]/.test(ua as string)) throw new ConfigError(`cloaking.userAgents.${name} must contain printable ASCII only`);
+    }
+  }
+  endpoint(config.ucp, 'ucp', store);
+  endpoint(config.mcp, 'mcp', store);
   if (config.pages !== undefined) {
     strings(config.pages, 'pages');
     config.pages.forEach((url, i) => httpUrl(url, `pages[${i}]`, store));

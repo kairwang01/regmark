@@ -218,10 +218,43 @@ function toProduct(sightings: Sighting[], amb: Ambiguous, index: number): Produc
     variants,
     productLevel,
     text,
+    alternateViews: [],
   };
 }
 
-export function buildGraph(sightings: readonly Sighting[]): OfferGraph {
+/**
+ * Hands each alternate view (a sighting with `via`) to the product whose own
+ * sightings carry the same page URL. A view joins no identity and states no
+ * offer fact; it is kept for the cloaking rule to compare. Its text is added
+ * to the product's text only where the view says something the ordinary
+ * fetch did not, so the content rules see what only that client was shown,
+ * without counting the same sentence twice.
+ */
+function attachViews(products: ProductNode[], views: readonly Sighting[]): void {
+  const byUrl = new Map<string, ProductNode>();
+  for (const product of products) {
+    for (const s of [...product.productLevel, ...product.variants.flatMap((v) => v.sightings)]) {
+      const key = urlKey(s.ids.url);
+      if (key && !byUrl.has(key)) byUrl.set(key, product);
+    }
+    const key = urlKey(product.url);
+    if (key && !byUrl.has(key)) byUrl.set(key, product);
+  }
+  for (const view of views) {
+    const key = urlKey(view.ids.url);
+    const product = key ? byUrl.get(key) : undefined;
+    if (!product) continue;
+    product.alternateViews.push(view);
+    for (const sample of view.text ?? []) {
+      const seen = product.text.some((t) => t.field === sample.field && t.text === sample.text);
+      if (!seen) product.text.push({ ...sample, locator: `${sample.locator} [via ${view.via}]` });
+    }
+  }
+}
+
+export function buildGraph(all: readonly Sighting[]): OfferGraph {
+  const sightings = all.filter((s) => s.via === undefined);
+  const views = all.filter((s) => s.via !== undefined);
   const amb = findAmbiguous(sightings);
   const union = new Union();
   sightings.forEach((s, i) => {
@@ -235,5 +268,6 @@ export function buildGraph(sightings: readonly Sighting[]): OfferGraph {
     clusters.get(root)!.push(s);
   });
   const products = [...clusters.values()].map((c, i) => toProduct(c, amb, i)).sort((a, b) => a.key.localeCompare(b.key));
+  attachViews(products, views);
   return { products, surfaces: uniqueSurfaces(sightings) };
 }

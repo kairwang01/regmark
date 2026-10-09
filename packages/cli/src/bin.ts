@@ -32,9 +32,13 @@ Usage
 
 Surfaces (audit)
   --feed <url>              product feed in Google Merchant format
+  --acp-feed <url>          product feed in Agentic Commerce Protocol format
   --platform <name>         woocommerce, shopify, auto or none; default auto
-  --checkout                run the checkout probe (WooCommerce; needs an ownership token)
+  --ucp                     read the shop's UCP catalogue (/.well-known/ucp)
+  --mcp                     read the shop's storefront MCP server
+  --checkout                run the checkout probe (WooCommerce or Shopify; needs an ownership token)
   --ship-to <CC[:postcode]> destination for the checkout probe, default US
+  --cloaking                fetch pages again as a browser and as an agent, and compare (needs an ownership token)
   --page <url>              audit this product page; repeatable
 
 Scope
@@ -42,6 +46,7 @@ Scope
   --seed <n>                changes which products are sampled, default 1
   --datum <a,b,c>           which surface to believe, most trusted first
   --budget <rule=n>         allow up to n findings for a rule; repeatable
+  --max-age <surface=age>   oldest a feed may be, such as feed=24h; repeatable
   --strict                  exit 2 if any surface has a collection issue
 
 Output
@@ -94,6 +99,16 @@ function parseBudget(entries: string[]): Record<string, number> {
     const m = /^([a-z][a-z0-9.-]*)=(\d+)$/.exec(entry);
     if (!m) throw new ConfigError(`--budget wants rule=number, got "${entry}"`);
     out[m[1]!] = Number(m[2]);
+  }
+  return out;
+}
+
+function parseMaxAge(entries: string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const entry of entries) {
+    const m = /^([a-z]+)=(.+)$/.exec(entry);
+    if (!m) throw new ConfigError(`--max-age wants surface=duration, such as feed=24h; got "${entry}"`);
+    out[m[1]!] = m[2]!;
   }
   return out;
 }
@@ -153,7 +168,7 @@ async function init(target: string | undefined): Promise<number> {
     regmark audit                      read ${new URL(store).host} and report
     regmark audit --html report.html   and keep a report to share
 
-  To let Regmark compare against real checkout totals (WooCommerce):
+  To let Regmark compare against real checkout totals (WooCommerce or Shopify):
     1. choose a token of 16 or more letters and digits
     2. serve the line  regmark-verify=<token>  at ${store}/.well-known/regmark.txt
     3. REGMARK_OWNERSHIP_TOKEN=<token> regmark audit --checkout
@@ -225,8 +240,13 @@ async function main(argv: string[]): Promise<number> {
     allowPositionals: true,
     options: {
       feed: { type: 'string' },
+      'acp-feed': { type: 'string' },
       platform: { type: 'string' },
+      ucp: { type: 'boolean' },
+      mcp: { type: 'boolean' },
       checkout: { type: 'boolean' },
+      cloaking: { type: 'boolean' },
+      'max-age': { type: 'string', multiple: true },
       'ship-to': { type: 'string' },
       page: { type: 'string', multiple: true },
       sample: { type: 'string' },
@@ -297,6 +317,11 @@ async function main(argv: string[]): Promise<number> {
     store,
     platform: platformChoice === 'none' ? undefined : (platformChoice as AuditConfig['platform']),
     ...(values.feed ? { feed: values.feed } : {}),
+    ...(values['acp-feed'] ? { acpFeed: values['acp-feed'] } : {}),
+    ...(values.ucp ? { ucp: fromFile.ucp || true } : {}),
+    ...(values.mcp ? { mcp: fromFile.mcp || true } : {}),
+    ...(values.cloaking ? { cloaking: fromFile.cloaking || true } : {}),
+    ...(values['max-age']?.length ? { maxAge: { ...fromFile.maxAge, ...parseMaxAge(values['max-age']) } } : {}),
     ...(checkout ? { checkout: { shipTo: shipTo ?? fromFile.checkout?.shipTo ?? { country: 'US' } } } : {}),
     ...(values.page?.length ? { pages: values.page } : {}),
     ...(values.sample ? { sample: wholeNumber('--sample', values.sample) } : {}),

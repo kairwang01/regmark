@@ -151,7 +151,7 @@ test('rules prints one line per rule, including the two named rules', async () =
   const res = await run(['rules']);
   assert.equal(res.code, 0);
   const lines = res.stdout.split('\n').filter((line) => line.length > 0);
-  assert.equal(lines.length, 15);
+  assert.equal(lines.length, 17);
   for (const line of lines) assert.match(line, /^[a-z]+(\.[a-z-]+)+\s/, `dotted id first: ${line}`);
   assert.ok(lines.some((line) => line.startsWith('price.mismatch ')));
   assert.ok(lines.some((line) => line.startsWith('content.instruction-like ')));

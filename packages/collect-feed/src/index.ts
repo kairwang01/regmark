@@ -7,6 +7,12 @@ import { readXml } from './xml.ts';
 export type FeedOptions = {
   /** Currency to assume when a price in the feed carries none. */
   defaultCurrency?: string | null;
+  /**
+   * Which surface the feed is. 'feed' (the default) is a Google Merchant
+   * format feed; 'acp' is an Agentic Commerce Protocol product feed.
+   * SKELETON: 'acp' is implemented in the ACP feed work.
+   */
+  surface?: 'feed' | 'acp';
 };
 
 /** Pure. Parses a Google Merchant Center format feed: RSS 2.0, Atom, or tab-separated text. */

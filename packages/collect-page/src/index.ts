@@ -21,6 +21,8 @@ export { extractText } from './text.ts';
 export { extractVisible } from './visible.ts';
 export type { TextOptions } from './text.ts';
 export type { VisibleOptions } from './visible.ts';
+export { collectViews } from './views.ts';
+export type { ClientProfile } from './views.ts';
 
 export type PageOptions = VisibleOptions & TextOptions;
 

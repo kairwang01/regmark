@@ -28,6 +28,9 @@ importers:
       '@regmark/collect-page':
         specifier: workspace:*
         version: link:../collect-page
+      '@regmark/collect-protocol':
+        specifier: workspace:*
+        version: link:../collect-protocol
       '@regmark/collect-shopify':
         specifier: workspace:*
         version: link:../collect-shopify
@@ -64,6 +67,12 @@ importers:
       cheerio:
         specifier: ^1.1.2
         version: 1.2.0
+
+  packages/collect-protocol:
+    dependencies:
+      '@regmark/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/collect-shopify:
     dependencies:
