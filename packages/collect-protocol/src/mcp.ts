@@ -14,7 +14,7 @@
 // they are not read: a server that offers only those is reported as having
 // no catalogue tool.
 
-import type { CollectContext, CollectResult } from '@regmark/core';
+import type { CollectContext, CollectIssue, CollectResult } from '@regmark/core';
 import { readCatalogue } from './catalog.ts';
 import type { Operation } from './catalog.ts';
 import { notify, rpc, rpcSession } from './jsonrpc.ts';
@@ -86,7 +86,7 @@ export async function collectMcp(ctx: CollectContext, options: EndpointOptions):
 
 type Tool = Record<string, unknown>;
 
-async function listTools(ctx: CollectContext, session: RpcSession): Promise<{ ok: true; tools: Tool[] } | { ok: false; issue: ReturnType<typeof issue> }> {
+async function listTools(ctx: CollectContext, session: RpcSession): Promise<{ ok: true; tools: Tool[] } | { ok: false; issue: CollectIssue }> {
   const tools: Tool[] = [];
   let cursor: string | undefined;
   for (let page = 0; page < MAX_TOOL_PAGES; page++) {

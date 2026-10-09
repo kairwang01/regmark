@@ -273,6 +273,22 @@ describe('readCatalogue: what it asks', () => {
     assert.deepEqual(result.issues, [failure]);
   });
 
+  it('keeps nothing of a product whose ids straddle a failed batch, and keeps a product answered in full', async () => {
+    // Six ids for the first product, six for the second: the second's last two fall in the batch that fails.
+    const refs = [1, 2].map((n): ProductRef => ({ url: `${ORIGIN}/products/p${n}`, variantIds: Array.from({ length: 6 }, (_, i) => `${n}${i}`) }));
+    let batch = 0;
+    const { ask } = script((_op, request) => {
+      if (batch++ > 0) return { surface: 'ucp', code: 'fetch-failed', message: 'lookup_catalog: HTTP 503', locator: AT };
+      const ids = request.ids as string[];
+      return lookupAnswer(ids.map((id) => product(`p${id[0]}`, `p${id[0]}`, [found(variant(id, `SKU-${id}`, 100), [id, 'exact'])])));
+    });
+    const result = await readCatalogue(ask, options(refs));
+    // A partial second product would make its last two variants look missing from the catalogue.
+    assert.deepEqual([...new Set(result.sightings.map((s) => s.ids.url))], [`${ORIGIN}/products/p1`]);
+    assert.equal(result.sightings.length, 6);
+    assert.deepEqual(result.issues.map((i) => i.code), ['fetch-failed']);
+  });
+
   it('reports a catalogue that answers with ucp.status error, by its UCP code', async () => {
     const cases: [string, string][] = [['version_unsupported', 'version-unsupported'], ['capabilities_incompatible', 'not-supported'], ['rate_limited', 'fetch-failed']];
     for (const [ucpCode, code] of cases) {

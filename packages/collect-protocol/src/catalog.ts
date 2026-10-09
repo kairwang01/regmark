@@ -91,7 +91,8 @@ export function backendId(id: string): string | undefined {
 
 export async function readCatalogue(ask: Ask, options: CatalogueOptions): Promise<CollectResult> {
   const { surface, refs } = options;
-  const sightings: Sighting[] = [];
+  // Each sighting with the index of the product it belongs to.
+  const read: { index: number; sighting: Sighting }[] = [];
   const issues: CollectIssue[] = [];
 
   // Which product asked for each id. Lookups are batched across products, and
@@ -110,16 +111,19 @@ export async function readCatalogue(ask: Ask, options: CatalogueOptions): Promis
 
   const found = new Set<number>();
   const emitted = new Set<string>();
+  const all = [...owner.keys()];
+  // Ids before this position were answered. A failed batch leaves the rest unasked.
+  let answered = all.length;
   let failed = false;
 
   if (options.lookup) {
-    const all = [...owner.keys()];
-    for (let start = 0; start < all.length && !failed; start += LOOKUP_BATCH) {
+    for (let start = 0; start < all.length; start += LOOKUP_BATCH) {
       const asked = all.slice(start, start + LOOKUP_BATCH);
       const answer = checked(await ask('lookup_catalog', withFilter({ ids: asked }, options)), surface, 'lookup_catalog');
       if (!answer.ok) {
         issues.push(answer.issue);
         // The rest would most likely fail the same way, once per batch.
+        answered = start;
         failed = true;
         break;
       }
@@ -141,14 +145,18 @@ export async function readCatalogue(ask: Ask, options: CatalogueOptions): Promis
           const scope = inputs.some((input) => input.exact) ? 'variant' : 'product';
           const label = `lookup_catalog[id=${JSON.stringify(inputs[0]!.id)}]`;
           const at = `${answer.url}#${label}${answer.pointer}/products/${p}/variants/${v}`;
-          const read = toSighting(surface, refs[index]!, product, variant, at, answer.fetchedAt, scope);
-          sightings.push(read.sighting);
-          issues.push(...read.issues);
+          const one = toSighting(surface, refs[index]!, product, variant, at, answer.fetchedAt, scope);
+          read.push({ index, sighting: one.sighting });
+          issues.push(...one.issues);
           found.add(index);
         }
       });
     }
   }
+
+  // A product with an id in a batch that was never answered was read in part
+  // at best, and its unread variants would look missing. It keeps nothing.
+  const unanswered = new Set(all.slice(answered).map((id) => owner.get(id)!));
 
   if (options.search && !failed) {
     for (const [index, ref] of refs.entries()) {
@@ -171,9 +179,9 @@ export async function readCatalogue(ask: Ask, options: CatalogueOptions): Promis
       variants.forEach((variant, v) => {
         if (!isRecord(variant)) return;
         const at = `${answer.url}#${label}${answer.pointer}/products/${p}/variants/${v}`;
-        const read = toSighting(surface, ref, product, variant, at, answer.fetchedAt, 'variant');
-        sightings.push(read.sighting);
-        issues.push(...read.issues);
+        const one = toSighting(surface, ref, product, variant, at, answer.fetchedAt, 'variant');
+        read.push({ index, sighting: one.sighting });
+        issues.push(...one.issues);
         found.add(index);
       });
     }
@@ -185,7 +193,7 @@ export async function readCatalogue(ask: Ask, options: CatalogueOptions): Promis
       issues.push(issueOf(surface, 'not-found', 'the catalogue has no product for this page', ref.url));
     }
   }
-  return { sightings, issues };
+  return { sightings: read.filter((r) => !unanswered.has(r.index)).map((r) => r.sighting), issues };
 }
 
 const withFilter = (request: Record<string, unknown>, options: CatalogueOptions): Record<string, unknown> =>
