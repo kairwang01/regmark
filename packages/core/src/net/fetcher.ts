@@ -307,6 +307,17 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
       }
     },
 
+    async query(url: string, json: unknown, init: RequestOptions = {}): Promise<Fetched> {
+      const u = parse(url);
+      const headers = callerHeaders(u, init);
+      assertAllowedHost(u);
+      if (!init.asOwner) await assertRobots(u);
+      await pace(u);
+      const body = Buffer.from(JSON.stringify(json));
+      // A redirect is returned, not followed: replaying a body elsewhere is not something to do silently.
+      return finish(u, await request('POST', u, { 'content-type': 'application/json', accept: 'application/json', ...headers }, body));
+    },
+
     async send(method, url, init = {}): Promise<Fetched> {
       const u = parse(url);
       assertAllowedHost(u);

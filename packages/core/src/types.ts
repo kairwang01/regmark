@@ -346,6 +346,14 @@ export interface Fetcher {
    * the shop was verified for this run.
    */
   send(method: 'POST' | 'PUT' | 'DELETE', url: string, options?: RequestOptions & { json?: unknown }): Promise<Fetched>;
+  /**
+   * A POST that only asks: a JSON-RPC call such as an MCP tools/list, or a
+   * catalogue search whose protocol puts the question in the body. It is
+   * paced, checked against robots.txt like a read, and never follows a
+   * redirect. The caller is responsible for sending only requests that
+   * change nothing on the shop; anything that does goes through `send`.
+   */
+  query(url: string, json: unknown, options?: RequestOptions): Promise<Fetched>;
 }
 
 export type CollectContext = {

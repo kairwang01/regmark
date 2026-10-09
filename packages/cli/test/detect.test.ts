@@ -27,6 +27,9 @@ function fakeFetcher(replies: Record<string, Reply>) {
     async send() {
       throw new Error('detection never writes');
     },
+    async query() {
+      throw new Error('detection never posts a query');
+    },
   };
   return { fetcher, requested };
 }
