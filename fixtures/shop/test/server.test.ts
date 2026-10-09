@@ -1,5 +1,6 @@
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { gunzipSync } from 'node:zlib';
 import { startShop } from '../src/server.ts';
 import type { RunningShop } from '../src/server.ts';
 import { OWNERSHIP_TOKEN } from '../src/catalog.ts';
@@ -47,8 +48,23 @@ describe('fixture server', () => {
       expected: unknown[];
     };
     assert.equal(body.mode, 'misprint');
-    assert.equal(body.expected.length, 23);
-    assert.equal(body.defects.length, 20);
+    assert.equal(body.expected.length, 25);
+    assert.equal(body.defects.length, 22);
+  });
+
+  it('serves the ACP feed as JSON Lines, and as the gzip file OpenAI asks for', async () => {
+    const r = await start('clean');
+    const plain = await fetch(`${r.origin}/feeds/acp.jsonl`);
+    assert.equal(plain.status, 200);
+    assert.equal(plain.headers.get('content-type'), 'application/jsonl; charset=utf-8');
+    const text = await plain.text();
+    assert.equal(text.trim().split('\n').length, 19);
+    const gz = await fetch(`${r.origin}/feeds/acp.jsonl.gz`);
+    assert.equal(gz.status, 200);
+    assert.equal(gz.headers.get('content-type'), 'application/gzip');
+    // A file, not a transfer encoding: the bytes arrive still compressed.
+    assert.equal(gz.headers.get('content-encoding'), null);
+    assert.equal(gunzipSync(Buffer.from(await gz.arrayBuffer())).toString('utf8'), text);
   });
 
   it('lists products over HTTP with the total header', async () => {
