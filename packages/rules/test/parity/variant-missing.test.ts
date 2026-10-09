@@ -55,7 +55,7 @@ test('an ACP feed listing every size is silent, including a row held back from s
     variant('acp', { aliases: ['BELT-32'], url: URL }, { price: price('acp', '48.00') }),
     variant('acp', { aliases: ['BELT-34'], url: URL }, { price: price('acp', '48.00') }),
     // What the collector gives for is_eligible_search=false: the variant, and nothing about it.
-    variant('acp', { aliases: ['BELT-36'], url: URL }),
+    variant('acp', { aliases: ['BELT-36'], url: URL }, { withheld: true }),
   ]);
   assert.deepEqual(findings, []);
 });

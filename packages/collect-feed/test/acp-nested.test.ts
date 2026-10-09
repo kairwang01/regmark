@@ -133,12 +133,26 @@ describe('ACP Product and Variant records: availability', () => {
     assert.equal(result.sightings[0]!.availability, undefined);
   });
 
-  it('reports a status and an available flag that contradict each other, and takes neither', () => {
-    for (const value of [{ available: false, status: 'in_stock' }, { available: true, status: 'out_of_stock' }]) {
+  it('lets available decide when the status disagrees about buying: the schema makes it the signal', () => {
+    const cases: [unknown, string][] = [
+      [{ available: false, status: 'in_stock' }, 'out_of_stock'],
+      // A pre-order that is not open yet cannot be bought now.
+      [{ available: false, status: 'preorder' }, 'out_of_stock'],
+      [{ available: true, status: 'out_of_stock' }, 'in_stock'],
+      // The last of a discontinued line, still on sale.
+      [{ available: true, status: 'discontinued' }, 'in_stock'],
+    ];
+    for (const [value, expected] of cases) {
       const result = parse(jsonl(product([{ ...VARIANT, availability: value }])));
-      assert.deepStrictEqual(codes(result), [`feed-field-unreadable ${AT}/availability`]);
-      assert.equal(result.sightings[0]!.availability, undefined);
+      assert.deepStrictEqual(codes(result), [], JSON.stringify(value));
+      assert.equal(result.sightings[0]!.availability?.value, expected, JSON.stringify(value));
     }
+  });
+
+  it('keeps a status that refines what available says', () => {
+    assert.equal(availability({ available: true, status: 'backorder' }), 'backorder');
+    assert.equal(availability({ available: true, status: 'preorder' }), 'preorder');
+    assert.equal(availability({ available: false, status: 'out_of_stock' }), 'out_of_stock');
   });
 
   it('reports an availability that is not the object the model defines', () => {
@@ -238,5 +252,24 @@ describe('ACP Product and Variant records: returns', () => {
     const result = parse(jsonl(product([{ ...VARIANT, seller: { links: [{ type: 'refund_policy', url: 'mailto:help@merchant.com' }] } }])));
     assert.equal(result.sightings[0]!.returnPolicy, undefined);
     assert.deepStrictEqual(codes(result), [`feed-field-unreadable ${AT}/seller/links[1]`]);
+  });
+});
+
+describe('ACP Product and Variant records: values a reader must survive', () => {
+  // Written as text: the test cannot build such a line with JSON.stringify either.
+  const deep = '['.repeat(20_000) + ']'.repeat(20_000);
+
+  it('reads a variant whose availability carries a value nested deeper than it can be shown', () => {
+    const line = jsonl(product([{ ...VARIANT, availability: { available: true, extra: 'DEEP' } }])).replace('"DEEP"', deep);
+    const result = parse(line);
+    assert.equal(result.sightings[0]!.availability?.value, 'in_stock');
+    assert.equal(result.sightings[0]!.availability?.raw, '{"available":true}');
+  });
+
+  it('reports a price nested deeper than it can be shown, without stopping', () => {
+    const line = jsonl(product([{ ...VARIANT, price: 'DEEP' }])).replace('"DEEP"', deep);
+    const result = parse(line);
+    assert.equal(result.sightings[0]!.price, undefined);
+    assert.match(result.issues[0]!.message, /^price \[a value nested too deeply to show\] is not/);
   });
 });

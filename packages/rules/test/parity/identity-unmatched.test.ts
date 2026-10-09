@@ -70,3 +70,27 @@ test('skipped when neither platform nor checkout was collected', () => {
   assert.deepEqual(r.findings, []);
   assert.equal(r.rules[0]!.skipped, 'needs one of platform, checkout');
 });
+
+test('a feed row held back from buyers vouches for nothing, so a product only it lists is not reported', () => {
+  const findings = run(rule, [mugPlatform(), variant('acp', { aliases: ['OLD-9'], url: OLD_URL }, { withheld: true })]);
+  assert.deepEqual(findings, []);
+});
+
+test('a held-back row for a variant the shop dropped is not reported either', () => {
+  const findings = run(rule, [
+    variant('platform', { sku: 'TEE-S', variantId: '21', productId: '20', url: CAP_URL }),
+    variant('acp', { aliases: ['TEE-S'], url: CAP_URL }),
+    variant('acp', { aliases: ['TEE-XL'], url: CAP_URL }, { withheld: true }),
+  ]);
+  assert.deepEqual(findings, []);
+});
+
+test('a product listed by a held-back row and by an offered one names only the surface that offers it', () => {
+  const findings = run(rule, [
+    mugPlatform(),
+    variant('acp', { aliases: ['OLD-9'], url: OLD_URL }, { withheld: true }),
+    variant('feed', { sku: 'OLD-9', url: OLD_URL }),
+  ]);
+  assert.deepEqual(brief(findings), [{ variant: undefined, surface: 'feed' }]);
+  assert.match(findings[0]!.message, /^listed by feed,/);
+});

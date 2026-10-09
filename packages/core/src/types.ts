@@ -154,6 +154,13 @@ export type Sighting = {
    * compares them; they are gathered in `ProductNode.alternateViews`.
    */
   via?: string;
+  /**
+   * Set when the surface lists the variant but keeps it from buyers on
+   * purpose, as an ACP row with is_eligible_search=false does. Such a
+   * sighting states no facts. It still counts as listing the variant, for
+   * variant.missing, but it is no claim that the shop sells it.
+   */
+  withheld?: true;
 };
 
 /** One variant, with every surface's statements gathered per fact. */
@@ -339,6 +346,13 @@ export type RequestOptions = {
    * decoded, and the size limit counts the decompressed bytes. Reads only.
    */
   gzipFile?: boolean;
+  /**
+   * For a response that is a server-sent event stream: called with the stream
+   * read so far after each chunk. Once it returns true the response is taken
+   * as complete and the connection is closed, for a server that keeps the
+   * stream open after it has answered. Any other response is read to its end.
+   */
+  complete?: (body: string) => boolean;
 };
 
 /**

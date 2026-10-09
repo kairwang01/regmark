@@ -13,6 +13,8 @@ function gtinIndex(graph: OfferGraph): Map<string, Set<string>> {
     for (const offer of product.variants) {
       const who = `${product.key}\u0000${offer.key}`;
       for (const s of offer.sightings) {
+        // A row held back from buyers shows its GTIN to no one.
+        if (s.withheld) continue;
         const digits = normalizeGtin(s.ids.gtin);
         if (digits === null) continue;
         const k = `${s.surface}|${gtinKey(digits)}`;
@@ -39,7 +41,7 @@ export default defineRule({
       // One finding per surface; an invalid GTIN is the more serious report, so it wins over a duplicate.
       const bySurface = new Map<Surface, Problem>();
       for (const s of offer.sightings) {
-        if (!s.ids.gtin) continue;
+        if (!s.ids.gtin || s.withheld) continue;
         const digits = normalizeGtin(s.ids.gtin);
         let kind: Problem['kind'] | null = null;
         if (digits === null || !isValidGtin(digits)) kind = 'invalid';

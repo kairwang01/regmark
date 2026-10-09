@@ -263,7 +263,7 @@ describe('ACP flat records: required fields', () => {
 });
 
 describe('ACP flat records: search eligibility', () => {
-  it('lists a row kept out of search, but reads none of its facts and reports nothing', () => {
+  it('lists a row kept out of search as withheld, but reads none of its facts and reports nothing', () => {
     const { description: _, ...rest } = MUG;
     const result = parse(jsonl({ ...rest, is_eligible_search: false, gtin: '09506000134352', shipping_price: '5.00 USD' }));
     assert.deepStrictEqual(result.issues, []);
@@ -273,8 +273,13 @@ describe('ACP flat records: search eligibility', () => {
         scope: 'variant',
         ids: { aliases: ['MUG-350-BLUE'], url: MUG.url, gtin: '09506000134352', brand: 'Northline' },
         title: MUG.title,
+        withheld: true,
       },
     ]);
+  });
+
+  it('does not mark a row that is in search as withheld', () => {
+    assert.equal(only({ ...MUG, is_eligible_search: true }).withheld, undefined);
   });
 
   it('reads the flag as the lowercase word in a CSV cell', () => {
@@ -350,12 +355,12 @@ describe('ACP flat records: variant options', () => {
 });
 
 describe('ACP flat records: shipping', () => {
-  it('reads shipping_price as one charge with no country of its own', () => {
+  it('reads shipping_price as one charge to the US, the market a standard upload targets', () => {
     assert.deepStrictEqual(
       only({ ...MUG, shipping_price: '5.00 USD' }).shipping,
-      acpObservation({ free: false, cost: USD(50000) }, '5.00 USD', acpAt('MUG-350-BLUE', 'shipping_price')),
+      acpObservation({ free: false, cost: USD(50000), country: 'US' }, '5.00 USD', acpAt('MUG-350-BLUE', 'shipping_price')),
     );
-    assert.deepStrictEqual(only({ ...MUG, shipping_price: '0.00 USD' }).shipping?.value, { free: true, cost: USD(0) });
+    assert.deepStrictEqual(only({ ...MUG, shipping_price: '0.00 USD' }).shipping?.value, { free: true, cost: USD(0), country: 'US' });
   });
 
   it('says nothing about shipping when shipping_price is left out: that is unknown, not free', () => {
@@ -380,7 +385,7 @@ describe('ACP flat records: shipping', () => {
 
   it('takes shipping_price and ignores the tuple when a row sends both', () => {
     const result = parse(jsonl({ ...MUG, shipping_price: '5.00 USD', shipping: 'US::Express:15.00 USD' }));
-    assert.deepStrictEqual(result.sightings[0]!.shipping?.value, { free: false, cost: USD(50000) });
+    assert.deepStrictEqual(result.sightings[0]!.shipping?.value, { free: false, cost: USD(50000), country: 'US' });
     assert.deepStrictEqual(codes(result), [`feed-field-ignored ${acpAt('MUG-350-BLUE', 'shipping')}`]);
   });
 });
@@ -469,6 +474,12 @@ describe("ACP flat records: OpenAI's Google-compatible profile", () => {
     assert.deepStrictEqual(result.sightings.map((s) => s.ids.options), [{ color: 'Blue', size: '350 mL' }, undefined]);
   });
 
+  it('takes only the attributes a shopper picks as options, not gender, age_group or size_type', () => {
+    const header = `${HEADER}\titem_group_id\tcolor\tsize\tgender\tage_group\tsize_type\tmaterial\tpattern`;
+    const result = parse(tsv(header, `${row()}\tTEES\tBlue\tM\tmale\tadult\tregular\tCotton\tStriped`));
+    assert.deepStrictEqual(result.sightings[0]!.ids.options, { color: 'Blue', size: 'M', material: 'Cotton', pattern: 'Striped' });
+  });
+
   it('reads no shipping, returns or search columns, which this profile does not carry', () => {
     const header = `${HEADER}\tshipping\tshipping_price\taccepts_returns\treturn_policy\tis_eligible_search`;
     const result = parse(tsv(header, `${row()}\tUS::Standard:5.00 USD\t5.00 USD\ttrue\thttps://example.com/returns\tfalse`));
@@ -490,5 +501,27 @@ describe("ACP flat records: OpenAI's Google-compatible profile", () => {
     const result = parse(csv);
     assert.deepStrictEqual(result.issues, []);
     assert.equal(result.sightings[0]!.title, 'Mug, blue');
+  });
+});
+
+describe('ACP flat records: values a reader must survive', () => {
+  const deep = (depth: number) => '['.repeat(depth) + ']'.repeat(depth);
+
+  it('reports a value nested deeper than it can be shown, and reads the other lines', () => {
+    const result = parse(`${JSON.stringify(MUG)}\n{"item_id":"A","url":"https://example.com/a","price":${deep(20_000)}}`);
+    assert.equal(result.sightings.length, 2);
+    assert.deepStrictEqual(result.sightings[0]!.price?.value, USD(180000));
+    assert.equal(result.sightings[1]!.price, undefined);
+    assert.ok(result.issues.some((i) => i.code === 'feed-field-unreadable' && i.locator === acpAt('A', 'price')));
+  });
+
+  it('reports an id that is a JSON number too large to hold exactly, rather than reading other digits', () => {
+    const result = parse('{"item_id":12345678901234567890,"url":"https://example.com/a"}');
+    assert.deepStrictEqual(result.sightings, []);
+    assert.match(result.issues[0]!.message, /item_id .* is a JSON number that cannot hold an id exactly; write it as a string/);
+  });
+
+  it('still reads a whole-number id written as a JSON number', () => {
+    assert.deepStrictEqual(only({ ...MUG, item_id: 20231015000123 }).ids.aliases, ['20231015000123']);
   });
 });

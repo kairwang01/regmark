@@ -19,7 +19,7 @@
 import { type Availability, type CollectIssue, type Money, money, type Observation, type ReturnPolicy, type ShippingQuote, type Sighting, type VariantIds } from '@regmark/core';
 import { parseIso8601 } from '../dates.ts';
 import { httpUrl, type MapContext, resolveUrl } from '../map.ts';
-import { type FlatRecord, isObject, placeLocator, placeText, type Profile } from './read.ts';
+import { type FlatRecord, isObject, jsonText, placeLocator, placeText, type Profile } from './read.ts';
 
 const SURFACE = 'acp' as const;
 const DAY_MS = 86_400_000;
@@ -61,8 +61,15 @@ const REQUIRED: Readonly<Record<Profile, readonly string[]>> = {
   google: ['title', 'description', 'image_link', 'availability', 'price', 'brand'],
 };
 
-/** In the Google-compatible profile these attributes are a grouped variant's options. */
-const GOOGLE_OPTIONS = ['color', 'size', 'material', 'age_group', 'gender', 'pattern', 'size_type'] as const;
+/**
+ * In the Google-compatible profile these attributes are a grouped variant's
+ * options: the ones a shopper picks between, as the Merchant feed reader takes
+ * them. Google also counts gender, age_group and size_type as variant
+ * attributes, and asks apparel feeds for them on every row, but a shop's own
+ * variants do not name them: an option the shop does not have would keep the
+ * row from ever joining its variant.
+ */
+const GOOGLE_OPTIONS = ['color', 'size', 'material', 'pattern'] as const;
 
 /** A decimal amount in major units, a space, and the ISO 4217 code: "79.99 USD". */
 const MONEY = /^(\d+(?:\.\d+)?)(?:\s+([A-Za-z]{3}))?$/;
@@ -72,7 +79,7 @@ const present = (v: unknown): boolean => !(v === undefined || v === null || (typ
 
 /** A value as it reads in a message, cut so a long cell cannot flood the report. */
 function shown(v: unknown): string {
-  const text = typeof v === 'string' ? v : JSON.stringify(v);
+  const text = typeof v === 'string' ? v : jsonText(v);
   return text.length > 80 ? `${text.slice(0, 77)}...` : text;
 }
 
@@ -122,7 +129,7 @@ function reportShadowed(row: Row, names: readonly string[]): void {
   if (!first) return;
   for (const other of names) {
     if (other === first || !present(row.fields[other])) continue;
-    if (JSON.stringify(row.fields[other]) === JSON.stringify(row.fields[first])) continue;
+    if (jsonText(row.fields[other]) === jsonText(row.fields[first])) continue;
     ignored(row, other, `${other} is ignored: ${first} is also given, and wins`);
   }
 }
@@ -136,6 +143,21 @@ function text(row: Row, name: string | undefined): string | undefined {
   if (typeof v === 'number' && Number.isFinite(v)) return String(v);
   unreadable(row, name, `${name} is ${shown(v)}, not text`);
   return undefined;
+}
+
+/**
+ * An identifier: text, or a whole number written as JSON. A JSON number past
+ * 2^53 has already lost digits by the time it is read, as an int64 id written
+ * without quotes does, and would name some other item.
+ */
+function identifier(row: Row, name: string | undefined): string | undefined {
+  if (name === undefined) return undefined;
+  const v = row.fields[name];
+  if (typeof v === 'number' && Number.isFinite(v) && !Number.isSafeInteger(v)) {
+    unreadable(row, name, `${name} ${shown(v)} is a JSON number that cannot hold an id exactly; write it as a string`);
+    return undefined;
+  }
+  return text(row, name);
 }
 
 /** JSON true or false, or the lowercase words in a CSV or TSV cell. */
@@ -266,14 +288,16 @@ function readAvailability(row: Row, s: Sighting): void {
 /**
  * shipping_price, one charge in the price's currency; or, for a feed set up
  * for it, the tuple country:region:service_class:price, exactly four
- * positions. Not both: a row that sends both has its tuple ignored.
+ * positions. Not both: a row that sends both has its tuple ignored. The
+ * standard upload targets the US whatever the row says, so shipping_price is
+ * the charge to the US, not to wherever the checkout probe ships.
  */
 function readShipping(row: Row, s: Sighting): void {
   const chargeText = text(row, 'shipping_price');
   const tuple = text(row, 'shipping');
   if (chargeText) {
     const cost = readMoney(row, 'shipping_price', chargeText);
-    if (cost) s.shipping = observe<ShippingQuote>(row, { free: cost.units === 0, cost }, chargeText, 'shipping_price');
+    if (cost) s.shipping = observe<ShippingQuote>(row, { free: cost.units === 0, cost, country: 'US' }, chargeText, 'shipping_price');
     if (tuple) ignored(row, 'shipping', 'shipping is ignored: the row also gives shipping_price, and a charge is sent one way or the other');
     return;
   }
@@ -320,7 +344,7 @@ function readReturns(row: Row, s: Sighting): void {
   if (!value) return;
   if (policyUrl) value.url = policyUrl;
   const source = Object.fromEntries(['accepts_returns', ...RETURN_WINDOW, 'return_policy'].filter((n) => present(row.fields[n])).map((n) => [n, row.fields[n]]));
-  s.returnPolicy = observe(row, value, JSON.stringify(source), accepts !== undefined ? 'accepts_returns' : 'return_policy');
+  s.returnPolicy = observe(row, value, jsonText(source), accepts !== undefined ? 'accepts_returns' : 'return_policy');
 }
 
 /**
@@ -332,7 +356,7 @@ export function mapFlat(record: FlatRecord, profile: Profile, ctx: MapContext): 
   const names = NAMES[profile];
   const row: Row = { profile, fields: record.fields, ctx, issues: [], at: placeLocator(ctx.feedUrl, record.place) };
 
-  const id = text(row, winner(row, names.id));
+  const id = identifier(row, winner(row, names.id));
   if (!id) {
     report(row, 'feed-item-incomplete', `${placeText(record.place)} has no ${names.id[0]}`);
     return { issues: row.issues };
@@ -348,14 +372,14 @@ export function mapFlat(record: FlatRecord, profile: Profile, ctx: MapContext): 
   const ids: VariantIds = { aliases: [id] };
   const url = resolveUrl(link, ctx.feedUrl);
   if (url) ids.url = url;
-  const gtin = text(row, 'gtin');
+  const gtin = identifier(row, 'gtin');
   if (gtin) ids.gtin = gtin;
-  const mpn = text(row, 'mpn');
+  const mpn = identifier(row, 'mpn');
   if (mpn) ids.mpn = mpn;
   const brand = text(row, 'brand');
   if (brand) ids.brand = brand;
   reportShadowed(row, names.group);
-  const group = text(row, winner(row, names.group));
+  const group = identifier(row, winner(row, names.group));
   // A group id equal to the item's own "does not establish a variant group".
   if (group && group !== id) ids.groupId = group;
   const options =
@@ -370,11 +394,16 @@ export function mapFlat(record: FlatRecord, profile: Profile, ctx: MapContext): 
 
   // A row the merchant keeps out of agent search states nothing a buyer is
   // shown. It still lists the variant, so the feed is not partial for
-  // leaving it out, but none of its facts are read. The Google-compatible
-  // profile has search on for every row, whatever the column says.
+  // leaving it out, but none of its facts are read, and it is how a feed is
+  // told to stop offering something, so it vouches for nothing. The
+  // Google-compatible profile has search on for every row, whatever the
+  // column says.
   if (profile === 'openai') {
     reportShadowed(row, SEARCH);
-    if (flag(row, winner(row, SEARCH)) === false) return { sighting, issues: row.issues };
+    if (flag(row, winner(row, SEARCH)) === false) {
+      sighting.withheld = true;
+      return { sighting, issues: row.issues };
+    }
   }
 
   const missing = REQUIRED[profile].filter((name) => !present(row.fields[name]));

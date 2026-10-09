@@ -9,7 +9,7 @@
 
 import { type Availability, type CollectIssue, fromMinor, isBuyable, minorUnitOf, type Money, type Observation, type Sighting, type VariantIds } from '@regmark/core';
 import { httpUrl, type MapContext, resolveUrl } from '../map.ts';
-import { isObject, placeLocator, placeText, type ProductRecord } from './read.ts';
+import { isObject, jsonText, placeLocator, placeText, type ProductRecord, shownJson } from './read.ts';
 
 const SURFACE = 'acp' as const;
 
@@ -66,39 +66,39 @@ function readPrice(v: VariantRead, value: unknown, field: string): Observation<M
       : null;
   if (!money) {
     // Without its currency an amount in minor units cannot even be scaled.
-    unreadable(v, field, `${field} ${JSON.stringify(value)} is not {"amount": <minor units>, "currency": "<ISO 4217 code>"}`);
+    unreadable(v, field, `${field} ${shownJson(value)} is not {"amount": <minor units>, "currency": "<ISO 4217 code>"}`);
     return undefined;
   }
-  return observe(v, money, JSON.stringify(value), field);
+  return observe(v, money, JSON.stringify({ amount, currency: (value as Record<string, unknown>).currency }), field);
 }
 
 /**
- * `available` says whether the variant can be bought now; `status` gives the
- * fulfilment state. A status alone is read through STATUS, `available` alone
- * as in or out of stock. When both are given and disagree about whether it
- * can be bought, the feed contradicts itself and neither is taken.
+ * `available` says whether the variant can be bought now, and the schema
+ * makes it the signal for that; `status` is the fulfilment state that refines
+ * it. A status is taken when it agrees with `available` about buying, and
+ * otherwise `available` decides alone: {available: true, status:
+ * "discontinued"} is the last of a line still on sale, {available: false,
+ * status: "preorder"} a pre-order not open yet. A status with no `available`
+ * is read through STATUS.
  */
 function readAvailability(v: VariantRead, value: unknown): Observation<Availability> | undefined {
   if (value === undefined || value === null) return undefined;
-  const raw = JSON.stringify(value);
   const given = isObject(value) && value.available !== undefined && value.available !== null;
   if (!isObject(value) || (given && typeof value.available !== 'boolean')) {
-    unreadable(v, 'availability', `availability ${raw} is not {"available": true or false, "status": "<state>"}`);
+    unreadable(v, 'availability', `availability ${shownJson(value)} is not {"available": true or false, "status": "<state>"}`);
     return undefined;
   }
   const available = given ? (value.available as boolean) : undefined;
   const status = textOf(value.status);
+  const raw = JSON.stringify({ available, status });
   const fromStatus = status ? STATUS.get(status.toLowerCase()) : undefined;
-  if (fromStatus) {
-    if (available !== undefined && isBuyable(fromStatus) !== available) {
-      unreadable(v, 'availability', `availability ${raw} contradicts itself: status "${status}" with available ${available}`);
-      return undefined;
-    }
-    return observe(v, fromStatus, raw, 'availability');
+  if (available === undefined) {
+    if (fromStatus) return observe(v, fromStatus, raw, 'availability');
+    if (status) unreadable(v, 'availability', `availability status "${status}" is not one the protocol names, and available is not given`);
+    return undefined;
   }
-  if (available !== undefined) return observe<Availability>(v, available ? 'in_stock' : 'out_of_stock', raw, 'availability');
-  if (status) unreadable(v, 'availability', `availability status "${status}" is not one the protocol names, and available is not given`);
-  return undefined;
+  if (fromStatus && isBuyable(fromStatus) === available) return observe(v, fromStatus, raw, 'availability');
+  return observe<Availability>(v, available ? 'in_stock' : 'out_of_stock', raw, 'availability');
 }
 
 /** The first barcode of a GTIN type. Its value is passed on as written; identity.gtin-invalid checks it. */
@@ -115,7 +115,7 @@ function readGtin(value: unknown): string | undefined {
 function readOptions(v: VariantRead, value: unknown): Record<string, string> | undefined {
   if (value === undefined || value === null) return undefined;
   if (!Array.isArray(value)) {
-    unreadable(v, 'variant_options', `variant_options ${JSON.stringify(value)} is not a list`);
+    unreadable(v, 'variant_options', `variant_options ${shownJson(value)} is not a list`);
     return undefined;
   }
   const out: Record<string, string> = {};
@@ -123,7 +123,7 @@ function readOptions(v: VariantRead, value: unknown): Record<string, string> | u
     const name = isObject(option) ? textOf(option.name) : undefined;
     const chosen = isObject(option) ? textOf(option.value) : undefined;
     if (name && chosen) out[name] = chosen;
-    else unreadable(v, `variant_options[${i + 1}]`, `variant option ${JSON.stringify(option)} is not {"name": ..., "value": ...}`);
+    else unreadable(v, `variant_options[${i + 1}]`, `variant option ${shownJson(option)} is not {"name": ..., "value": ...}`);
   });
   return Object.keys(out).length > 0 ? out : undefined;
 }
@@ -135,8 +135,8 @@ function readRefundPolicy(v: VariantRead, seller: unknown): Sighting['returnPoli
     if (!isObject(link) || textOf(link.type) !== 'refund_policy') continue;
     const url = textOf(link.url);
     const href = url ? httpUrl(url) : undefined;
-    if (href) return observe(v, { present: true, url: href }, JSON.stringify(link), `seller/links[${i + 1}]`);
-    unreadable(v, `seller/links[${i + 1}]`, `refund_policy link ${JSON.stringify(link)} has no http or https URL`);
+    if (href) return observe(v, { present: true, url: href }, jsonText(link), `seller/links[${i + 1}]`);
+    unreadable(v, `seller/links[${i + 1}]`, `refund_policy link ${shownJson(link)} has no http or https URL`);
   }
   return undefined;
 }

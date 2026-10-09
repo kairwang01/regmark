@@ -40,6 +40,25 @@ export type AcpRead = { records: AcpRecord[]; profile: Profile; issues: CollectI
 
 export const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
+/**
+ * A JSON value as text, without throwing. JSON.parse reads nesting far deeper
+ * than JSON.stringify can walk back, and one such value in a feed must not
+ * end the run.
+ */
+export function jsonText(v: unknown): string {
+  try {
+    return JSON.stringify(v) ?? String(v);
+  } catch {
+    return '[a value nested too deeply to show]';
+  }
+}
+
+/** A value as it reads in a message: as JSON, cut so one long value cannot flood the report. */
+export function shownJson(v: unknown): string {
+  const text = jsonText(v);
+  return text.length > 80 ? `${text.slice(0, 77)}...` : text;
+}
+
 export const placeText = (p: Place): string => `${p.unit} ${p.position}`;
 export const placeLocator = (feedUrl: string, p: Place): string => `${feedUrl}#${p.unit}[${p.position}]`;
 
