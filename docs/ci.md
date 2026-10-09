@@ -14,8 +14,8 @@ deployment-completed workflow.
 
 ## GitHub Actions with the action
 
-The action is listed on GitHub Marketplace as **Regmark ecommerce audit**. It
-sets up Node 22 on the runner, runs `dist/regmark.mjs` from the same ref as the
+The action's GitHub Marketplace name is **Regmark ecommerce audit**. It sets
+up Node 22 on the runner, runs `dist/regmark.mjs` from the same ref as the
 action, writes the reports, adds the Markdown report to the job summary and
 uploads every report as an artifact.
 
