@@ -81,8 +81,9 @@ given. Without a terminal, nothing is printed unless `--verbose` is given.
 
 Audits a fixture shop that ships with the tool. The shop runs on a local port
 for the length of the run. The settings are fixed in code: the WooCommerce
-platform, a feed with a `maxAge` of 24 hours, the checkout probe and a sample
-of 50, and the shop's ACP feed, `/feeds/acp.jsonl.gz`. The config file is not read.
+platform, a feed with a `maxAge` of 24 hours, the shop's ACP feed
+(`/feeds/acp.jsonl.gz`), the checkout probe and a sample of 50. The config file
+is not read.
 
 | Flag | Default | What it does |
 |---|---|---|
@@ -308,15 +309,18 @@ gzipped (`.jsonl.gz`, `.csv.gz`, `.tsv.gz`), as OpenAI asks for it:
   Product per line) or a `{"products": [...]}` document as the Feed API
   returns it. Prices are whole minor units: `{"amount": 1999, "currency": "USD"}`.
 
-Parquet, which OpenAI also accepts, is not read; nor is XML, which no ACP
-format uses. Either stops the read with a `parse-error` that says what to
-export instead.
+Parquet, which OpenAI also accepts, is not read; nor are XML and a bare JSON
+array, which no ACP format uses. Each stops the read with a `parse-error` that
+says what to export instead.
 
 The ACP formats are not Google's, and are read by their own rules:
 
 - A valid `sale_price` is the price whatever its dates say: in this contract
-  sale dates schedule nothing. A sale that is not above zero, below `price`
-  and in its currency is not used, and the regular price is.
+  sale dates schedule nothing. The end of its `sale_price_effective_date` is
+  kept, so [`price.sale-expired`](rules.md#pricesale-expired-warn) can report
+  a sale price still offered after the date it says it ends. A sale that is
+  not above zero, below `price` and in its currency is not used, and the
+  regular price is.
 - A row with `is_eligible_search=false` is held back from agents on purpose.
   It still lists its variant, so `variant.missing` does not fire for it, but
   none of its facts are compared.
