@@ -5,7 +5,7 @@ defined in `action.yml` at the root of the repository. The second is the
 bundled script, `dist/regmark.mjs`, which any CI can run. Start with the
 [local quickstart](quickstart.md) to review a report before adding a build gate.
 
-[GitHub Action](#github-actions-with-the-action) · [Strict collection](#require-complete-collection-current-source) · [Inputs](#inputs) · [Other CI](#any-other-ci) · [Budgets](#adopting-it-on-a-shop-that-already-has-findings)
+[GitHub Action](#github-actions-with-the-action) · [Pull request comment](#posting-the-findings-on-the-pull-request) · [Agent surfaces](#checking-what-shopping-agents-are-told) · [Strict collection](#require-complete-collection) · [Inputs](#inputs) · [Outputs](#outputs) · [Other CI](#any-other-ci) · [Budgets](#adopting-it-on-a-shop-that-already-has-findings)
 
 Run the audit after the staging or preview deployment is reachable. A
 `pull_request` trigger by itself does not create or wait for that deployment;
@@ -14,13 +14,20 @@ deployment-completed workflow.
 
 ## GitHub Actions with the action
 
-The action sets up Node 22 on the runner, runs `dist/regmark.mjs` from the same
-ref as the action, and writes the reports.
+The action is listed on GitHub Marketplace as **Regmark ecommerce audit**. It
+sets up Node 22 on the runner, runs `dist/regmark.mjs` from the same ref as the
+action, writes the reports, adds the Markdown report to the job summary and
+uploads every report as an artifact.
 
-The examples pin the release tag `v0.1.0`, so the tool does not change under a
-build. A reviewed commit SHA is a stronger immutable pin. New current-source
-features, including `strict`, are not present in the existing `v0.1.0` tag;
-use a built source checkout until they are released, then update your pin.
+Which ref to use:
+
+| Ref | Moves? | Use it when |
+|---|---|---|
+| `kairwang01/regmark@v0` | Follows the latest `0.x` release | You want fixes without editing the workflow |
+| `kairwang01/regmark@v0.2.0` | Never | A build must not change under you |
+| `kairwang01/regmark@<commit sha>` | Never | Your policy requires immutable action references |
+
+Dependabot's `github-actions` ecosystem can keep a pinned tag or SHA current.
 
 ### A read-only audit of a staging shop
 
@@ -37,7 +44,7 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: kairwang01/regmark@v0.1.0
+      - uses: kairwang01/regmark@v0
         with:
           store: https://staging.shop.example
 ```
@@ -46,58 +53,93 @@ This reads the shop and never writes to it. With no `platform` input the tool
 works out what the shop runs on, reads its storefront API when it has one, and
 reads the product pages.
 
-### Adding the feed, the checkout probe and the token
+### Adding the feed, its age, the checkout probe and the token
 
 Replace the `with:` block with this one. The rest of the workflow is the same.
 
 ```yaml
-      - uses: kairwang01/regmark@v0.1.0
+      - uses: kairwang01/regmark@v0
         with:
           store: https://staging.shop.example
           feed: /feeds/google.xml
+          max-age: feed=24h
           platform: woocommerce
           checkout: 'true'
           ship-to: US:94103
           ownership-token: ${{ secrets.REGMARK_OWNERSHIP_TOKEN }}
 ```
 
-`checkout: 'true'` turns on the probe. The token must be the one the shop
-serves, as set out in [Writes](configuration.md#writes). Store it as a secret.
+`max-age` turns on `availability.stale`: the feed fails the check when its own
+timestamp is older than the age given. `checkout: 'true'` turns on the probe,
+on WooCommerce or Shopify. The token must be the one the shop serves, as set
+out in [Writes](configuration.md#writes). Store it as a secret.
 
 When neither the environment nor the config supplies a valid ownership token,
 the probe is skipped. In default mode the job can still pass if products were
-read and rule budgets pass; the skip appears in JSON `issues`. Use strict
-collection in a source build when a skipped probe must fail the job.
+read and rule budgets pass; the skip appears in JSON `issues`. Add
+`strict: 'true'` when a skipped probe must fail the job.
 
 The probe runs against the shop in `store`. Point it at a staging shop. See
 [What to point it at](#what-to-point-it-at).
 
-### Require complete collection (current source)
+### Posting the findings on the pull request
 
-Current source adds `--strict`, config `"strict": true`, and Action input
-`strict: 'true'` (default `'false'`). Enable it when a failed feed read, skipped
-checkout probe, refused page or cart cleanup failure should fail CI. It writes
-the completed reports with `ok: false` and exits `2` if any collection issue
-exists, even when every rule is within budget.
-
-From a current source checkout with dependencies installed:
-
-```bash
-pnpm regmark audit https://staging.shop.example --platform woocommerce \
-  --feed /feeds/google.xml --strict --html report.html --json report.json
+```yaml
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: kairwang01/regmark@v0
+        with:
+          store: https://staging.shop.example
+          comment: 'true'
 ```
 
-Use `--checkout` and an ownership token if cart observations are required. For
-the Action, add `strict: 'true'` only after pinning a release or reviewed commit
-that contains the implementation and its rebuilt bundle. The `v0.1.0` examples
-below use the released default behavior.
+With `comment: 'true'` the Markdown report is posted as one comment on the
+pull request and the same comment is updated on every later run, so a busy pull
+request does not fill up with reports. The job needs `pull-requests: write`. A
+pull request from a fork gets a read-only token; the comment is then skipped
+and the audit's own result still decides the job.
+
+### Checking what shopping agents are told
+
+```yaml
+      - uses: kairwang01/regmark@v0
+        with:
+          store: https://staging.shop.example
+          acp-feed: /feeds/acp.json
+          ucp: 'true'
+          mcp: 'true'
+          cloaking: 'true'
+          ownership-token: ${{ secrets.REGMARK_OWNERSHIP_TOKEN }}
+```
+
+`acp-feed`, `ucp` and `mcp` read the surfaces an agent reads directly (the Y
+plate): an Agentic Commerce Protocol product feed, the shop's Universal
+Commerce Protocol catalogue and its storefront MCP server. They only read.
+`cloaking` fetches each sampled page again as a browser and as a shopping agent
+and reports a page that tells the two different prices or stock levels. It
+poses as other clients, so like the checkout probe it runs only after the
+ownership token is verified. See [Configuration](configuration.md) for the
+details of each.
+
+### Require complete collection
+
+`strict: 'true'` (config `"strict": true`, flag `--strict`) makes any
+collection issue fail the job. Enable it when a failed feed read, a skipped
+checkout probe, a refused page or a cart cleanup failure should fail CI. The
+reports are still written, with `ok: false`, and the exit code is `2` even
+when every rule is within budget.
 
 Strict means **zero collection issues**, including expected 404s from stale
 feed entries; it has no issue-code allowlist. It does not expand the sample,
 add unsupported collectors, or fail solely because a rule is skipped. The
-misprint fixture intentionally has a missing-product collection issue; a
-strict audit of that fixture exits `2`, while the special `demo` command keeps
-its demonstration behavior.
+misprinted fixture shop intentionally has a missing-product collection issue;
+a strict audit of that fixture exits `2`, while the special `demo` command
+keeps its demonstration behaviour.
 
 ### Uploading SARIF to code scanning
 
@@ -106,7 +148,6 @@ This is the complete workflow. It is also at
 copied to `.github/workflows/regmark.yml`.
 
 ```yaml
-# Copy this file to .github/workflows/regmark.yml in your repository.
 name: Regmark
 
 on:
@@ -120,20 +161,23 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: write
       security-events: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Audit the staging shop
-        uses: kairwang01/regmark@v0.1.0
+        uses: kairwang01/regmark@v0
         with:
           store: https://staging.shop.example
           feed: /feeds/google.xml
+          max-age: feed=24h
           platform: woocommerce
           checkout: 'true'
           ship-to: US:94103
           ownership-token: ${{ secrets.REGMARK_OWNERSHIP_TOKEN }}
           sample: '25'
+          comment: 'true'
 
       - name: Upload SARIF to code scanning
         if: always()
@@ -146,28 +190,34 @@ The upload needs the `security-events: write` permission and code scanning
 availability for the repository. Fork pull requests may not receive write
 permissions or ownership secrets; keep a read-only audit/artifact path for
 those runs, and run verified checkout checks in a trusted context.
-`if: always()` runs the upload after the audit step, whether or not the audit failed. The
-`actions/checkout` step is needed only when the `config` input points at a file
-in the repository. The example includes it, so that a `config` input can be
-added without other changes.
+`if: always()` runs the upload after the audit step, whether or not the audit
+failed. The `actions/checkout` step is needed only when the `config` input
+points at a file in the repository.
 
 ### Inputs
-
-Defaults are those in current `action.yml`; `strict` is new since `v0.1.0`.
 
 | Input | Required | Default | Meaning |
 |---|---|---|---|
 | `store` | yes | none | The shop to audit, such as `https://shop.example`. Use a staging or preview URL for pull requests. |
 | `feed` | no | none | Feed URL in Google Merchant format, absolute or relative to the store. |
+| `acp-feed` | no | none | Feed URL in Agentic Commerce Protocol format, absolute or relative to the store. Read as the `acp` surface. |
 | `platform` | no | the config file's value, else `auto` | `woocommerce`, `shopify`, `auto` or `none`. |
-| `strict` | no | `'false'` | Current source: `'true'` makes any collection issue fail with exit 2. A true value in the config also enables it. |
-| `checkout` | no | `'false'` | `'true'` runs the checkout probe. A `checkout` config object also enables it; false does not override the file. Verification needs a valid token. |
+| `ucp` | no | `'false'` | `'true'` reads the shop's UCP catalogue, discovered at `/.well-known/ucp`. |
+| `mcp` | no | `'false'` | `'true'` reads the shop's storefront MCP server. |
+| `checkout` | no | `'false'` | `'true'` runs the checkout probe (WooCommerce or Shopify). A `checkout` config object also enables it; false does not override the file. Verification needs a valid token. |
 | `ship-to` | no | the config file's value, else `US` | Destination for the probe, as `CC` or `CC:postcode`. |
+| `cloaking` | no | `'false'` | `'true'` fetches each sampled page again as a browser and as a shopping agent and compares what each is told. Needs a valid token. |
 | `ownership-token` | no | none | The token served at `/.well-known/regmark.txt` on the shop, or published in DNS. Pass it from a secret. It is set in the `REGMARK_OWNERSHIP_TOKEN` variable for the run. |
+| `pages` | no | none | Product page URLs to audit, one per line. Left empty, the sample comes from the platform, the sitemap or the feed. |
 | `sample` | no | the config file's value, else `25` | How many products to audit. |
 | `budget` | no | none | One `rule=number` per line. Spaces are removed. These are added to the config file's `budget`, and a line replaces the same rule from the file. |
+| `max-age` | no | none | One `surface=age` per line, such as `feed=24h`. Turns on `availability.stale` for that surface. |
 | `config` | no | none | A path to a config file in the repository. Check the repository out first. An input that is set replaces the same field in the file; an input left empty leaves the file's value alone. |
-| `report-name` | no | `regmark-report` | The name of the uploaded artifact. |
+| `strict` | no | `'false'` | `'true'` makes any collection issue fail with exit 2. A true value in the config also enables it. |
+| `comment` | no | `'false'` | `'true'` posts the Markdown report as one pull request comment, updated on every run. Needs `pull-requests: write`. |
+| `github-token` | no | `github.token` | The token used for the comment. |
+| `upload-report` | no | `'true'` | `'false'` skips the artifact upload. The reports are still written to `regmark-report/`. |
+| `report-name` | no | `regmark-report` | The name of the uploaded artifact. Give each job its own name in a matrix. |
 | `args` | no | none | Extra command-line arguments, split on whitespace and passed to the tool as written. |
 
 ### Outputs
@@ -175,7 +225,26 @@ Defaults are those in current `action.yml`; `strict` is new since `v0.1.0`.
 | Output | Value |
 |---|---|
 | `ok` | `true` only when the CLI exits 0. `false` for over-budget, failed, empty or strict-incomplete audits. |
-| `sarif` | The fixed path `regmark-report/regmark.sarif`, for `github/codeql-action/upload-sarif`. |
+| `exit-code` | The CLI's exit code: `0`, `1` or `2`. See [Exit codes](configuration.md#exit-codes). |
+| `findings` | The number of findings of every severity. Empty when no JSON report was written. |
+| `errors` | The number of error-level findings. |
+| `warnings` | The number of warn-level findings. |
+| `products` | The number of products read and compared. |
+| `report-dir` | `regmark-report`, the folder that holds every report. |
+| `json`, `html`, `markdown`, `sarif` | The fixed path of each report, such as `regmark-report/regmark.sarif`. |
+
+Outputs can drive later steps. The step must have an `id`, and the audit step
+needs `continue-on-error: true` for a later step to see a failed audit:
+
+```yaml
+      - id: regmark
+        uses: kairwang01/regmark@v0
+        continue-on-error: true
+        with:
+          store: https://staging.shop.example
+      - if: steps.regmark.outputs.errors != '0'
+        run: echo "Regmark found ${{ steps.regmark.outputs.errors }} errors"
+```
 
 ### What the action writes
 
@@ -184,20 +253,29 @@ Defaults are those in current `action.yml`; `strict` is new since `v0.1.0`.
   the audit got far enough to write reports.
 - The job summary. The contents of `regmark.md` are appended to the step
   summary when that file exists.
-- An artifact, named by `report-name`, uploaded after every run. It holds the
-  whole `regmark-report` folder. If nothing was written, the upload does not
-  fail.
+- With `comment: 'true'`, one pull request comment, created on the first run
+  and updated afterwards. It is found again by a hidden marker at its start.
+- An artifact, named by `report-name`, uploaded after every run unless
+  `upload-report` is `'false'`. It holds the whole `regmark-report` folder. If
+  nothing was written, the upload does not fail.
 - The job's exit status. The step exits with the tool's exit code, so exit 1
   (over budget) and exit 2 (could not run, or read no product) both fail the
   job. A staging shop that is down fails the build; it does not pass it.
 
 ## Any other CI
 
-The tool is a single file with no dependencies, attached to every release as
-`regmark.mjs`. It needs Node 22 or later. Fetch the release you pin and run it:
+The tool is a single file with no dependencies. It needs Node 22 or later.
+Where npm is available, run a pinned version from the registry:
 
 ```bash
-curl -fsSLO https://github.com/kairwang01/regmark/releases/download/v0.1.0/regmark.mjs
+npx --yes regmark@0.2.0 audit https://staging.shop.example --feed /feeds/google.xml --junit regmark-junit.xml --json regmark.json
+```
+
+The same file is attached to every release as `regmark.mjs`, for a CI image
+with Node and no package manager. Fetch the release you pin and run it:
+
+```bash
+curl -fsSLO https://github.com/kairwang01/regmark/releases/download/v0.2.0/regmark.mjs
 node regmark.mjs audit https://staging.shop.example --feed /feeds/google.xml --junit regmark-junit.xml --json regmark.json
 ```
 
@@ -205,8 +283,8 @@ Each release also carries `regmark.mjs.sha256`. To check the download against
 it, fetch both and run `sha256sum -c regmark.mjs.sha256`.
 
 The exit codes are the same as for the command line: 0 within budget, 1 over
-budget, 2 if the audit could not run or read no product. Current source also
-returns 2 when strict collection encounters any issue. See
+budget, 2 if the audit could not run, read no product, or (with `--strict`)
+met any collection issue. See
 [Exit codes](configuration.md#exit-codes).
 
 Reports are written before the exit code is set. A run that exits 1 still leaves
@@ -233,9 +311,11 @@ regmark:
   image: node:22
   variables:
     # The release to run. Pin it, so the tool does not change under a build.
-    REGMARK_VERSION: v0.1.0
+    REGMARK_VERSION: v0.2.0
   script:
     - curl -fsSLO "https://github.com/kairwang01/regmark/releases/download/${REGMARK_VERSION}/regmark.mjs"
+    - curl -fsSLO "https://github.com/kairwang01/regmark/releases/download/${REGMARK_VERSION}/regmark.mjs.sha256"
+    - sha256sum -c regmark.mjs.sha256
     - node regmark.mjs audit "$REGMARK_STORE" --platform woocommerce --feed /feeds/google.xml --sample 25 --no-color --junit regmark-junit.xml --html regmark.html --json regmark.json
   artifacts:
     when: always
@@ -248,9 +328,9 @@ regmark:
 
 To run the checkout probe here, add `--checkout` to the command, and set
 `REGMARK_OWNERSHIP_TOKEN` as a masked variable. Without a valid token from the
-variable or config, the probe is skipped, and the skip is recorded in `regmark.json`. Default mode permits a
-passing result with that issue; strict mode rejects it in versions supporting
-`--strict`.
+variable or config, the probe is skipped, and the skip is recorded in
+`regmark.json`. Default mode permits a passing result with that issue;
+`--strict` rejects it.
 
 ## Adopting it on a shop that already has findings
 
@@ -308,7 +388,7 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: kairwang01/regmark@v0.1.0
+      - uses: kairwang01/regmark@v0
         with:
           store: https://shop.example
           feed: /feeds/google.xml
