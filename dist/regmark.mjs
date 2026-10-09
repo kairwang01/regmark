@@ -2548,7 +2548,8 @@ function createFetcher(options) {
   const nextSlot = /* @__PURE__ */ new Map();
   const robotsCache = /* @__PURE__ */ new Map();
   const stats = { requests: 0 };
-  let writesAuthorized = false;
+  let ownedHost;
+  const isOwned = (u) => ownedHost !== void 0 && hostKey(u.hostname) === ownedHost;
   function parse8(url) {
     let u;
     try {
@@ -2675,7 +2676,7 @@ function createFetcher(options) {
     const headers = init2.headers ?? {};
     const posing = Object.keys(headers).some((name) => name.toLowerCase() === "user-agent");
     if (posing && !init2.asOwner) throw new FetchRefused("write-not-authorized", u.href, "a different User-Agent needs an owner read");
-    if (init2.asOwner && !writesAuthorized) throw new FetchRefused("write-not-authorized", u.href, "ownership of this shop has not been verified");
+    if (init2.asOwner && !isOwned(u)) throw new FetchRefused("write-not-authorized", u.href, "ownership of this host has not been verified");
     return headers;
   }
   const finish = (u, raw) => ({
@@ -2687,13 +2688,13 @@ function createFetcher(options) {
   });
   return {
     stats,
-    authorizeWrites() {
-      writesAuthorized = true;
+    authorizeWrites(origin) {
+      ownedHost = hostKey(new URL(origin).hostname);
     },
     async get(url, init2 = {}) {
       let u = parse8(url);
       let headers = callerHeaders(u, init2);
-      let owner = init2.asOwner === true;
+      const owner = init2.asOwner === true;
       for (let hop = 0; ; hop++) {
         assertAllowedHost(u);
         if (!owner) await assertRobots(u);
@@ -2708,11 +2709,9 @@ function createFetcher(options) {
           return finish(u, raw);
         }
         if (next2.protocol !== "http:" && next2.protocol !== "https:" || !allowed.has(hostKey(next2.hostname))) return finish(u, raw);
+        if (owner && next2.origin !== u.origin) return finish(u, raw);
         if (hop >= policy.maxRedirects) throw new FetchRefused("too-many-redirects", url);
-        if (next2.origin !== u.origin) {
-          headers = {};
-          owner = false;
-        }
+        if (next2.origin !== u.origin) headers = {};
         u = next2;
       }
     },
@@ -2728,7 +2727,7 @@ function createFetcher(options) {
     async send(method, url, init2 = {}) {
       const u = parse8(url);
       assertAllowedHost(u);
-      if (!writesAuthorized) throw new FetchRefused("write-not-authorized", u.href, "ownership of this shop has not been verified");
+      if (!isOwned(u)) throw new FetchRefused("write-not-authorized", u.href, "ownership of this host has not been verified");
       await pace(u);
       const body = init2.json === void 0 ? void 0 : Buffer.from(JSON.stringify(init2.json));
       const headers = { ...body ? { "content-type": "application/json" } : {}, ...callerHeaders(u, { ...init2, asOwner: true }) };
@@ -3424,6 +3423,7 @@ function contradiction(view, reference, read, agree) {
     const actual = read(v);
     if (!actual) continue;
     const paired = reference.filter((r) => sameItem(v, r) === true);
+    if (paired.length === 0 && reference.some((r) => sameItem(v, r) === false)) continue;
     const against = paired.length > 0 ? paired.filter((r) => read(r) !== void 0) : stated;
     if (against.length === 0) continue;
     if (!against.some((r) => agree(actual.value, read(r).value))) return { actual, expected: read(against[0]) };
@@ -24230,6 +24230,10 @@ async function collectViews(ctx, urls, profiles, options = {}) {
           asOwner: true,
           headers: { "user-agent": profile.userAgent, accept: "text/html,application/xhtml+xml" }
         });
+        if (res.status >= 300 && res.status < 400 && res.headers["location"]) {
+          issues.push({ surface: "page", code: "view-redirected", message: `as ${profile.name}: redirected to ${res.headers["location"]}`, locator: url });
+          continue;
+        }
         if (res.status < 200 || res.status > 299) {
           issues.push({ surface: "page", code: "view-failed", message: `as ${profile.name}: HTTP ${res.status}`, locator: url });
           continue;
@@ -24239,7 +24243,7 @@ async function collectViews(ctx, urls, profiles, options = {}) {
           continue;
         }
         const page = extractPage(res.body, url, res.fetchedAt, options);
-        for (const s of page.sightings) sightings.push({ ...s, ids: { ...s.ids, url }, via: profile.name });
+        for (const s of page.sightings) sightings.push({ ...s, via: profile.name });
       } catch (err) {
         issues.push({ surface: "page", code: "view-failed", message: `as ${profile.name}: ${err.message}`, locator: url });
         ctx.log("warn", `page not read as ${profile.name}: ${url}`);
@@ -24987,9 +24991,10 @@ var DEFAULT_CLOAKING_PROFILES = {
 function endpoint(value, name, store) {
   if (value === void 0 || typeof value === "boolean") return;
   fields(value, name, ["url"]);
+  if (typeof value.url !== "string") throw new ConfigError(`${name}.url must be a URL; use ${name}: true to discover it`);
   httpUrl(value.url, `${name}.url`, store);
 }
-function checkConfig(config, rules) {
+function checkConfig(config, rules, { partial = false } = {}) {
   fields(config, "config", [
     "store",
     "feed",
@@ -25031,7 +25036,7 @@ function checkConfig(config, rules) {
     for (const [surface, value] of Object.entries(config.maxAge)) {
       if (parseDuration(value) === void 0) throw new ConfigError(`maxAge.${surface} must be a duration such as "90m", "24h" or "7d"; got ${JSON.stringify(value)}`);
       const [field, flag] = source[surface];
-      if (config[field] === void 0) throw new ConfigError(`maxAge.${surface} is set, but no ${surface} is read; give ${flag} or the ${field} field`);
+      if (!partial && config[field] === void 0) throw new ConfigError(`maxAge.${surface} is set, but no ${surface} is read; give ${flag} or the ${field} field`);
     }
   }
   if (config.cloaking !== void 0 && typeof config.cloaking !== "boolean") {
@@ -25041,9 +25046,10 @@ function checkConfig(config, rules) {
     if (profiles.length === 0) throw new ConfigError("cloaking.userAgents must name at least one client");
     for (const [name, ua] of profiles) {
       if (!/^[a-z][a-z0-9-]{0,31}$/.test(name)) throw new ConfigError(`cloaking.userAgents: "${name}" must be a short lower-case name such as "agent"`);
-      text5(ua, `cloaking.userAgents.${name}`);
+      if (typeof ua !== "string" || ua.trim() === "") throw new ConfigError(`cloaking.userAgents.${name} must be a non-empty string`);
       if (/[^\x20-\x7e]/.test(ua)) throw new ConfigError(`cloaking.userAgents.${name} must contain printable ASCII only`);
     }
+    if (profiles.every(([name]) => name === "browser")) throw new ConfigError('cloaking.userAgents needs a client to compare with the browser, such as "agent"');
   }
   endpoint(config.ucp, "ucp", store);
   endpoint(config.mcp, "mcp", store);
@@ -25151,13 +25157,20 @@ function productRefs(pageUrls, sightings, key) {
     const productId = mine.find((s) => s.surface === "platform" && s.ids.productId)?.ids.productId;
     if (productId) ref.productId = productId;
     const handle = new URL(url).pathname.split("/").filter(Boolean).pop();
-    if (handle) ref.handle = decodeURIComponent(handle);
+    if (handle) ref.handle = decodeSegment(handle);
     const skus = unique(mine.map((s) => s.ids.sku).filter((s) => !!s));
     if (skus.length) ref.skus = skus;
     const variantIds = unique(mine.filter((s) => s.surface === "platform").map((s) => s.ids.variantId).filter((s) => !!s));
     if (variantIds.length) ref.variantIds = variantIds;
     return ref;
   });
+}
+function decodeSegment(segment) {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
 }
 var endpointUrl = (option, store) => typeof option === "object" ? new URL(option.url, store).href : void 0;
 async function runAudit(config, deps = {}) {
@@ -25284,7 +25297,7 @@ async function runAudit(config, deps = {}) {
       if (config.checkout) issues.push({ surface: "checkout", code: "ownership-not-verified", message: `checkout probe skipped: ${ownership.detail}` });
       if (config.cloaking) issues.push({ surface: "page", code: "ownership-not-verified", message: `cloaking check skipped: ${ownership.detail}` });
     } else {
-      fetcher.authorizeWrites();
+      fetcher.authorizeWrites(store.origin);
       if (config.checkout) {
         const targets = sightings.filter((s) => s.surface === "platform" && s.ids.variantId).map((s) => ({ variantId: s.ids.variantId, productId: s.ids.productId, sku: s.ids.sku, url: s.ids.url }));
         if (platform === "woocommerce" || platform === "shopify") {
@@ -25392,7 +25405,7 @@ async function loadConfig(file) {
   if (abs.endsWith(".json")) value = JSON.parse(await readFile(abs, "utf8"));
   else value = (await import(pathToFileURL(abs).href)).default;
   configObject(value, file);
-  checkConfig({ ...value, store: value.store ?? "https://config.example", platform: value.platform === "none" ? void 0 : value.platform }, allRules);
+  checkConfig({ ...value, store: value.store ?? "https://config.example", platform: value.platform === "none" ? void 0 : value.platform }, allRules, { partial: true });
   return value;
 }
 function parseShipTo(text6) {
