@@ -1,4 +1,5 @@
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
+import type { DateText } from './dates.ts';
 import { type FeedItem, type ShippingEntry } from './item.ts';
 
 // Nothing is coerced: a GTIN with leading zeros and an id such as "0042" must
@@ -12,7 +13,8 @@ const parser = new XMLParser({
   isArray: (name) => name === 'item' || name === 'entry' || name === 'shipping',
 });
 
-type Result = { items: FeedItem[] } | { error: string };
+/** The items, and the feed-level timestamps it states, most telling first. */
+type Result = { items: FeedItem[]; dates: DateText[] } | { error: string };
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const asList = (v: unknown): unknown[] => (v === undefined ? [] : Array.isArray(v) ? v : [v]);
@@ -93,10 +95,20 @@ export function readXml(text: string): Result {
   if (isObject(root.rss)) {
     const channel = asList(root.rss.channel).find(isObject);
     if (!channel) return { error: 'RSS document has no channel' };
-    return { items: asList(channel.item).map(itemFromXml) };
+    // lastBuildDate is when the channel last changed; pubDate, when it was
+    // published, is the next best thing when a generator writes only that.
+    const dates: DateText[] = [];
+    for (const name of ['lastBuildDate', 'pubDate']) {
+      const text = firstText(channel[name]);
+      if (text) dates.push({ text, path: `/rss/channel/${name}`, syntax: 'rfc822' });
+    }
+    return { items: asList(channel.item).map(itemFromXml), dates };
   }
   if (isObject(root.feed)) {
-    return { items: asList(root.feed.entry).map(itemFromXml) };
+    // The feed's own <updated>, not an entry's: an entry says when that item changed.
+    const updated = firstText(root.feed.updated);
+    const dates: DateText[] = updated ? [{ text: updated, path: '/feed/updated', syntax: 'rfc3339' }] : [];
+    return { items: asList(root.feed.entry).map(itemFromXml), dates };
   }
   return { error: 'XML is neither an RSS 2.0 nor an Atom feed' };
 }
