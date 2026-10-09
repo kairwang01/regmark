@@ -65,7 +65,7 @@ Regmark 目前是工作代号。npm 上这个包名还空着，GitHub 上的同�
 | 项 | 内容 |
 |---|---|
 | 阶段 | 版本 0.1.0，可以直接用 `npx` 运行，还没有发布到 npm |
-| 试一下 | `npx github:kairwang01/regmark demo`，详见[使用说明](07-usage.md) |
+| 试一下 | `npx --allow-git=all github:kairwang01/regmark demo`，详见[使用说明](07-usage.md) |
 | 源码 | [github.com/kairwang01/regmark](https://github.com/kairwang01/regmark) |
 | 已经有的 | 商品页、feed、WooCommerce、Shopify 商品接口四类采集，结账探针，15 条规则，六种报告，GitHub Action |
 | 还没有的 | 协议端点的采集，探店代理，Shopify 结账探针 |

@@ -151,13 +151,16 @@ Defaults are those in `action.yml`.
 
 ## Any other CI
 
-The bundle is `dist/regmark.mjs`, a single file with no dependencies. It needs
-Node 22 or later. Fetch it from the release you pin, or from the repository, and
-run it:
+The tool is a single file with no dependencies, attached to every release as
+`regmark.mjs`. It needs Node 22 or later. Fetch the release you pin and run it:
 
+```bash
+curl -fsSLO https://github.com/kairwang01/regmark/releases/download/v0.1.0/regmark.mjs
+node regmark.mjs audit https://staging.shop.example --feed /feeds/google.xml --junit regmark-junit.xml --json regmark.json
 ```
-node dist/regmark.mjs audit https://staging.shop.example --platform woocommerce --feed /feeds/google.xml --junit regmark-junit.xml --json regmark.json
-```
+
+Each release also carries `regmark.mjs.sha256`. To check the download against
+it, fetch both and run `sha256sum -c regmark.mjs.sha256`.
 
 The exit codes are the same as for the command line: 0 within budget, 1 over
 budget, 2 if the audit could not run or read no product. See
@@ -186,10 +189,10 @@ regmark:
   stage: test
   image: node:22
   variables:
-    # A release tag, or a commit SHA for a stricter pin.
-    REGMARK_REF: v0.1.0
+    # The release to run. Pin it, so the tool does not change under a build.
+    REGMARK_VERSION: v0.1.0
   script:
-    - curl -fsSL -o regmark.mjs "https://raw.githubusercontent.com/kairwang01/regmark/${REGMARK_REF}/dist/regmark.mjs"
+    - curl -fsSLO "https://github.com/kairwang01/regmark/releases/download/${REGMARK_VERSION}/regmark.mjs"
     - node regmark.mjs audit "$REGMARK_STORE" --platform woocommerce --feed /feeds/google.xml --sample 25 --no-color --junit regmark-junit.xml --html regmark.html --json regmark.json
   artifacts:
     when: always

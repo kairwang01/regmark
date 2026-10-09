@@ -25,7 +25,7 @@ No account, no API key, no server. It reads your shop and prints what it found.
 ## See it in ten seconds
 
 ```bash
-npx github:kairwang01/regmark demo
+npx --allow-git=all github:kairwang01/regmark demo
 ```
 
 That audits a small shop bundled with the tool, in which 19 defects have been
@@ -43,17 +43,28 @@ prints out of register, the way a misaligned press sheet does.
   <img src="docs/assets/report-in-register.png" alt="HTML report headed In register, printed clean" width="49%">
 </p>
 
+It needs Node 22 or later and nothing else. `--allow-git=all` is there for
+npm 12, which no longer fetches a package from git unless asked; older npm does
+not need it. Or leave npm out: the whole tool is one file.
+
+```bash
+curl -fsSLO https://github.com/kairwang01/regmark/releases/latest/download/regmark.mjs
+node regmark.mjs demo
+```
+
 ## Audit your own shop
 
 ```bash
-npx github:kairwang01/regmark audit https://your-shop.example
+npx --allow-git=all github:kairwang01/regmark audit https://your-shop.example
 ```
 
 With no flags it works out what the shop runs on, samples 25 products, reads
 their pages and the storefront API, and compares. It only reads, it obeys
 robots.txt, and it makes one request a second.
 
-Give it more to compare and it finds more:
+Give it more to compare and it finds more. From here on `regmark` stands for
+whichever way you run it; `npm install -g --allow-git=all github:kairwang01/regmark`
+makes it a command.
 
 ```bash
 # the merchant feed, the surface that goes stale most often

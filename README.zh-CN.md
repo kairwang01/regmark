@@ -20,7 +20,7 @@
 ## 十秒钟看懂
 
 ```bash
-npx github:kairwang01/regmark demo
+npx --allow-git=all github:kairwang01/regmark demo
 ```
 
 这条命令会检查工具自带的一家小店。店里事先埋了 19 个毛病：feed 里还是上周的价格，JSON-LD 只列了三个尺码里的一个，写着包邮但购物车照收运费。
@@ -34,15 +34,22 @@ npx github:kairwang01/regmark demo
   <img src="docs/assets/report-in-register.png" alt="标题为 In register 的 HTML 报告，字迹清楚" width="49%">
 </p>
 
+只需要 Node 22 或更新的版本。`--allow-git=all` 是给 npm 12 准备的：从这一版起，npm 默认不再从 git 取包，旧版 npm 不需要它。也可以完全不用 npm，整个工具就是一个文件：
+
+```bash
+curl -fsSLO https://github.com/kairwang01/regmark/releases/latest/download/regmark.mjs
+node regmark.mjs demo
+```
+
 ## 检查自己的店
 
 ```bash
-npx github:kairwang01/regmark audit https://your-shop.example
+npx --allow-git=all github:kairwang01/regmark audit https://your-shop.example
 ```
 
 什么参数都不带时，它会自己判断店铺用的是什么平台，抽 25 件商品，读它们的页面和后台接口，然后比对。整个过程只读不写，遵守 robots.txt，每秒最多发一个请求。
 
-给它的东西越多，它能比的就越多：
+给它的东西越多，它能比的就越多。下面的 `regmark` 指你选的那种运行方式；用 `npm install -g --allow-git=all github:kairwang01/regmark` 可以把它装成一条命令。
 
 ```bash
 # 加上商品 feed，这是最容易过期的一处

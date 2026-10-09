@@ -41,7 +41,8 @@ The first release.
 - A GitHub Action that writes the findings to the job summary and keeps the
   reports as an artifact.
 - One bundled file, `dist/regmark.mjs`, so `npx github:kairwang01/regmark`
-  starts without an install step.
+  starts without an install step. The same file is attached to each release,
+  for running the tool with no package manager at all.
 
 ### Known limits
 

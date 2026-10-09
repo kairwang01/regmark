@@ -10,7 +10,16 @@ summary: 从十秒钟的演示，到检查自己的店，再到接进 CI。每�
 需要 Node 22 或更新的版本。不用安装，一条命令：
 
 ```terminal
-$ npx github:kairwang01/regmark demo
+$ npx --allow-git=all github:kairwang01/regmark demo
+```
+
+`--allow-git=all` 是给 npm 12 准备的：从这一版起，npm 默认不再从 git 仓库取包，不带这个参数会直接报错。旧版 npm 不需要它，带上也无妨。
+
+不想经过 npm 也行。整个工具打包成了一个文件，下载下来直接用 Node 运行：
+
+```terminal
+$ curl -fsSLO https://github.com/kairwang01/regmark/releases/latest/download/regmark.mjs
+$ node regmark.mjs demo
 ```
 
 这会检查工具自带的一家小店。店里事先埋了 19 个毛病，都是真实店铺里常见的：feed 里还是上周的价格，JSON-LD 只列了三个尺码里的一个，写着包邮但购物车照收运费。两秒钟后你会在终端里看到完整的结果，当前目录下多出一个 `regmark-demo.html`，那是可以直接打开、也可以发给同事的报告。
@@ -18,13 +27,13 @@ $ npx github:kairwang01/regmark demo
 想看「一切正常」是什么样，加上 `--clean`：
 
 ```terminal
-$ npx github:kairwang01/regmark demo --clean
+$ npx --allow-git=all github:kairwang01/regmark demo --clean
 ```
 
 ## 检查自己的店
 
 ```terminal
-$ npx github:kairwang01/regmark audit https://your-shop.example
+$ npx --allow-git=all github:kairwang01/regmark audit https://your-shop.example
 ```
 
 什么参数都不带时，它做这几件事：
@@ -39,7 +48,7 @@ $ npx github:kairwang01/regmark audit https://your-shop.example
 经常用的话，装到全局更方便：
 
 ```terminal
-$ npm install -g github:kairwang01/regmark
+$ npm install -g --allow-git=all github:kairwang01/regmark
 $ regmark audit https://your-shop.example
 ```
 

@@ -25,5 +25,5 @@
     ]
   ],
   "repo": "https://github.com/kairwang01/regmark",
-  "try": "npx github:kairwang01/regmark demo"
+  "try": "npx --allow-git=all github:kairwang01/regmark demo"
 }
