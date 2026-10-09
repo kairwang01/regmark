@@ -8,7 +8,8 @@ because a check that cries wolf gets removed from the pipeline it was added to.
 ## Words used below
 
 - **Surface**: where a statement was read from. See `Surface` in
-  `packages/core/src/types.ts`.
+  `packages/core/src/types.ts`. `feed` is a Google Merchant feed; `acp` is an
+  Agentic Commerce Protocol feed, the one a shopping agent sells from.
 - **Datum**: the surface that is believed, chosen per fact by
   `ctx.pick(observations)`, which returns the observation from the first
   surface in the run's datum order (default `checkout`, `platform`, `page`)
@@ -114,6 +115,13 @@ surface)`; `actual` is `u`.
 If the stated price no longer matches the datum, `price.mismatch` reports it and
 this rule stays silent.
 
+Where the end date comes from on a feed: a Google feed's sale window schedules
+the sale, so the feed collector takes the sale price, and the window's end as
+`priceValidUntil`, only while the window is open, and the regular price
+outside it. An ACP feed's sale dates schedule nothing: a valid `sale_price` is
+what an agent shows whatever its window says. So the collector always takes
+it, and keeps the window's end, which this rule then judges.
+
 ### `availability.mismatch` (error)
 *A surface says an item can be bought when it cannot, or the reverse.*
 
@@ -148,7 +156,8 @@ The rule reads `generatedAt`, which the feed collector puts on every item it
 reads from one feed: the RSS channel's `lastBuildDate`, else the channel's
 `pubDate`; the Atom feed's own `updated` (not an entry's); else the
 `Last-Modified` header of the response. A tab-separated feed can only be dated
-by the header. A timestamp is read only when it is a real RFC 822 date (RSS,
+by the header, and so can an ACP feed: none of its formats has a place for the
+time the file was generated. A timestamp is read only when it is a real RFC 822 date (RSS,
 HTTP) or RFC 3339 date-time (Atom) that names its zone; anything else is left
 out, never guessed.
 
@@ -174,8 +183,18 @@ not say how old it is cannot be called fresh. Needs `feed` or `acp`.
 ### `variant.missing` (error)
 *A surface lists some of a product's variants and leaves others out.*
 
-Considered surfaces: `jsonld`, `microdata`, `ucp`, `acp`, `mcp`. Feeds are
-exempt, because leaving variants out of a feed is often deliberate.
+Considered surfaces: `jsonld`, `microdata`, `ucp`, `acp`, `mcp`. The Google
+feed (`feed`) is exempt, because leaving variants out of a Merchant Center feed
+is often deliberate.
+
+An ACP feed is not exempt, for three reasons. It is the list a shopping agent
+sells from, so a variant it leaves out cannot be bought through the agent at
+all. The spec asks for one row per variant, out of stock or not, and gives a
+merchant a way to hold one back on purpose: `is_eligible_search=false`. The
+collector still counts such a row as listing its variant (it states no facts
+about it), so a deliberate hold-back does not fire. And OpenAI keeps serving a
+record that drops out of the feed for up to 14 days, so a variant left out
+when it sold out stays on offer with its last, in-stock record.
 
 Call a variant *real* when its `surfaces` include `platform` or `checkout`. For
 each considered surface `S`: if at least one real variant has `S` in its
@@ -213,6 +232,10 @@ when all hold:
   `d.value.cost.units` is greater than 0.
 
 One finding per `(variant, surface)`. Needs `checkout`.
+
+An ACP feed's `shipping_price` names no country, so it is compared with the
+checkout's quote whatever the destination; its four-position `shipping` tuple
+names one.
 
 ### `shipping.undisclosed` (warn)
 *A buyer cannot learn the shipping cost before checkout.*
@@ -260,6 +283,10 @@ once per graph, not once per product (cache it in a `WeakMap` keyed by
 For each product with at least one real variant: fire once (no `variant`, no
 `surface`) when no variant has any `returnPolicy` observation with
 `value.present` true and no product-level sighting has one either.
+
+An ACP feed states a policy with `accepts_returns` (true, or false for a final
+sale) or a `return_policy` URL, or, in the Product and Variant model, a
+seller link of type `refund_policy`. A return window alone does not.
 
 ## Content hygiene rules
 

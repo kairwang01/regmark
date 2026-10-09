@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import rule from '../../src/parity/variant-missing.ts';
-import { brief, run, runFull, variant, whole } from '../helpers.ts';
+import { brief, price, run, runFull, variant, whole } from '../helpers.ts';
 
 const URL = 'https://shop.example/product/belt/';
 const platform3 = () => [
@@ -37,6 +37,31 @@ test('JSON-LD with only a product-level statement, and no variant, is silent', (
 
 test('a feed listing one of three sizes is silent, because feeds are exempt', () => {
   const findings = run(rule, [...platform3(), variant('feed', { sku: 'BELT-32', url: URL })]);
+  assert.deepEqual(findings, []);
+});
+
+test('an ACP feed listing one of three sizes is reported for the other two: it is not exempt like the Google feed', () => {
+  const findings = run(rule, [...platform3(), variant('acp', { aliases: ['BELT-32'], groupId: 'belt', url: URL }), variant('feed', { aliases: ['BELT-32'], url: URL })]);
+  assert.deepEqual(brief(findings), [
+    { variant: 'BELT-34', surface: 'acp' },
+    { variant: 'BELT-36', surface: 'acp' },
+  ]);
+  assert.equal(findings[0]!.message, 'missing from acp, which lists 1 of 3 variants');
+});
+
+test('an ACP feed listing every size is silent, including a row held back from search that states no facts', () => {
+  const findings = run(rule, [
+    ...platform3(),
+    variant('acp', { aliases: ['BELT-32'], url: URL }, { price: price('acp', '48.00') }),
+    variant('acp', { aliases: ['BELT-34'], url: URL }, { price: price('acp', '48.00') }),
+    // What the collector gives for is_eligible_search=false: the variant, and nothing about it.
+    variant('acp', { aliases: ['BELT-36'], url: URL }),
+  ]);
+  assert.deepEqual(findings, []);
+});
+
+test('an ACP feed that names no variant of the product is silent: it is absent, not partial', () => {
+  const findings = run(rule, [...platform3(), variant('acp', { aliases: ['SCARF-1'], url: 'https://shop.example/product/scarf/' })]);
   assert.deepEqual(findings, []);
 });
 
