@@ -619,7 +619,7 @@ function gtin13(base) {
   for (let i = 0; i < 12; i++) sum += Number(base[i]) * (i % 2 === 0 ? 1 : 3);
   return base + String((10 - sum % 10) % 10);
 }
-function product(wooId, slug, title, jsonldShape, price, listPrice, description, reviews, seeds) {
+function product(wooId, slug, title, jsonldShape, price2, listPrice, description, reviews, seeds) {
   const simple = seeds.length === 1 && !seeds[0].options;
   return {
     slug,
@@ -636,7 +636,7 @@ function product(wooId, slug, title, jsonldShape, price, listPrice, description,
         gtin: gtin13(`40063810${String(id).padStart(4, "0")}`),
         mpn: `NF-${seed.sku}`,
         options: seed.options ?? {},
-        price,
+        price: price2,
         listPrice,
         inStock: seed.inStock ?? true,
         wooId: id
@@ -732,6 +732,8 @@ function cleanProduct(p, now) {
     feed: p.variants.map((v) => ({ ...says3(v, now), returnDays: null })),
     acp: p.variants.map((v) => ({ ...says3(v, now), returnDays: null })),
     platform: p.variants.map((v) => ({ ...says3(v, now), gtin: null, shipping: null, returnDays: null })),
+    ucp: p.variants.map((v) => ({ ...says3(v, now), mpn: null, saleEnds: null, shipping: null, returnDays: null })),
+    mcp: p.variants.map((v) => ({ ...says3(v, now), gtin: null, mpn: null, saleEnds: null, shipping: null, returnDays: null })),
     checkout: p.variants.map((v) => ({ sku: v.sku, wooId: v.wooId, price: v.price, refuses: v.inStock ? null : "out_of_stock" }))
   };
 }
@@ -997,6 +999,34 @@ var init_shop = __esm({
         apply(shop) {
           variant(product2(shop, "wool-beanie").acp, "BEANIE-NVY").stock = "in_stock";
         }
+      },
+      {
+        id: "D32",
+        summary: "The UCP catalogue still states last month\u2019s price for SOCK-M",
+        expected: [{ rule: "price.mismatch", product: "trail-socks", variant: "SOCK-M", surface: "ucp" }],
+        apply(shop) {
+          variant(product2(shop, "trail-socks").ucp, "SOCK-M").price = "11.00";
+        }
+      },
+      {
+        id: "D33",
+        summary: "The storefront MCP server tells agents BEANIE-NVY is available; it is sold out",
+        expected: [{ rule: "availability.mismatch", product: "wool-beanie", variant: "BEANIE-NVY", surface: "mcp" }],
+        apply(shop) {
+          variant(product2(shop, "wool-beanie").mcp, "BEANIE-NVY").stock = "in_stock";
+        }
+      },
+      {
+        id: "D34",
+        summary: "The UCP catalogue lists only the small tee; the medium and large are left out",
+        expected: [
+          { rule: "variant.missing", product: "classic-tee", variant: "TEE-BLU-M", surface: "ucp" },
+          { rule: "variant.missing", product: "classic-tee", variant: "TEE-BLU-L", surface: "ucp" }
+        ],
+        apply(shop) {
+          const p = product2(shop, "classic-tee");
+          p.ucp = p.ucp.filter((v) => v.sku === "TEE-BLU-S");
+        }
       }
     ];
   }
@@ -1252,9 +1282,9 @@ function money4(amount) {
   return `<span class="woocommerce-Price-amount amount"><bdi><span class="woocommerce-Price-currencySymbol">$</span>${esc2(amount)}</bdi></span>`;
 }
 function priceMarkup(p) {
-  const { price, listPrice } = p.page;
-  if (listPrice === null) return `<p class="price">${money4(price)}</p>`;
-  return `<p class="price"><del aria-hidden="true">${money4(listPrice)}</del> <span class="screen-reader-text">Original price was: ${esc2(listPrice)}.</span><ins aria-hidden="true">${money4(price)}</ins><span class="screen-reader-text">Current price is: ${esc2(price)}.</span></p>`;
+  const { price: price2, listPrice } = p.page;
+  if (listPrice === null) return `<p class="price">${money4(price2)}</p>`;
+  return `<p class="price"><del aria-hidden="true">${money4(listPrice)}</del> <span class="screen-reader-text">Original price was: ${esc2(listPrice)}.</span><ins aria-hidden="true">${money4(price2)}</ins><span class="screen-reader-text">Current price is: ${esc2(price2)}.</span></p>`;
 }
 function variationsForm(p) {
   const names = optionNames(p.platform);
@@ -1384,7 +1414,7 @@ var init_render_page = __esm({
 });
 
 // fixtures/shop/src/store-api.ts
-import { createHash, randomBytes } from "node:crypto";
+import { createHash as createHash2, randomBytes } from "node:crypto";
 function minor(decimal) {
   const [whole2 = "0", fraction = ""] = decimal.split(".");
   if (fraction.length > 2) throw new Error(`minor: more than two decimals in ${decimal}`);
@@ -1401,7 +1431,7 @@ function currencyBlock(code2) {
     currency_suffix: ""
   };
 }
-function isRecord3(v) {
+function isRecord4(v) {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 function intParam(raw, fallback) {
@@ -1482,7 +1512,7 @@ function variationJson(p, v, origin, currency) {
   };
 }
 function lineKey(token, id) {
-  return createHash("sha256").update(`${token}:${id}`).digest("hex").slice(0, 32);
+  return createHash2("sha256").update(`${token}:${id}`).digest("hex").slice(0, 32);
 }
 function createStoreApi(shop) {
   const parents2 = /* @__PURE__ */ new Map();
@@ -1580,7 +1610,7 @@ function createStoreApi(shop) {
     };
   }
   function addItem(cart, body, origin) {
-    const input = isRecord3(body) ? body : {};
+    const input = isRecord4(body) ? body : {};
     const id = input.id;
     const quantity = input.quantity ?? 1;
     if (typeof id !== "number") return fail(400, "woocommerce_rest_cart_invalid_product", "This product cannot be added to the cart.");
@@ -1601,8 +1631,8 @@ function createStoreApi(shop) {
     return ok(201, cartJson(cart, origin));
   }
   function updateCustomer2(cart, body, origin) {
-    const input = isRecord3(body) ? body : {};
-    const address = isRecord3(input.shipping_address) ? input.shipping_address : {};
+    const input = isRecord4(body) ? body : {};
+    const address = isRecord4(input.shipping_address) ? input.shipping_address : {};
     for (const field of ADDRESS_FIELDS) {
       const value = address[field];
       if (typeof value === "string") cart.address[field] = value;
@@ -1610,7 +1640,7 @@ function createStoreApi(shop) {
     return ok(200, cartJson(cart, origin));
   }
   function removeItem(cart, body, origin) {
-    const key = isRecord3(body) ? body.key : void 0;
+    const key = isRecord4(body) ? body.key : void 0;
     const index2 = cart.items.findIndex((item) => typeof key === "string" && lineKey(cart.token, item.id) === key);
     if (index2 === -1) return fail(409, "woocommerce_rest_cart_invalid_key", "Cart item no longer exists or is invalid.");
     cart.items.splice(index2, 1);
@@ -1692,15 +1722,256 @@ var init_store_api = __esm({
   }
 });
 
+// fixtures/shop/src/agent-api.ts
+import { randomBytes as randomBytes2 } from "node:crypto";
+function isRecord5(v) {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+function profile(origin) {
+  const spec = `https://ucp.dev/${UCP_VERSION}/specification`;
+  const schemas = `https://ucp.dev/${UCP_VERSION}/schemas/shopping`;
+  return {
+    ucp: {
+      version: UCP_VERSION,
+      services: {
+        "dev.ucp.shopping": [
+          { version: UCP_VERSION, spec: `${spec}/overview`, transport: "rest", endpoint: `${origin}/ucp/v1`, schema: `https://ucp.dev/${UCP_VERSION}/services/shopping/rest.openapi.json` }
+        ]
+      },
+      capabilities: {
+        "dev.ucp.shopping.catalog.search": [{ version: UCP_VERSION, spec: `${spec}/shopping/catalog/search`, schema: `${schemas}/catalog_search.json` }],
+        "dev.ucp.shopping.catalog.lookup": [{ version: UCP_VERSION, spec: `${spec}/shopping/catalog/lookup`, schema: `${schemas}/catalog_lookup.json` }]
+      },
+      payment_handlers: {}
+    }
+  };
+}
+function price(amount, currency) {
+  return currency === null ? { amount: Number(minor(amount)) } : { amount: Number(minor(amount)), currency };
+}
+function variantTitle(p, v) {
+  const labels = Object.values(v.options);
+  return labels.length ? labels.join(" / ") : p.title;
+}
+function catalogueVariant(p, v) {
+  const out2 = {
+    id: String(v.wooId),
+    sku: v.sku,
+    title: variantTitle(p, v),
+    description: { plain: variantTitle(p, v) },
+    price: price(v.price, v.currency),
+    availability: { available: v.stock === "in_stock", status: v.stock }
+  };
+  if (v.listPrice !== null) out2.list_price = price(v.listPrice, v.currency);
+  const options = Object.entries(v.options);
+  if (options.length) out2.options = options.map(([name, label]) => ({ name, label }));
+  if (v.gtin !== null) out2.barcodes = [{ type: "GTIN", value: v.gtin }];
+  return out2;
+}
+function catalogueProduct(p, all, variants, origin) {
+  const amounts = all.map((v) => Number(minor(v.price)));
+  const currency = all[0]?.currency ?? null;
+  const bound = (amount) => currency === null ? { amount } : { amount, currency };
+  const names = [...new Set(all.flatMap((v) => Object.keys(v.options)))];
+  const out2 = {
+    id: String(p.wooId),
+    handle: p.slug,
+    title: p.title,
+    description: { plain: p.title },
+    url: `${origin}/product/${p.slug}/`,
+    price_range: { min: bound(Math.min(...amounts)), max: bound(Math.max(...amounts)) },
+    variants
+  };
+  if (names.length) out2.options = names.map((name) => ({ name, values: [...new Set(all.map((v) => v.options[name]).filter((x) => !!x))].map((label) => ({ label })) }));
+  return out2;
+}
+function resolve2(shop, source, id) {
+  for (const product3 of shop.products) {
+    const index2 = product3[source].findIndex((v) => String(v.wooId) === id || v.sku === id);
+    if (index2 >= 0) return { product: product3, index: index2, match: "exact" };
+  }
+  for (const product3 of shop.products) {
+    if (product3[source].length > 0 && (String(product3.wooId) === id || product3.slug === id)) return { product: product3, index: 0, match: "featured" };
+  }
+  return null;
+}
+function lookup(shop, source, origin, ids) {
+  const matched = /* @__PURE__ */ new Map();
+  const notFound2 = [];
+  for (const id of [...new Set(ids)]) {
+    const hit = resolve2(shop, source, id);
+    if (!hit) {
+      notFound2.push(id);
+      continue;
+    }
+    if (!matched.has(hit.product)) matched.set(hit.product, /* @__PURE__ */ new Map());
+    const inputs = matched.get(hit.product);
+    if (!inputs.has(hit.index)) inputs.set(hit.index, []);
+    inputs.get(hit.index).push({ id, match: hit.match });
+  }
+  const products = [...matched].map(([p, inputs]) => {
+    const variants = [...inputs.keys()].sort((a, b) => a - b).map((i) => ({ ...catalogueVariant(p, p[source][i]), inputs: inputs.get(i) }));
+    return catalogueProduct(p, p[source], variants, origin);
+  });
+  const out2 = { ucp: envelope("lookup"), products };
+  if (notFound2.length) out2.messages = notFound2.map((id) => ({ type: "info", code: "not_found", content: id }));
+  return out2;
+}
+function search(shop, source, origin, query, limit) {
+  const words = query.toLowerCase();
+  const products = shop.products.filter((p) => p[source].length > 0 && p.title.toLowerCase().includes(words)).slice(0, limit).map((p) => catalogueProduct(p, p[source], p[source].map((v) => catalogueVariant(p, v)), origin));
+  return { ucp: envelope("search"), products, pagination: { has_next_page: false } };
+}
+function question(kind, body) {
+  if (!isRecord5(body)) return { ok: false, reason: "the request is not an object" };
+  if (kind === "lookup") {
+    const ids = body.ids;
+    if (!Array.isArray(ids) || ids.length === 0 || !ids.every((id) => typeof id === "string")) return { ok: false, reason: "ids must be a list of strings" };
+    if (ids.length > LOOKUP_MAX) return { ok: false, reason: `at most ${LOOKUP_MAX} ids`, tooLarge: true };
+    return { ok: true, kind, ids };
+  }
+  if (typeof body.query !== "string" || body.query.trim() === "") return { ok: false, reason: "query must be a non-empty string" };
+  const asked = isRecord5(body.pagination) ? body.pagination.limit : void 0;
+  const limit = typeof asked === "number" && Number.isInteger(asked) && asked > 0 ? Math.min(asked, 50) : 10;
+  return { ok: true, kind, query: body.query, limit };
+}
+function answer(shop, source, origin, q) {
+  return q.kind === "lookup" ? lookup(shop, source, origin, q.ids) : search(shop, source, origin, q.query, q.limit);
+}
+function restRoute(shop, req) {
+  if (req.method !== "POST") return { status: 405, json: { code: "method_not_allowed", content: "POST only" } };
+  if (!PROFILE_HEADER.test(req.headers["ucp-agent"] ?? "")) {
+    return { status: 400, json: { code: "invalid_profile_url", content: "UCP-Agent must name the agent profile", continue_url: `${req.origin}/` } };
+  }
+  const q = question(req.path.endsWith("/lookup") ? "lookup" : "search", req.body);
+  if (!q.ok) return { status: 400, json: { code: q.tooLarge ? "request_too_large" : "invalid_request", content: q.reason } };
+  return { status: 200, json: answer(shop, "ucp", req.origin, q) };
+}
+function createAgentApi(shop) {
+  const sessions = /* @__PURE__ */ new Set();
+  const calls = [];
+  function mcpRoute(req) {
+    if (req.method !== "POST") return { status: 405, json: { jsonrpc: "2.0", id: null, error: { code: -32e3, message: "Method not allowed" } } };
+    const body = req.body;
+    if (!isRecord5(body) || body.jsonrpc !== "2.0" || typeof body.method !== "string") {
+      return { status: 400, json: { jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid Request" } } };
+    }
+    const id = body.id;
+    const params = isRecord5(body.params) ? body.params : {};
+    calls.push(body.method === "tools/call" ? `tools/call ${String(params.name)}` : body.method);
+    const reply = (result) => ({ status: 200, json: { jsonrpc: "2.0", id, result } });
+    const error = (code2, message, data2, status = 200) => ({
+      status,
+      json: { jsonrpc: "2.0", id, error: data2 === void 0 ? { code: code2, message } : { code: code2, message, data: data2 } }
+    });
+    if (body.method === "initialize") {
+      const asked = params.protocolVersion;
+      const version2 = typeof asked === "string" && MCP_VERSIONS2.includes(asked) ? asked : "2025-06-18";
+      const session = randomBytes2(8).toString("hex");
+      sessions.add(session);
+      const result = { protocolVersion: version2, capabilities: { tools: { listChanged: false } }, serverInfo: { name: "fixture-shop", version: "1.0.0" } };
+      return { status: 200, headers: { "mcp-session-id": session }, json: { jsonrpc: "2.0", id, result } };
+    }
+    if (!sessions.has(req.headers["mcp-session-id"] ?? "")) {
+      return { status: 400, json: { jsonrpc: "2.0", id: null, error: { code: -32e3, message: "Bad Request: no valid session" } } };
+    }
+    if (id === void 0) return { status: 202 };
+    if (body.method === "tools/list") return reply({ tools: TOOLS });
+    if (body.method !== "tools/call") return error(-32601, "Method not found", body.method);
+    const args = isRecord5(params.arguments) ? params.arguments : {};
+    const meta = isRecord5(args.meta) ? args.meta["ucp-agent"] : void 0;
+    if (!isRecord5(meta) || typeof meta.profile !== "string" || !meta.profile.startsWith("https://")) {
+      return error(-32001, "UCP discovery failed", { code: "invalid_profile_url", content: "Missing profile uri", continue_url: `${req.origin}/` }, 422);
+    }
+    const toolResult = (payload) => reply({ structuredContent: payload, content: [{ type: "text", text: JSON.stringify(payload) }], isError: false });
+    const toolError = (text7) => reply({ content: [{ type: "text", text: text7 }], isError: true });
+    if (params.name === "lookup_catalog" || params.name === "search_catalog") {
+      const q = question(params.name === "lookup_catalog" ? "lookup" : "search", args.catalog);
+      if (!q.ok) return toolError(`Invalid arguments: ${q.reason}`);
+      return toolResult(answer(shop, "mcp", req.origin, q));
+    }
+    if (params.name === "create_cart") return toolError("The fixture shop does not make carts here.");
+    return error(-32602, "Invalid params", `Tool not found: ${String(params.name)}`);
+  }
+  return {
+    rpcCalls: () => [...calls],
+    handle(req) {
+      if (!AGENT_PATHS.has(req.path)) return null;
+      let out2;
+      if (req.path === "/.well-known/ucp") {
+        out2 = req.method === "GET" || req.method === "HEAD" ? { status: 200, headers: { "cache-control": "public, max-age=60" }, json: profile(req.origin) } : { status: 405, json: { code: "method_not_allowed" } };
+      } else if (req.path === "/api/mcp") {
+        out2 = mcpRoute(req);
+      } else {
+        out2 = restRoute(shop, req);
+      }
+      return { status: out2.status, headers: out2.headers ?? {}, ...out2.json === void 0 ? {} : { json: out2.json } };
+    }
+  };
+}
+var UCP_VERSION, AGENT_PATHS, MCP_VERSIONS2, LOOKUP_MAX, envelope, PROFILE_HEADER, META_SCHEMA, TOOLS;
+var init_agent_api = __esm({
+  "fixtures/shop/src/agent-api.ts"() {
+    "use strict";
+    init_store_api();
+    UCP_VERSION = "2026-08-25";
+    AGENT_PATHS = /* @__PURE__ */ new Set(["/.well-known/ucp", "/ucp/v1/catalog/lookup", "/ucp/v1/catalog/search", "/api/mcp"]);
+    MCP_VERSIONS2 = ["2025-11-25", "2025-06-18", "2025-03-26"];
+    LOOKUP_MAX = 10;
+    envelope = (capability) => ({
+      version: UCP_VERSION,
+      capabilities: { [`dev.ucp.shopping.catalog.${capability}`]: [{ version: UCP_VERSION }] }
+    });
+    PROFILE_HEADER = /^profile="https:\/\/[^"\s]+"$/;
+    META_SCHEMA = {
+      type: "object",
+      required: ["ucp-agent"],
+      properties: { "ucp-agent": { type: "object", required: ["profile"], properties: { profile: { type: "string", format: "uri" } } } }
+    };
+    TOOLS = [
+      {
+        name: "search_catalog",
+        description: "Search the shop catalogue.",
+        inputSchema: {
+          type: "object",
+          required: ["meta", "catalog"],
+          properties: {
+            meta: META_SCHEMA,
+            catalog: { type: "object", properties: { query: { type: "string" }, pagination: { type: "object", properties: { limit: { type: "integer", minimum: 1 } } } } }
+          }
+        }
+      },
+      {
+        name: "lookup_catalog",
+        description: "Look products or variants up by id or SKU. At most 10 ids.",
+        inputSchema: {
+          type: "object",
+          required: ["meta", "catalog"],
+          properties: {
+            meta: META_SCHEMA,
+            catalog: { type: "object", required: ["ids"], properties: { ids: { type: "array", items: { type: "string" }, minItems: 1, maxItems: LOOKUP_MAX } } }
+          }
+        }
+      },
+      {
+        name: "create_cart",
+        description: "Create a cart.",
+        inputSchema: { type: "object", required: ["meta", "cart"], properties: { meta: META_SCHEMA, cart: { type: "object" } } }
+      }
+    ];
+  }
+});
+
 // fixtures/shop/src/server.ts
 import { createServer } from "node:http";
 import { gzipSync } from "node:zlib";
 async function startShop(options) {
   const shop = buildShop(options.mode, options.now);
   const api = createStoreApi(shop);
+  const agent = createAgentApi(shop);
   const requests = [];
   const userAgents = [];
-  const env = { shop, api, origin: "" };
+  const env = { shop, api, agent, origin: "" };
   const server = createServer(async (req, res) => {
     requests.push(`${req.method} ${req.url}`);
     userAgents.push(req.headers["user-agent"] ?? "");
@@ -1715,11 +1986,11 @@ async function startShop(options) {
       res.end("Internal Server Error");
     }
   });
-  await new Promise((resolve2, reject) => {
+  await new Promise((resolve3, reject) => {
     server.once("error", reject);
     server.listen(options.port ?? 0, options.host ?? "127.0.0.1", () => {
       server.off("error", reject);
-      resolve2();
+      resolve3();
     });
   });
   const address = server.address();
@@ -1732,8 +2003,9 @@ async function startShop(options) {
     requests,
     userAgents,
     carts: () => api.carts(),
-    close: () => new Promise((resolve2, reject) => {
-      server.close((err) => err ? reject(err) : resolve2());
+    rpcCalls: () => agent.rpcCalls(),
+    close: () => new Promise((resolve3, reject) => {
+      server.close((err) => err ? reject(err) : resolve3());
       server.closeAllConnections();
     })
   };
@@ -1742,6 +2014,7 @@ async function route(req, res, env) {
   const url = new URL(req.url ?? "/", "http://fixture.invalid");
   const path2 = url.pathname;
   if (path2 === STORE_BASE || path2.startsWith(`${STORE_BASE}/`)) return storeRoute(req, res, url, env);
+  if (AGENT_PATHS.has(path2)) return agentRoute(req, res, url, env);
   if (req.method !== "GET" && req.method !== "HEAD") return notFound(res);
   const { shop, origin } = env;
   if (path2 === "/") return send(res, 200, HTML, renderHome(shop, origin));
@@ -1786,21 +2059,45 @@ async function storeRoute(req, res, url, env) {
       return sendJson(res, 400, { code: "rest_invalid_json", message: "Invalid JSON body passed.", data: { status: 400 } });
     }
   }
-  const headers = {};
-  for (const [name, value] of Object.entries(req.headers)) {
-    if (value !== void 0) headers[name] = Array.isArray(value) ? value.join(", ") : value;
-  }
   const result = env.api.handle({
     method: req.method ?? "GET",
     path: url.pathname,
     query: url.searchParams,
-    headers,
+    headers: headersOf(req),
     body,
     origin: env.origin
   });
   if (!result) return notFound(res);
   res.writeHead(result.status, { ...result.headers, "content-type": JSON_TYPE });
   res.end(JSON.stringify(result.json));
+}
+async function agentRoute(req, res, url, env) {
+  const { tooLarge, text: text7 } = await readBody(req);
+  if (tooLarge) return sendJson(res, 413, { code: "request_too_large", content: "Request body is larger than 64 KiB." });
+  let body;
+  if (text7.length > 0) {
+    try {
+      body = JSON.parse(text7);
+    } catch {
+      return sendJson(res, 400, { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
+    }
+  }
+  const result = env.agent.handle({ method: req.method ?? "GET", path: url.pathname, headers: headersOf(req), body, origin: env.origin });
+  if (!result) return notFound(res);
+  if (result.json === void 0) {
+    res.writeHead(result.status, result.headers);
+    res.end();
+    return;
+  }
+  res.writeHead(result.status, { ...result.headers, "content-type": JSON_TYPE });
+  res.end(JSON.stringify(result.json));
+}
+function headersOf(req) {
+  const headers = {};
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (value !== void 0) headers[name] = Array.isArray(value) ? value.join(", ") : value;
+  }
+  return headers;
 }
 async function readBody(req) {
   const chunks = [];
@@ -1835,6 +2132,7 @@ var init_server = __esm({
     init_render_feed();
     init_render_page();
     init_store_api();
+    init_agent_api();
     STORE_BASE = "/wp-json/wc/store/v1";
     MAX_BODY_BYTES = 64 * 1024;
     HTML = "text/html; charset=utf-8";
@@ -1849,14 +2147,17 @@ var init_server = __esm({
 var src_exports = {};
 __export(src_exports, {
   AGENT_ONLY_REVIEW: () => AGENT_ONLY_REVIEW,
+  AGENT_PATHS: () => AGENT_PATHS,
   AGENT_TOKENS: () => AGENT_TOKENS,
   CATALOG: () => CATALOG,
   CURRENCY: () => CURRENCY2,
   OWNERSHIP_TOKEN: () => OWNERSHIP_TOKEN,
   RETURN_DAYS: () => RETURN_DAYS,
   SHIPPING: () => SHIPPING,
+  UCP_VERSION: () => UCP_VERSION,
   buildShop: () => buildShop,
   clientOf: () => clientOf,
+  createAgentApi: () => createAgentApi,
   createStoreApi: () => createStoreApi,
   startShop: () => startShop
 });
@@ -1867,6 +2168,7 @@ var init_src = __esm({
     init_catalog();
     init_server();
     init_store_api();
+    init_agent_api();
   }
 });
 
@@ -2612,7 +2914,7 @@ var FetchRefused = class extends Error {
   }
 };
 var hostKey = (hostname) => hostname.toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
-var sleep = (ms) => new Promise((resolve2) => setTimeout(resolve2, ms));
+var sleep = (ms) => new Promise((resolve3) => setTimeout(resolve3, ms));
 var REDIRECTS = /* @__PURE__ */ new Set([301, 302, 303, 307, 308]);
 function decoderFor(contentType) {
   const charset = /charset\s*=\s*"?([\w-]+)/i.exec(contentType ?? "")?.[1];
@@ -2663,7 +2965,7 @@ function createFetcher(options) {
   function request(method, u, headers, body) {
     assertAllowedHost(u);
     stats.requests += 1;
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve3, reject) => {
       const lib = u.protocol === "https:" ? https : http;
       const signal = AbortSignal.timeout(policy.timeoutMs);
       const req = lib.request(
@@ -2706,7 +3008,7 @@ function createFetcher(options) {
               const joiner = k.toLowerCase() === "set-cookie" ? "\n" : ", ";
               if (v !== void 0) out2[k.toLowerCase()] = Array.isArray(v) ? v.join(joiner) : v;
             }
-            resolve2({ status: res.statusCode ?? 0, headers: out2, body: Buffer.concat(chunks) });
+            resolve3({ status: res.statusCode ?? 0, headers: out2, body: Buffer.concat(chunks) });
           });
         }
       );
@@ -2959,9 +3261,9 @@ function renderTerminal(result, options = {}) {
   const issueLines = [];
   if (result.issues.length > 0) {
     issueLines.push(`${LABEL_INDENT}${plural(result.issues.length, "collection issue")}`);
-    for (const issue2 of result.issues.slice(0, max)) {
-      issueLines.push(`${INDENT}${untrusted(issue2.surface)} ${untrusted(issue2.code)}: ${untrusted(issue2.message)}`);
-      if (issue2.locator) issueLines.push(`${INDENT}  ${paint("dim", untrusted(issue2.locator))}`);
+    for (const issue3 of result.issues.slice(0, max)) {
+      issueLines.push(`${INDENT}${untrusted(issue3.surface)} ${untrusted(issue3.code)}: ${untrusted(issue3.message)}`);
+      if (issue3.locator) issueLines.push(`${INDENT}  ${paint("dim", untrusted(issue3.locator))}`);
     }
     const rest = result.issues.length - Math.min(max, result.issues.length);
     if (rest > 0) issueLines.push(`${INDENT}\u2026 and ${rest} more`);
@@ -2999,11 +3301,11 @@ function renderJson(result) {
 var INFORMATION_URI = "https://opensource.kairwang.cloud/regmark/";
 function renderSarif(result) {
   const collection = collectionFailure(result);
-  const notifications = result.issues.map((issue2) => ({
-    descriptor: { id: issue2.code },
+  const notifications = result.issues.map((issue3) => ({
+    descriptor: { id: issue3.code },
     level: collection ? "error" : "warning",
-    message: { text: `${issue2.surface}: ${issue2.message}` },
-    properties: { surface: issue2.surface, ...issue2.locator ? { locator: issue2.locator } : {} }
+    message: { text: `${issue3.surface}: ${issue3.message}` },
+    properties: { surface: issue3.surface, ...issue3.locator ? { locator: issue3.locator } : {} }
   }));
   const rules = result.rules.map((rule) => ({
     id: rule.id,
@@ -3119,7 +3421,7 @@ function renderJUnit(result) {
   }
   const collection = collectionFailure(result);
   const diagnostics = result.issues.map(
-    (issue2) => `${issue2.surface} ${issue2.code}: ${issue2.message}${issue2.locator ? ` (${issue2.locator})` : ""}`
+    (issue3) => `${issue3.surface} ${issue3.code}: ${issue3.message}${issue3.locator ? ` (${issue3.locator})` : ""}`
   ).join("\n");
   if (collection) {
     cases.push(
@@ -3476,9 +3778,9 @@ function renderMarkdown(result, options = {}) {
   }
   if (result.issues.length > 0) {
     const lines = ["### Collection issues", ""];
-    for (const issue2 of result.issues.slice(0, MAX_ISSUES)) {
-      let line = `- ${code(`${issue2.surface} ${issue2.code}`)} ${code(issue2.message)}`;
-      if (issue2.locator) line += ` ${code(issue2.locator)}`;
+    for (const issue3 of result.issues.slice(0, MAX_ISSUES)) {
+      let line = `- ${code(`${issue3.surface} ${issue3.code}`)} ${code(issue3.message)}`;
+      if (issue3.locator) line += ` ${code(issue3.locator)}`;
       lines.push(line);
     }
     const rest = result.issues.length - MAX_ISSUES;
@@ -3543,16 +3845,16 @@ var cloaking_default = defineRule({
         const ours = view.filter((s) => s.surface === surface);
         const theirs = reference.filter((s) => s.surface === surface);
         if (ours.length === 0 || theirs.length === 0) continue;
-        const price = contradiction(ours, theirs, readPrice, (a, b) => sameMoney(a, b));
-        if (price) {
+        const price2 = contradiction(ours, theirs, readPrice, (a, b) => sameMoney(a, b));
+        if (price2) {
           findings.push({
             rule: ID,
             severity: "error",
-            message: `a client identifying as ${name} was told ${formatMoney(price.actual.value)} in ${surface}; ${told} ${formatMoney(price.expected.value)}`,
+            message: `a client identifying as ${name} was told ${formatMoney(price2.actual.value)} in ${surface}; ${told} ${formatMoney(price2.expected.value)}`,
             product: product3.key,
             surface,
-            expected: via(moneyEvidence(price.expected), referenceName),
-            actual: via(moneyEvidence(price.actual), name)
+            expected: via(moneyEvidence(price2.expected), referenceName),
+            actual: via(moneyEvidence(price2.actual), name)
           });
         }
         const stock = contradiction(ours, theirs, readStock, (a, b) => isBuyable(a) === isBuyable(b));
@@ -4739,10 +5041,10 @@ function parseShippingCell(cell2) {
     if (!raw) continue;
     const pieces = raw.split(":");
     while (pieces.length > 4 && /^\s*\d+\s*$/.test(pieces[pieces.length - 1])) pieces.pop();
-    const price = (pieces[pieces.length - 1] ?? "").trim();
-    if (!price) continue;
+    const price2 = (pieces[pieces.length - 1] ?? "").trim();
+    if (!price2) continue;
     const country = pieces.length > 1 ? (pieces[0] ?? "").trim() : "";
-    out2.push(country ? { country, price, raw } : { price, raw });
+    out2.push(country ? { country, price: price2, raw } : { price: price2, raw });
   }
   return out2;
 }
@@ -4866,12 +5168,12 @@ function readDelimited(text7) {
   if (!header) return { error: "feed is empty" };
   const names = header.map(headerName);
   const kind = delimiter === "	" ? "tab-separated" : "comma-separated";
-  let profile;
+  let profile2;
   if (names.includes("url")) {
-    profile = "openai";
+    profile2 = "openai";
     if (!names.some((n) => n === "item_id" || n === "id" || n === "sku")) return { error: `${kind} ACP feed has a url column but no item_id column` };
   } else if (names.includes("link")) {
-    profile = "google";
+    profile2 = "google";
     if (!names.includes("id")) return { error: `${kind} ACP feed in the Google-compatible profile has a link column but no id column` };
   } else {
     return { error: `${kind} ACP feed has neither a url column (OpenAI format) nor a link column (Google-compatible profile)` };
@@ -4884,7 +5186,7 @@ function readDelimited(text7) {
     });
     return { kind: "flat", fields: fields2, place: { unit: "row", position: i + 1 } };
   });
-  return { records, profile, issues: [] };
+  return { records, profile: profile2, issues: [] };
 }
 function readAcp(text7, feedUrl) {
   const start = text7.trimStart();
@@ -5118,9 +5420,9 @@ function readReturns(row, s) {
   const source = Object.fromEntries(["accepts_returns", ...RETURN_WINDOW, "return_policy"].filter((n) => present(row.fields[n])).map((n) => [n, row.fields[n]]));
   s.returnPolicy = observe(row, value, JSON.stringify(source), accepts !== void 0 ? "accepts_returns" : "return_policy");
 }
-function mapFlat(record3, profile, ctx) {
-  const names = NAMES[profile];
-  const row = { profile, fields: record3.fields, ctx, issues: [], at: placeLocator(ctx.feedUrl, record3.place) };
+function mapFlat(record3, profile2, ctx) {
+  const names = NAMES[profile2];
+  const row = { profile: profile2, fields: record3.fields, ctx, issues: [], at: placeLocator(ctx.feedUrl, record3.place) };
   const id = text2(row, winner(row, names.id));
   if (!id) {
     report(row, "feed-item-incomplete", `${placeText(record3.place)} has no ${names.id[0]}`);
@@ -5145,22 +5447,22 @@ function mapFlat(record3, profile, ctx) {
   reportShadowed(row, names.group);
   const group = text2(row, winner(row, names.group));
   if (group && group !== id) ids.groupId = group;
-  const options = profile === "openai" ? openaiOptions(row, flag(row, "listing_has_variations") === true && ids.groupId !== void 0) : googleOptions(row, ids.groupId !== void 0);
+  const options = profile2 === "openai" ? openaiOptions(row, flag(row, "listing_has_variations") === true && ids.groupId !== void 0) : googleOptions(row, ids.groupId !== void 0);
   if (options && Object.keys(options).length > 0) ids.options = options;
   const sighting = { surface: SURFACE, scope: "variant", ids };
   const title = text2(row, "title");
   if (title) sighting.title = title;
-  if (profile === "openai") {
+  if (profile2 === "openai") {
     reportShadowed(row, SEARCH);
     if (flag(row, winner(row, SEARCH)) === false) return { sighting, issues: row.issues };
   }
-  const missing = REQUIRED[profile].filter((name) => !present(row.fields[name]));
+  const missing = REQUIRED[profile2].filter((name) => !present(row.fields[name]));
   if (missing.length > 0) {
     report(row, "feed-item-incomplete", `item "${id}" has no ${missing.join(", ")}, which the format requires; an agent rejects the row`);
   }
   readPrice2(row, sighting);
   readAvailability(row, sighting);
-  if (profile === "openai") {
+  if (profile2 === "openai") {
     readShipping(row, sighting);
     readReturns(row, sighting);
   }
@@ -5298,8 +5600,8 @@ function mapProduct(record3, ctx) {
     const sighting = { surface: SURFACE2, scope: "variant", ids };
     const named = title ?? textOf(p.title);
     if (named) sighting.title = named;
-    const price = readPrice3(v, variant2.price, "price");
-    if (price) sighting.price = price;
+    const price2 = readPrice3(v, variant2.price, "price");
+    if (price2) sighting.price = price2;
     const listPrice = readPrice3(v, variant2.list_price, "list_price");
     if (listPrice) sighting.listPrice = listPrice;
     const availability = readAvailability2(v, variant2.availability);
@@ -9492,10 +9794,10 @@ function linkText(v) {
 }
 function shippingEntry(v) {
   if (!isObject2(v)) return void 0;
-  const price = firstText(v.price);
-  if (!price) return void 0;
+  const price2 = firstText(v.price);
+  if (!price2) return void 0;
   const country = firstText(v.country);
-  return { ...country ? { country } : {}, price, raw: price };
+  return { ...country ? { country } : {}, price: price2, raw: price2 };
 }
 function itemFromXml(v) {
   const fields2 = /* @__PURE__ */ Object.create(null);
@@ -15667,7 +15969,7 @@ function getLoad(parse8, render3) {
       if (typeof selector !== "string") {
         throw new TypeError("Unexpected type of selector");
       }
-      let search = selector;
+      let search2 = selector;
       const searchContext = context ? (
         // If we don't have a context, maybe we have a root, from loading
         typeof context === "string" ? isHtml(context) ? (
@@ -15675,7 +15977,7 @@ function getLoad(parse8, render3) {
           new LoadedCheerio([parse8(context, options2, false, null)], rootInstance, options2)
         ) : (
           // $('li', 'ul')
-          (search = `${context} ${search}`, rootInstance)
+          (search2 = `${context} ${search2}`, rootInstance)
         ) : isCheerio(context) ? (
           // $('li', $)
           context
@@ -15686,7 +15988,7 @@ function getLoad(parse8, render3) {
       ) : rootInstance;
       if (!searchContext)
         return instance;
-      return searchContext.find(search);
+      return searchContext.find(search2);
     }
     Object.assign(initialize, static_exports, {
       load: load2,
@@ -24045,8 +24347,8 @@ function emitOffer(product3, offer2, fallbackCurrency, group, ctx, inherit) {
   const fields2 = priceFields(o, offer2.ptr);
   const currencyFor = (f) => offerCurrency ?? f.currency ?? fallbackCurrency ?? null;
   if (fields2.price) {
-    const price = moneyObs(ctx, fields2.price, currencyFor(fields2.price));
-    if (price) sighting.price = price;
+    const price2 = moneyObs(ctx, fields2.price, currencyFor(fields2.price));
+    if (price2) sighting.price = price2;
   }
   if (fields2.list) {
     const list = moneyObs(ctx, fields2.list, currencyFor(fields2.list));
@@ -24083,8 +24385,8 @@ function emitAggregate(product3, agg, group, ctx) {
     field = { raw: low, ptr: `${agg.ptr}/lowPrice` };
   }
   if (field) {
-    const price = moneyObs(ctx, field, currency);
-    if (price) sighting.price = price;
+    const price2 = moneyObs(ctx, field, currency);
+    if (price2) sighting.price = price2;
   }
   const availability = availabilityObs(ctx, `${agg.ptr}/availability`, a.availability);
   if (availability) sighting.availability = availability;
@@ -24349,8 +24651,8 @@ function emitSighting($2, root2, product3, prefix, title, ctx) {
   const currency = readValue($2, findProp($2, root2, "priceCurrency"), ["content"])?.value ?? null;
   const priceField = readValue($2, findProp($2, root2, "price"), ["content"]);
   if (priceField) {
-    const price = moneyObs2(ctx, `${prefix}/price`, priceField.value, currency);
-    if (price) sighting.price = price;
+    const price2 = moneyObs2(ctx, `${prefix}/price`, priceField.value, currency);
+    if (price2) sighting.price = price2;
   }
   const availabilityField = readValue($2, findProp($2, root2, "availability"), ["href", "content"]);
   const availability = availabilityField ? availabilityObs2(ctx, `${prefix}/availability`, availabilityField.value) : void 0;
@@ -24472,9 +24774,9 @@ function firstTag(tags, keys) {
   return void 0;
 }
 function buildSighting(tags, pageUrl, fetchedAt) {
-  const price = priceOf(tags, pageUrl, fetchedAt);
+  const price2 = priceOf(tags, pageUrl, fetchedAt);
   const availability = availabilityOf(tags, pageUrl, fetchedAt);
-  if (!price && !availability) return void 0;
+  if (!price2 && !availability) return void 0;
   const url = resolve(firstTag(tags, ["og:url"])?.content, pageUrl);
   const ids = { url };
   const aliasTag = firstTag(tags, ["product:retailer_item_id"]);
@@ -24483,7 +24785,7 @@ function buildSighting(tags, pageUrl, fetchedAt) {
   const sighting = { surface: SURFACE5, scope: "product", ids };
   const title = firstTag(tags, ["og:title"])?.content.trim();
   if (title) sighting.title = title;
-  if (price) sighting.price = price;
+  if (price2) sighting.price = price2;
   if (availability) sighting.availability = availability;
   return sighting;
 }
@@ -24668,8 +24970,8 @@ function hiddenReason(el) {
   const indent = get2("text-indent");
   if (indent !== void 0 && isFarOffscreen(indent)) return "offscreen";
   if (squeezed("overflow") === "hidden" && ["width", "height", "max-height"].some(isZero)) return "zero-size";
-  const clip3 = get2("clip");
-  if (clip3 !== void 0 && isZeroClipRect(clip3)) return "clipped";
+  const clip4 = get2("clip");
+  if (clip4 !== void 0 && isZeroClipRect(clip4)) return "clipped";
   if (squeezed("clip-path") === "inset(100%)") return "clipped";
   if (attribs.hidden !== void 0) return "hidden-attribute";
   if (HIDDEN_CLASSES.some((cls) => hasClass2(el, cls))) return "a11y-class";
@@ -24802,12 +25104,12 @@ function readWoo(el, selector, hint, obs3) {
   const ins = findAll2(el, (n) => n.name === "ins")[0];
   if (ins) {
     const insText = tidy(textContent2(ins, isScreenReader));
-    const price = single(insText, hint);
+    const price2 = single(insText, hint);
     const del = findAll2(el, (n) => n.name === "del")[0];
     const delText = del ? tidy(textContent2(del, isScreenReader)) : "";
     const listPrice = del ? single(delText, hint) : void 0;
     return {
-      ...price ? { price: obs3(price, insText, `${selector} ins`) } : {},
+      ...price2 ? { price: obs3(price2, insText, `${selector} ins`) } : {},
       ...listPrice ? { listPrice: obs3(listPrice, delText, `${selector} del`) } : {}
     };
   }
@@ -24880,29 +25182,29 @@ async function collectViews(ctx, urls, profiles, options = {}) {
   const sightings = [];
   const issues = [];
   for (const url of urls) {
-    for (const profile of profiles) {
+    for (const profile2 of profiles) {
       try {
         const res = await ctx.fetcher.get(url, {
           asOwner: true,
-          headers: { "user-agent": profile.userAgent, accept: "text/html,application/xhtml+xml" }
+          headers: { "user-agent": profile2.userAgent, accept: "text/html,application/xhtml+xml" }
         });
         if (res.status >= 300 && res.status < 400 && res.headers["location"]) {
-          issues.push({ surface: "page", code: "view-redirected", message: `as ${profile.name}: redirected to ${res.headers["location"]}`, locator: url });
+          issues.push({ surface: "page", code: "view-redirected", message: `as ${profile2.name}: redirected to ${res.headers["location"]}`, locator: url });
           continue;
         }
         if (res.status < 200 || res.status > 299) {
-          issues.push({ surface: "page", code: "view-failed", message: `as ${profile.name}: HTTP ${res.status}`, locator: url });
+          issues.push({ surface: "page", code: "view-failed", message: `as ${profile2.name}: HTTP ${res.status}`, locator: url });
           continue;
         }
         if (new URL(res.url).origin !== new URL(url).origin) {
-          issues.push({ surface: "page", code: "view-redirected", message: `as ${profile.name}: answered from ${res.url}`, locator: url });
+          issues.push({ surface: "page", code: "view-redirected", message: `as ${profile2.name}: answered from ${res.url}`, locator: url });
           continue;
         }
         const page = extractPage(res.body, url, res.fetchedAt, options);
-        for (const s of page.sightings) sightings.push({ ...s, via: profile.name });
+        for (const s of page.sightings) sightings.push({ ...s, via: profile2.name });
       } catch (err) {
-        issues.push({ surface: "page", code: "view-failed", message: `as ${profile.name}: ${err.message}`, locator: url });
-        ctx.log("warn", `page not read as ${profile.name}: ${url}`);
+        issues.push({ surface: "page", code: "view-failed", message: `as ${profile2.name}: ${err.message}`, locator: url });
+        ctx.log("warn", `page not read as ${profile2.name}: ${url}`);
       }
     }
   }
@@ -24961,16 +25263,583 @@ async function collectPages(ctx, urls, options = {}) {
   return { sightings, issues };
 }
 
+// packages/collect-protocol/src/util.ts
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function nonEmptyString(value) {
+  return typeof value === "string" && value.trim() !== "";
+}
+function isOk(status) {
+  return status >= 200 && status < 300;
+}
+function parseJson(text7) {
+  try {
+    return { value: JSON.parse(text7) };
+  } catch {
+    return void 0;
+  }
+}
+function errorText(err) {
+  return err instanceof Error ? err.message : String(err);
+}
+function clip3(text7, max = 160) {
+  const flat = text7.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}\u2026` : flat;
+}
+function issue(surface, code2, message, locator2) {
+  return locator2 === void 0 ? { surface, code: code2, message } : { surface, code: code2, message, locator: locator2 };
+}
+function refusalIssue(surface, err, url, what) {
+  if (err instanceof FetchRefused && err.code === "robots") return issue(surface, "robots-disallowed", `${what}: ${err.message}`, url);
+  return issue(surface, "fetch-failed", `${what}: ${errorText(err)}`, url);
+}
+function statusIssue(surface, status, url, what) {
+  if (status === 404 || status === 410) return issue(surface, "not-found", `${what}: HTTP ${status}`, url);
+  const redirect = status >= 300 && status < 400 ? " (a redirect, which Regmark does not follow for a query)" : "";
+  return issue(surface, "fetch-failed", `${what}: HTTP ${status}${redirect}`, url);
+}
+
+// packages/collect-protocol/src/catalog.ts
+var LOOKUP_BATCH = 10;
+var MAX_LOOKUPS_PER_PRODUCT = 5;
+var SEARCH_LIMIT = 10;
+var SHOPIFY_VARIANT = /^gid:\/\/shopify\/ProductVariant\/(\d+)$/;
+function lookupIds(ref, platform) {
+  if (ref.variantIds?.length) {
+    return ref.variantIds.map((id) => platform === "shopify" && /^\d+$/.test(id) ? `gid://shopify/ProductVariant/${id}` : id);
+  }
+  if (ref.skus?.length) return [...ref.skus];
+  return ref.handle ? [ref.handle] : [];
+}
+function backendId(id) {
+  const trimmed = id.trim();
+  if (/^\d+$/.test(trimmed)) return trimmed;
+  return SHOPIFY_VARIANT.exec(trimmed)?.[1];
+}
+async function readCatalogue(ask, options) {
+  const { surface, refs } = options;
+  const read = [];
+  const issues = [];
+  const owner = /* @__PURE__ */ new Map();
+  const skipped = /* @__PURE__ */ new Set();
+  refs.forEach((ref, index2) => {
+    const ids = lookupIds(ref, options.platform);
+    if (ids.length > LOOKUP_BATCH * MAX_LOOKUPS_PER_PRODUCT) {
+      skipped.add(index2);
+      issues.push(issueOf(surface, "too-many-variants", `not looked up: ${ids.length} variants is more than ${LOOKUP_BATCH * MAX_LOOKUPS_PER_PRODUCT}`, ref.url));
+      return;
+    }
+    for (const id of ids) if (!owner.has(id)) owner.set(id, index2);
+  });
+  const found = /* @__PURE__ */ new Set();
+  const emitted = /* @__PURE__ */ new Set();
+  const all = [...owner.keys()];
+  let answered = all.length;
+  let failed = false;
+  if (options.lookup) {
+    for (let start = 0; start < all.length; start += LOOKUP_BATCH) {
+      const asked = all.slice(start, start + LOOKUP_BATCH);
+      const answer2 = checked(await ask("lookup_catalog", withFilter({ ids: asked }, options)), surface, "lookup_catalog");
+      if (!answer2.ok) {
+        issues.push(answer2.issue);
+        answered = start;
+        failed = true;
+        break;
+      }
+      const askedSet = new Set(asked);
+      eachVariant(answer2.payload, (product3, variant2, p, v) => {
+        const byRef = /* @__PURE__ */ new Map();
+        for (const input of inputsOf(variant2, askedSet)) {
+          const index2 = owner.get(input.id);
+          if (!byRef.has(index2)) byRef.set(index2, []);
+          byRef.get(index2).push(input);
+        }
+        for (const [index2, inputs] of byRef) {
+          const key = `${index2}|${typeof variant2.id === "string" ? variant2.id : `${start}/${p}/${v}`}`;
+          if (emitted.has(key)) continue;
+          emitted.add(key);
+          const scope = inputs.some((input) => input.exact) ? "variant" : "product";
+          const label = `lookup_catalog[id=${JSON.stringify(inputs[0].id)}]`;
+          const at = `${answer2.url}#${label}${answer2.pointer}/products/${p}/variants/${v}`;
+          const one = toSighting(surface, refs[index2], product3, variant2, at, answer2.fetchedAt, scope);
+          read.push({ index: index2, sighting: one.sighting });
+          issues.push(...one.issues);
+          found.add(index2);
+        }
+      });
+    }
+  }
+  const unanswered = new Set(all.slice(answered).map((id) => owner.get(id)));
+  if (options.search && !failed) {
+    for (const [index2, ref] of refs.entries()) {
+      if (found.has(index2) || skipped.has(index2) || ref.variantIds?.length || !nonEmptyString(ref.title)) continue;
+      const answer2 = checked(await ask("search_catalog", withFilter({ query: ref.title, pagination: { limit: SEARCH_LIMIT } }, options)), surface, "search_catalog");
+      if (!answer2.ok) {
+        issues.push(answer2.issue);
+        failed = true;
+        break;
+      }
+      const products = answer2.payload.products;
+      const p = products.findIndex((product4) => isRecord(product4) && sameProduct(ref, product4));
+      if (p < 0) continue;
+      const product3 = products[p];
+      const label = `search_catalog[query=${JSON.stringify(ref.title)}]`;
+      const variants = Array.isArray(product3.variants) ? product3.variants : [];
+      variants.forEach((variant2, v) => {
+        if (!isRecord(variant2)) return;
+        const at = `${answer2.url}#${label}${answer2.pointer}/products/${p}/variants/${v}`;
+        const one = toSighting(surface, ref, product3, variant2, at, answer2.fetchedAt, "variant");
+        read.push({ index: index2, sighting: one.sighting });
+        issues.push(...one.issues);
+        found.add(index2);
+      });
+    }
+  }
+  if (!failed) {
+    for (const [index2, ref] of refs.entries()) {
+      if (found.has(index2) || skipped.has(index2)) continue;
+      issues.push(issueOf(surface, "not-found", "the catalogue has no product for this page", ref.url));
+    }
+  }
+  return { sightings: read.filter((r) => !unanswered.has(r.index)).map((r) => r.sighting), issues };
+}
+var withFilter = (request, options) => options.includeUnavailable ? { ...request, filters: { available: false } } : request;
+function checked(answer2, surface, operation) {
+  if (!answer2.ok) return answer2;
+  const ucp = answer2.payload.ucp;
+  if (isRecord(ucp) && ucp.status === "error") {
+    const messages = Array.isArray(answer2.payload.messages) ? answer2.payload.messages.filter(isRecord) : [];
+    const first2 = messages.find((m) => m.type === "error") ?? messages[0];
+    const code2 = first2 && typeof first2.code === "string" ? first2.code : void 0;
+    const content = first2 && typeof first2.content === "string" ? first2.content : void 0;
+    const issueCode = code2 === "version_unsupported" ? "version-unsupported" : code2 === "capabilities_incompatible" ? "not-supported" : "fetch-failed";
+    const why = [code2, content === void 0 ? void 0 : clip3(content)].filter((s) => !!s).join(": ");
+    return { ok: false, issue: issueOf(surface, issueCode, `${operation}: the catalogue answered with an error${why ? ` (${clip3(why)})` : ""}`, answer2.url) };
+  }
+  if (!Array.isArray(answer2.payload.products)) {
+    return { ok: false, issue: issueOf(surface, "parse-error", `${operation}: the answer has no products list`, answer2.url) };
+  }
+  return answer2;
+}
+function eachVariant(payload, visit2) {
+  payload.products.forEach((product3, p) => {
+    if (!isRecord(product3) || !Array.isArray(product3.variants)) return;
+    product3.variants.forEach((variant2, v) => {
+      if (isRecord(variant2)) visit2(product3, variant2, p, v);
+    });
+  });
+}
+function inputsOf(variant2, asked) {
+  const out2 = [];
+  const inputs = Array.isArray(variant2.inputs) ? variant2.inputs : [];
+  for (const input of inputs) {
+    if (isRecord(input) && typeof input.id === "string" && asked.has(input.id)) out2.push({ id: input.id, exact: input.match === "exact" });
+  }
+  if (out2.length === 0 && typeof variant2.id === "string" && asked.has(variant2.id)) out2.push({ id: variant2.id, exact: true });
+  return out2;
+}
+function sameProduct(ref, product3) {
+  if (typeof product3.url === "string") {
+    const key = urlKey(product3.url);
+    if (key !== null && key === urlKey(ref.url)) return true;
+  }
+  return ref.handle !== void 0 && product3.handle === ref.handle;
+}
+function toSighting(surface, ref, product3, variant2, at, fetchedAt, scope) {
+  const issues = [];
+  const ids = { url: ref.url };
+  if (nonEmptyString(variant2.sku)) ids.sku = variant2.sku;
+  const gtin = barcodeGtin(variant2.barcodes);
+  if (gtin) ids.gtin = gtin;
+  const options = optionsOf2(variant2.options);
+  if (options) ids.options = options;
+  const alias = typeof variant2.id === "string" ? backendId(variant2.id) : void 0;
+  if (alias) ids.aliases = [alias];
+  const sighting = { surface, scope, ids };
+  if (nonEmptyString(product3.title)) sighting.title = product3.title;
+  const observe5 = (value, raw, field) => ({ value, raw, surface, locator: `${at}/${field}`, fetchedAt });
+  if (perItem(variant2.quantity_unit)) {
+    const price2 = readPrice5(variant2.price);
+    if (price2 === "unreadable") {
+      issues.push(issueOf(surface, "field-unreadable", "price is not a whole number of minor units with a currency code", `${at}/price`));
+    } else if (price2) {
+      sighting.price = observe5(price2.money, price2.raw, "price");
+      const list = readPrice5(variant2.list_price);
+      if (list && list !== "unreadable" && list.money.currency === price2.money.currency && list.money.units > price2.money.units) {
+        sighting.listPrice = observe5(list.money, list.raw, "list_price");
+      }
+    }
+  }
+  const availability = readAvailability4(variant2.availability);
+  if (availability) sighting.availability = observe5(availability, JSON.stringify(variant2.availability), "availability");
+  return { sighting, issues };
+}
+function readPrice5(value) {
+  if (value === void 0) return void 0;
+  if (!isRecord(value)) return "unreadable";
+  const { amount, currency } = value;
+  if (typeof amount !== "number" || !Number.isSafeInteger(amount) || amount < 0) return "unreadable";
+  if (typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency)) return "unreadable";
+  const money5 = fromMinor(amount, minorUnitOf(currency), currency);
+  return money5 ? { money: money5, raw: JSON.stringify(value) } : "unreadable";
+}
+function perItem(quantityUnit) {
+  return quantityUnit === void 0 || isRecord(quantityUnit) && quantityUnit.unit === "C62";
+}
+var STATUSES = {
+  in_stock: "in_stock",
+  backorder: "backorder",
+  preorder: "preorder",
+  out_of_stock: "out_of_stock",
+  discontinued: "discontinued"
+};
+function readAvailability4(value) {
+  if (!isRecord(value)) return void 0;
+  const status = typeof value.status === "string" && Object.hasOwn(STATUSES, value.status) ? STATUSES[value.status] : void 0;
+  const available = typeof value.available === "boolean" ? value.available : void 0;
+  if (status && (available === void 0 || isBuyable(status) === available)) return status;
+  if (available !== void 0) return available ? "in_stock" : "out_of_stock";
+  return void 0;
+}
+var GTIN_TYPES = /* @__PURE__ */ new Set(["GTIN", "EAN", "UPC", "JAN", "ISBN"]);
+function barcodeGtin(value) {
+  if (!Array.isArray(value)) return void 0;
+  for (const barcode of value) {
+    if (isRecord(barcode) && typeof barcode.type === "string" && GTIN_TYPES.has(barcode.type.toUpperCase()) && nonEmptyString(barcode.value)) {
+      return barcode.value.trim();
+    }
+  }
+  return void 0;
+}
+function optionsOf2(value) {
+  if (!Array.isArray(value)) return void 0;
+  const pairs = [];
+  for (const option of value) {
+    if (isRecord(option) && nonEmptyString(option.name) && nonEmptyString(option.label)) pairs.push([option.name, option.label]);
+  }
+  if (pairs.length === 0) return void 0;
+  if (pairs.length === 1 && pairs[0][0] === "Title" && pairs[0][1] === "Default Title") return void 0;
+  return Object.fromEntries(pairs);
+}
+function issueOf(surface, code2, message, locator2) {
+  return { surface, code: code2, message, locator: locator2 };
+}
+
+// packages/collect-protocol/src/jsonrpc.ts
+var RPC_ACCEPT = "application/json, text/event-stream";
+function rpcSession(surface, url) {
+  return { surface, url, headers: { accept: RPC_ACCEPT }, nextId: 1 };
+}
+async function rpc(ctx, session, method, params, what = method) {
+  const id = session.nextId++;
+  const body = { jsonrpc: "2.0", id, method };
+  if (params !== void 0) body.params = params;
+  let res;
+  try {
+    res = await ctx.fetcher.query(session.url, body, { headers: session.headers });
+  } catch (err) {
+    return { ok: false, issue: refusalIssue(session.surface, err, session.url, what) };
+  }
+  const answer2 = answerTo(res, id);
+  if (answer2) {
+    if (answer2.error !== void 0) return { ok: false, issue: rpcErrorIssue(session, what, answer2.error) };
+    return { ok: true, result: answer2.result, fetched: res };
+  }
+  if (!isOk(res.status)) return { ok: false, issue: statusIssue(session.surface, res.status, session.url, what) };
+  return { ok: false, issue: { surface: session.surface, code: "parse-error", message: `${what}: the response holds no JSON-RPC answer to the request`, locator: session.url } };
+}
+async function notify(ctx, session, method) {
+  let res;
+  try {
+    res = await ctx.fetcher.query(session.url, { jsonrpc: "2.0", method }, { headers: session.headers });
+  } catch (err) {
+    return { ok: false, issue: refusalIssue(session.surface, err, session.url, method) };
+  }
+  return isOk(res.status) ? { ok: true } : { ok: false, issue: statusIssue(session.surface, res.status, session.url, method) };
+}
+function answerTo(res, id) {
+  const type = (res.headers["content-type"] ?? "").toLowerCase();
+  const messages = [];
+  if (type.includes("text/event-stream")) {
+    for (const data2 of eventData(res.body)) {
+      const parsed = parseJson(data2);
+      if (parsed) messages.push(parsed.value);
+    }
+  } else {
+    const parsed = parseJson(res.body);
+    if (parsed) messages.push(...Array.isArray(parsed.value) ? parsed.value : [parsed.value]);
+  }
+  for (const message of messages) {
+    if (!isRecord(message) || message.id !== id) continue;
+    if (Object.hasOwn(message, "error")) return { error: message.error };
+    if (Object.hasOwn(message, "result")) return { result: message.result };
+  }
+  return void 0;
+}
+function eventData(stream) {
+  const out2 = [];
+  for (const event of stream.split(/\r\n\r\n|\n\n|\r\r/)) {
+    const lines = event.split(/\r\n|\n|\r/).filter((line) => line.startsWith("data:"));
+    if (lines.length) out2.push(lines.map((line) => line.slice(5).replace(/^ /, "")).join("\n"));
+  }
+  return out2;
+}
+function rpcErrorIssue(session, method, error) {
+  const fields2 = isRecord(error) ? error : {};
+  const number = typeof fields2.code === "number" ? fields2.code : void 0;
+  const text7 = typeof fields2.message === "string" ? clip3(fields2.message) : "";
+  const data2 = fields2.data;
+  const ucpCode = isRecord(data2) && typeof data2.code === "string" ? data2.code : void 0;
+  const detail = isRecord(data2) && typeof data2.content === "string" ? data2.content : typeof data2 === "string" ? data2 : void 0;
+  const code2 = ucpCode === "version_unsupported" ? "version-unsupported" : number === -32601 ? "not-supported" : "fetch-failed";
+  const why = [ucpCode, detail === void 0 ? void 0 : clip3(detail)].filter((s) => !!s).join(": ");
+  const message = `${method}: JSON-RPC error${number === void 0 ? "" : ` ${number}`}${text7 ? ` ${text7}` : ""}${why ? ` (${clip3(why)})` : ""}`;
+  return { surface: session.surface, code: code2, message, locator: session.url };
+}
+function toolPayload(session, tool, result) {
+  const fail2 = (code2, message) => ({ ok: false, issue: { surface: session.surface, code: code2, message: `${tool}: ${message}`, locator: session.url } });
+  if (!isRecord(result)) return fail2("parse-error", "the tool result is not an object");
+  const content = Array.isArray(result.content) ? result.content : [];
+  const texts = content.flatMap((item, index2) => isRecord(item) && item.type === "text" && typeof item.text === "string" ? [{ index: index2, text: item.text }] : []);
+  if (result.isError === true) return fail2("fetch-failed", `the tool reported an error${texts.length ? `: ${clip3(texts.map((t) => t.text).join(" "))}` : ""}`);
+  if (isRecord(result.structuredContent)) return { ok: true, payload: result.structuredContent, pointer: "/result/structuredContent" };
+  for (const { index: index2, text: text7 } of texts) {
+    const parsed = parseJson(text7);
+    if (parsed && isRecord(parsed.value)) return { ok: true, payload: parsed.value, pointer: `/result/content/${index2}/text` };
+  }
+  return fail2("parse-error", "the tool result carries no JSON object");
+}
+
+// packages/collect-protocol/src/transports.ts
+import { createHash, randomUUID } from "node:crypto";
+var REST_PATH = {
+  lookup_catalog: "/catalog/lookup",
+  search_catalog: "/catalog/search"
+};
+var profileHeader = (profile2) => `profile="${profile2.replace(/[\\"]/g, "\\$&")}"`;
+function restAsk(ctx, surface, endpoint2, agentProfile2) {
+  const base = endpoint2.replace(/\/+$/, "");
+  return async (operation, request) => {
+    const url = `${base}${REST_PATH[operation]}`;
+    const headers = {
+      "ucp-agent": profileHeader(agentProfile2),
+      "request-id": randomUUID(),
+      "content-digest": `sha-256=:${createHash("sha256").update(JSON.stringify(request)).digest("base64")}:`
+    };
+    let res;
+    try {
+      res = await ctx.fetcher.query(url, request, { headers });
+    } catch (err) {
+      return { ok: false, issue: refusalIssue(surface, err, url, operation) };
+    }
+    const parsed = parseJson(res.body);
+    const body = parsed && isRecord(parsed.value) ? parsed.value : void 0;
+    if (!isOk(res.status)) {
+      const code2 = typeof body?.code === "string" ? body.code : void 0;
+      if (code2 === void 0) return { ok: false, issue: statusIssue(surface, res.status, url, operation) };
+      const content = typeof body?.content === "string" ? `: ${clip3(body.content)}` : "";
+      return {
+        ok: false,
+        issue: { surface, code: code2 === "version_unsupported" ? "version-unsupported" : "fetch-failed", message: `${operation}: HTTP ${res.status} ${clip3(code2, 60)}${content}`, locator: url }
+      };
+    }
+    if (!body) return { ok: false, issue: { surface, code: "parse-error", message: `${operation}: the answer is not a JSON object`, locator: url } };
+    return { ok: true, payload: body, url, pointer: "", fetchedAt: res.fetchedAt };
+  };
+}
+function toolAsk(ctx, session, agentProfile2) {
+  return async (operation, request) => {
+    const params = { name: operation, arguments: { meta: { "ucp-agent": { profile: agentProfile2 } }, catalog: request } };
+    const outcome = await rpc(ctx, session, "tools/call", params, operation);
+    if (!outcome.ok) return outcome;
+    const tool = toolPayload(session, operation, outcome.result);
+    if (!tool.ok) return tool;
+    return { ok: true, payload: tool.payload, url: session.url, pointer: tool.pointer, fetchedAt: outcome.fetched.fetchedAt };
+  };
+}
+
 // packages/collect-protocol/src/ucp.ts
-async function collectUcp(_ctx, options) {
+var UCP_VERSIONS = ["2026-08-25", "2026-04-08"];
+var AGENT_PROFILES = {
+  "2026-08-25": "https://shopify.dev/ucp/agent-profiles/2026-08-25/valid-with-capabilities.json",
+  "2026-04-08": "https://shopify.dev/ucp/agent-profiles/2026-04-08/valid-with-capabilities.json"
+};
+var SHOPPING = "dev.ucp.shopping";
+var LOOKUP = "dev.ucp.shopping.catalog.lookup";
+var SEARCH2 = "dev.ucp.shopping.catalog.search";
+var SHOPIFY_CATALOG = "dev.shopify.catalog";
+var VERSION_TEXT = /^\d{4}-\d{2}-\d{2}$/;
+async function collectUcp(ctx, options) {
   if (options.products.length === 0) return { sightings: [], issues: [] };
-  return { sightings: [], issues: [{ surface: "ucp", code: "not-built", message: "the UCP collector is not built yet" }] };
+  const fail2 = (found) => ({ sightings: [], issues: [found] });
+  const discovery = options.url ?? new URL("/.well-known/ucp", ctx.store).href;
+  const top = await readProfile(ctx, discovery, "business profile");
+  if (!top.ok) return fail2(top.issue);
+  const chosen = await negotiate(ctx, top);
+  if (!chosen.ok) return fail2(chosen.issue);
+  const { version: version2, profile: profile2 } = chosen;
+  const binding = shoppingBinding(profile2.ucp, version2);
+  if (!binding) {
+    return fail2(issue("ucp", "not-supported", `the profile offers no REST or MCP endpoint for ${SHOPPING} ${version2}`, profile2.url));
+  }
+  const lookup2 = declares(profile2.ucp, LOOKUP, version2);
+  const search2 = declares(profile2.ucp, SEARCH2, version2);
+  if (!lookup2 && !search2) {
+    return fail2(issue("ucp", "not-supported", `the profile declares no catalogue capability (${LOOKUP} or ${SEARCH2}) for ${version2}`, profile2.url));
+  }
+  const agentProfile2 = options.agentProfile ?? AGENT_PROFILES[version2];
+  ctx.log("debug", `ucp: ${version2} over ${binding.transport} at ${binding.endpoint}`);
+  const ask = binding.transport === "rest" ? restAsk(ctx, "ucp", binding.endpoint, agentProfile2) : toolAsk(ctx, rpcSession("ucp", binding.endpoint), agentProfile2);
+  const result = await readCatalogue(ask, {
+    surface: "ucp",
+    refs: options.products,
+    platform: options.platform,
+    lookup: lookup2,
+    search: search2,
+    includeUnavailable: Object.hasOwn(capabilities(profile2.ucp), SHOPIFY_CATALOG)
+  });
+  return { sightings: result.sightings, issues: result.issues.map((found) => offHost(found, binding.endpoint)) };
+}
+async function readProfile(ctx, url, what) {
+  let res;
+  try {
+    res = await ctx.fetcher.get(url, { headers: { accept: "application/json" } });
+  } catch (err) {
+    return { ok: false, issue: refusalIssue("ucp", err, url, what) };
+  }
+  if (!isOk(res.status)) {
+    const found = statusIssue("ucp", res.status, url, what);
+    return { ok: false, issue: found.code === "not-found" ? { ...found, message: `${what}: HTTP ${res.status}; the shop publishes no UCP profile here` } : found };
+  }
+  const parsed = parseJson(res.body);
+  const ucp = parsed && isRecord(parsed.value) ? parsed.value.ucp : void 0;
+  if (!isRecord(ucp) || typeof ucp.version !== "string") {
+    return { ok: false, issue: issue("ucp", "parse-error", `${what}: not a UCP profile (no ucp.version)`, url) };
+  }
+  return { ok: true, profile: { ucp, url: res.url } };
+}
+async function negotiate(ctx, top) {
+  const { ucp, url } = top.profile;
+  const older = isRecord(ucp.supported_versions) ? ucp.supported_versions : {};
+  for (const version2 of UCP_VERSIONS) {
+    if (ucp.version === version2) return { ok: true, version: version2, profile: top.profile };
+    const leafUrl = Object.hasOwn(older, version2) ? older[version2] : void 0;
+    if (typeof leafUrl !== "string") continue;
+    let target;
+    try {
+      target = new URL(leafUrl, url).href;
+    } catch {
+      return { ok: false, issue: issue("ucp", "parse-error", `the profile for ${version2} is not at a URL: ${clip3(leafUrl, 80)}`, url) };
+    }
+    const leaf = await readProfile(ctx, target, `profile for ${version2}`);
+    if (!leaf.ok) return leaf;
+    if (leaf.profile.ucp.version !== version2) {
+      return { ok: false, issue: issue("ucp", "parse-error", `the profile for ${version2} says it is ${clip3(String(leaf.profile.ucp.version), 40)}`, target) };
+    }
+    return { ok: true, version: version2, profile: leaf.profile };
+  }
+  const offered = [ucp.version, ...Object.keys(older)].filter((v) => typeof v === "string" && VERSION_TEXT.test(v));
+  const listed = offered.length ? offered.join(", ") : "no version Regmark can read";
+  return { ok: false, issue: issue("ucp", "version-unsupported", `the shop offers UCP ${listed}; Regmark reads ${UCP_VERSIONS.join(" and ")}`, url) };
+}
+function shoppingBinding(ucp, version2) {
+  const services = isRecord(ucp.services) ? ucp.services[SHOPPING] : void 0;
+  const entries = Array.isArray(services) ? services.filter(isRecord).filter((entry) => entry.version === version2) : [];
+  for (const transport of ["rest", "mcp"]) {
+    const entry = entries.find((e) => e.transport === transport && typeof e.endpoint === "string");
+    if (!entry) continue;
+    let endpoint2;
+    try {
+      endpoint2 = new URL(entry.endpoint);
+    } catch {
+      continue;
+    }
+    if (endpoint2.protocol === "https:" || endpoint2.protocol === "http:") return { transport, endpoint: endpoint2.href };
+  }
+  return void 0;
+}
+function capabilities(ucp) {
+  return isRecord(ucp.capabilities) ? ucp.capabilities : {};
+}
+function declares(ucp, name, version2) {
+  const entries = Object.hasOwn(capabilities(ucp), name) ? capabilities(ucp)[name] : void 0;
+  return Array.isArray(entries) && entries.some((entry) => isRecord(entry) && entry.version === version2);
+}
+function offHost(found, endpoint2) {
+  if (found.code !== "fetch-failed" || !found.message.includes(": foreign-host: ")) return found;
+  const host2 = new URL(endpoint2).host;
+  const hint = host2.endsWith(".myshopify.com") ? `Shopify serves the same profile there: set ucp.url to https://${host2}/.well-known/ucp to read it` : "Regmark contacts only the hosts the configuration names";
+  return { ...found, message: `${found.message}; the profile names an endpoint on ${host2}. ${hint}` };
 }
 
 // packages/collect-protocol/src/mcp.ts
-async function collectMcp(_ctx, options) {
+var MCP_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26"];
+var MCP_PATH = "/api/mcp";
+var CLIENT = { name: "regmark", version: "0.1.0" };
+var MAX_TOOL_PAGES = 5;
+var SESSION_ID = /^[\x21-\x7e]{1,512}$/;
+async function collectMcp(ctx, options) {
   if (options.products.length === 0) return { sightings: [], issues: [] };
-  return { sightings: [], issues: [{ surface: "mcp", code: "not-built", message: "the MCP collector is not built yet" }] };
+  const url = options.url ?? new URL(MCP_PATH, ctx.store).href;
+  const session = rpcSession("mcp", url);
+  const fail2 = (code2, message) => ({ sightings: [], issues: [issue("mcp", code2, message, url)] });
+  const init2 = await rpc(ctx, session, "initialize", { protocolVersion: MCP_VERSIONS[0], capabilities: {}, clientInfo: CLIENT });
+  if (!init2.ok) return { sightings: [], issues: [init2.issue] };
+  const version2 = isRecord(init2.result) ? init2.result.protocolVersion : void 0;
+  if (typeof version2 !== "string" || !MCP_VERSIONS.includes(version2)) {
+    const said = typeof version2 === "string" ? clip3(version2, 40) : "no version";
+    return fail2("version-unsupported", `initialize: the server speaks MCP ${said}; Regmark speaks ${MCP_VERSIONS.join(", ")}`);
+  }
+  session.headers["mcp-protocol-version"] = version2;
+  const sessionId = init2.fetched.headers["mcp-session-id"];
+  if (sessionId !== void 0 && SESSION_ID.test(sessionId)) session.headers["mcp-session-id"] = sessionId;
+  const ready = await notify(ctx, session, "notifications/initialized");
+  if (!ready.ok) return { sightings: [], issues: [ready.issue] };
+  const listed = await listTools(ctx, session);
+  if (!listed.ok) return { sightings: [], issues: [listed.issue] };
+  const usable = (name) => listed.tools.find((tool) => tool.name === name && catalogueShaped(tool) && !declaresWrites(tool));
+  const lookup2 = usable("lookup_catalog");
+  const search2 = usable("search_catalog");
+  if (!lookup2 && !search2) {
+    const names = listed.tools.map((tool) => typeof tool.name === "string" ? clip3(tool.name, 60) : "?");
+    const shown2 = names.length ? `; it lists ${names.slice(0, 10).join(", ")}${names.length > 10 ? ", \u2026" : ""}` : "; it lists no tool";
+    return fail2("not-supported", `tools/list: no UCP catalogue tool (lookup_catalog or search_catalog)${shown2}`);
+  }
+  const ask = toolAsk(ctx, session, options.agentProfile ?? AGENT_PROFILES["2026-08-25"]);
+  return readCatalogue(ask, {
+    surface: "mcp",
+    refs: options.products,
+    platform: options.platform,
+    lookup: lookup2 !== void 0,
+    search: search2 !== void 0,
+    includeUnavailable: [lookup2, search2].every((tool) => tool === void 0 || takesAvailableFilter(tool))
+  });
+}
+async function listTools(ctx, session) {
+  const tools = [];
+  let cursor;
+  for (let page = 0; page < MAX_TOOL_PAGES; page++) {
+    const listed = await rpc(ctx, session, "tools/list", cursor === void 0 ? void 0 : { cursor });
+    if (!listed.ok) return listed;
+    const result = isRecord(listed.result) ? listed.result : void 0;
+    if (!result || !Array.isArray(result.tools)) return { ok: false, issue: issue("mcp", "parse-error", "tools/list: the answer has no tools list", session.url) };
+    tools.push(...result.tools.filter(isRecord));
+    if (typeof result.nextCursor !== "string" || result.nextCursor === "") break;
+    cursor = result.nextCursor;
+  }
+  return { ok: true, tools };
+}
+var schemaProperty = (schema, name) => isRecord(schema) && isRecord(schema.properties) && Object.hasOwn(schema.properties, name) ? schema.properties[name] : void 0;
+function catalogueShaped(tool) {
+  return isRecord(schemaProperty(tool.inputSchema, "catalog"));
+}
+function declaresWrites(tool) {
+  return isRecord(tool.annotations) && (tool.annotations.readOnlyHint === false || tool.annotations.destructiveHint === true);
+}
+function takesAvailableFilter(tool) {
+  const filters2 = schemaProperty(schemaProperty(tool.inputSchema, "catalog"), "filters");
+  return schemaProperty(filters2, "available") !== void 0;
 }
 
 // packages/collect-shopify/src/catalog.ts
@@ -24982,7 +25851,7 @@ async function collectShopifyCatalog(ctx, options = {}) {
   try {
     return await readCatalog(ctx, options);
   } catch (err) {
-    return { sightings: [], issues: [issue("collect-failed", errorText(err))], parents: [] };
+    return { sightings: [], issues: [issue2("collect-failed", errorText2(err))], parents: [] };
   }
 }
 async function readCatalog(ctx, options) {
@@ -25019,25 +25888,25 @@ async function readPage(ctx, url) {
   } catch (err) {
     return { ok: false, issue: fetchIssue(err, url) };
   }
-  if (!isOk(res.status)) return { ok: false, issue: issue("fetch-failed", `HTTP ${res.status}`, url) };
-  const parsed = parseJson(res.body);
-  if (!parsed) return { ok: false, issue: issue("parse-error", "response is not JSON", url) };
+  if (!isOk2(res.status)) return { ok: false, issue: issue2("fetch-failed", `HTTP ${res.status}`, url) };
+  const parsed = parseJson2(res.body);
+  if (!parsed) return { ok: false, issue: issue2("parse-error", "response is not JSON", url) };
   const body = parsed.value;
-  if (!isRecord(body) || !Array.isArray(body.products)) {
-    return { ok: false, issue: issue("parse-error", "response has no products array", url) };
+  if (!isRecord2(body) || !Array.isArray(body.products)) {
+    return { ok: false, issue: issue2("parse-error", "response has no products array", url) };
   }
   return { ok: true, items: body.products, fetchedAt: res.fetchedAt };
 }
 function readProduct(origin, item, pageUrl, productIndex, fetchedAt) {
-  if (!isRecord(item)) return void 0;
+  if (!isRecord2(item)) return void 0;
   const id = item.id;
   const handle = item.handle;
-  if (!isId(id) || !nonEmptyString(handle)) return void 0;
+  if (!isId(id) || !nonEmptyString2(handle)) return void 0;
   const variants = [];
   const rawVariants = Array.isArray(item.variants) ? item.variants : [];
   for (let index2 = 0; index2 < rawVariants.length; index2++) {
     const variant2 = rawVariants[index2];
-    if (isRecord(variant2) && isId(variant2.id)) variants.push({ index: index2, body: variant2 });
+    if (isRecord2(variant2) && isId(variant2.id)) variants.push({ index: index2, body: variant2 });
   }
   return {
     // The handle is merchant text, so it is encoded rather than trusted to be a path segment.
@@ -25054,19 +25923,19 @@ function buildSighting2(entry, variant2, currency) {
   const body = variant2.body;
   const base = `${pageUrl}#/products/${productIndex}/variants/${variant2.index}`;
   const ids = { productId: String(parent2.id), variantId: String(body.id), url: parent2.url };
-  if (nonEmptyString(body.sku)) ids.sku = body.sku;
-  if (nonEmptyString(product3.vendor)) ids.brand = product3.vendor;
+  if (nonEmptyString2(body.sku)) ids.sku = body.sku;
+  if (nonEmptyString2(product3.vendor)) ids.brand = product3.vendor;
   const options = variantOptions(product3.options, body);
   if (options) ids.options = options;
   const sighting = { surface: "platform", scope: "variant", ids };
-  if (nonEmptyString(product3.title)) sighting.title = product3.title;
+  if (nonEmptyString2(product3.title)) sighting.title = product3.title;
   const rawPrice = body.price;
-  const price = typeof rawPrice === "string" ? parseMoney(rawPrice, { currency }) : null;
-  if (price && typeof rawPrice === "string") {
-    sighting.price = observe3(price, rawPrice, `${base}/price`, fetchedAt);
+  const price2 = typeof rawPrice === "string" ? parseMoney(rawPrice, { currency }) : null;
+  if (price2 && typeof rawPrice === "string") {
+    sighting.price = observe3(price2, rawPrice, `${base}/price`, fetchedAt);
     const rawCompare = body.compare_at_price;
     const compare = typeof rawCompare === "string" ? parseMoney(rawCompare, { currency }) : null;
-    if (compare && typeof rawCompare === "string" && compare.units > price.units) {
+    if (compare && typeof rawCompare === "string" && compare.units > price2.units) {
       sighting.listPrice = observe3(compare, rawCompare, `${base}/compare_at_price`, fetchedAt);
     }
   }
@@ -25082,9 +25951,9 @@ function variantOptions(productOptions, variant2) {
   const pairs = [];
   for (let i = 0; i < 3; i++) {
     const option = names[i];
-    const name = isRecord(option) ? option.name : void 0;
+    const name = isRecord2(option) ? option.name : void 0;
     const value = variant2[`option${i + 1}`];
-    if (nonEmptyString(name) && nonEmptyString(value)) pairs.push([name, value]);
+    if (nonEmptyString2(name) && nonEmptyString2(value)) pairs.push([name, value]);
   }
   if (pairs.length === 0) return void 0;
   if (pairs.length === 1 && pairs[0][0] === "Title" && pairs[0][1] === PLACEHOLDER_OPTION) return void 0;
@@ -25094,59 +25963,28 @@ function selects(select3, parent2, ctx) {
   try {
     return Boolean(select3(parent2));
   } catch (err) {
-    ctx.log("warn", `select rejected product ${parent2.id}: ${errorText(err)}`);
+    ctx.log("warn", `select rejected product ${parent2.id}: ${errorText2(err)}`);
     return false;
   }
 }
 function observe3(value, raw, locator2, fetchedAt) {
   return { value, raw, surface: "platform", locator: locator2, fetchedAt };
 }
-function issue(code2, message, locator2) {
+function issue2(code2, message, locator2) {
   return locator2 === void 0 ? { surface: "platform", code: code2, message } : { surface: "platform", code: code2, message, locator: locator2 };
 }
 function fetchIssue(err, url) {
-  if (err instanceof FetchRefused && err.code === "robots") return issue("robots-disallowed", err.message, url);
-  return issue("fetch-failed", errorText(err), url);
-}
-function isOk(status) {
-  return status >= 200 && status < 300;
-}
-function isRecord(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function isId(value) {
-  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
-}
-function nonEmptyString(value) {
-  return typeof value === "string" && value.trim() !== "";
-}
-function parseJson(text7) {
-  try {
-    return { value: JSON.parse(text7) };
-  } catch {
-    return void 0;
-  }
-}
-function errorText(err) {
-  return err instanceof Error ? err.message : String(err);
-}
-
-// packages/collect-shopify/src/probe.ts
-async function probeShopifyCart(_ctx, targets, _options) {
-  if (targets.length === 0) return { sightings: [], issues: [] };
-  return { sightings: [], issues: [{ surface: "checkout", code: "probe-unsupported", message: "the Shopify checkout probe is not built yet" }] };
-}
-
-// packages/collect-woo/src/http.ts
-var API_PATH = "/wp-json/wc/store/v1";
-function apiBase(ctx) {
-  return `${ctx.store.origin}${API_PATH}`;
+  if (err instanceof FetchRefused && err.code === "robots") return issue2("robots-disallowed", err.message, url);
+  return issue2("fetch-failed", errorText2(err), url);
 }
 function isOk2(status) {
   return status >= 200 && status < 300;
 }
 function isRecord2(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function isId(value) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
 function nonEmptyString2(value) {
   return typeof value === "string" && value.trim() !== "";
@@ -25161,6 +25999,37 @@ function parseJson2(text7) {
 function errorText2(err) {
   return err instanceof Error ? err.message : String(err);
 }
+
+// packages/collect-shopify/src/probe.ts
+async function probeShopifyCart(_ctx, targets, _options) {
+  if (targets.length === 0) return { sightings: [], issues: [] };
+  return { sightings: [], issues: [{ surface: "checkout", code: "probe-unsupported", message: "the Shopify checkout probe is not built yet" }] };
+}
+
+// packages/collect-woo/src/http.ts
+var API_PATH = "/wp-json/wc/store/v1";
+function apiBase(ctx) {
+  return `${ctx.store.origin}${API_PATH}`;
+}
+function isOk3(status) {
+  return status >= 200 && status < 300;
+}
+function isRecord3(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function nonEmptyString3(value) {
+  return typeof value === "string" && value.trim() !== "";
+}
+function parseJson3(text7) {
+  try {
+    return { value: JSON.parse(text7) };
+  } catch {
+    return void 0;
+  }
+}
+function errorText3(err) {
+  return err instanceof Error ? err.message : String(err);
+}
 function isOwnershipRefusal(err) {
   return err instanceof FetchRefused && err.code === "write-not-authorized";
 }
@@ -25171,13 +26040,13 @@ function fetchIssue2(surface, err, locator2) {
   if (err instanceof FetchRefused && err.code === "robots") {
     return makeIssue(surface, "robots-disallowed", err.message, locator2);
   }
-  return makeIssue(surface, "fetch-failed", errorText2(err), locator2);
+  return makeIssue(surface, "fetch-failed", errorText3(err), locator2);
 }
 function observe4(value, raw, surface, locator2, fetchedAt) {
   return { value, raw, surface, locator: locator2, fetchedAt };
 }
 function readMinor(container, field) {
-  if (!isRecord2(container)) return void 0;
+  if (!isRecord3(container)) return void 0;
   const raw = container[field];
   if (typeof raw !== "string") return void 0;
   const minorUnit = container.currency_minor_unit;
@@ -25193,10 +26062,10 @@ async function getJson(ctx, url, surface) {
   } catch (err) {
     return { ok: false, issue: fetchIssue2(surface, err, url) };
   }
-  if (!isOk2(res.status)) {
+  if (!isOk3(res.status)) {
     return { ok: false, issue: makeIssue(surface, "fetch-failed", `HTTP ${res.status}`, url) };
   }
-  const parsed = parseJson2(res.body);
+  const parsed = parseJson3(res.body);
   if (!parsed) {
     return { ok: false, issue: makeIssue(surface, "parse-error", "response is not JSON", url) };
   }
@@ -25211,7 +26080,7 @@ async function collectWooCatalog(ctx, options = {}) {
   try {
     return await readCatalog2(ctx, options);
   } catch (err) {
-    return { sightings: [], issues: [makeIssue("platform", "collect-failed", errorText2(err))], parents: [] };
+    return { sightings: [], issues: [makeIssue("platform", "collect-failed", errorText3(err))], parents: [] };
   }
 }
 async function readCatalog2(ctx, options) {
@@ -25250,7 +26119,7 @@ async function readCatalog2(ctx, options) {
         issues.push(read.issue);
         continue;
       }
-      if (!isRecord2(read.body)) {
+      if (!isRecord3(read.body)) {
         issues.push(makeIssue("platform", "parse-error", "variation is not an object", url));
         continue;
       }
@@ -25286,13 +26155,13 @@ function selects2(select3, parent2, parents2, ctx) {
   try {
     return Boolean(select3(parent2, parents2));
   } catch (err) {
-    ctx.log("warn", `select rejected parent ${parent2.id}: ${errorText2(err)}`);
+    ctx.log("warn", `select rejected parent ${parent2.id}: ${errorText3(err)}`);
     return false;
   }
 }
 function readParent(item, listUrl, index2, fetchedAt) {
   const pointer = `${listUrl}#/${index2}`;
-  if (!isRecord2(item)) {
+  if (!isRecord3(item)) {
     return { issues: [makeIssue("platform", "parse-error", "product entry is not an object", pointer)] };
   }
   const id = item.id;
@@ -25304,12 +26173,12 @@ function readParent(item, listUrl, index2, fetchedAt) {
   const attributes2 = /* @__PURE__ */ new Map();
   const variations = Array.isArray(item.variations) ? item.variations : [];
   variations.forEach((variation, position) => {
-    if (!isRecord2(variation) || !isId2(variation.id)) {
+    if (!isRecord3(variation) || !isId2(variation.id)) {
       issues.push(makeIssue("platform", "parse-error", "variation entry has no numeric id", `${pointer}/variations/${position}`));
       return;
     }
     variationIds.push(variation.id);
-    const options = optionsOf2(variation.attributes);
+    const options = optionsOf3(variation.attributes);
     if (options) attributes2.set(variation.id, options);
   });
   const parent2 = {
@@ -25324,16 +26193,16 @@ function readParent(item, listUrl, index2, fetchedAt) {
 }
 function buildSighting3(parent2, name, body, pointer, fetchedAt, variantId, options) {
   const ids = { productId: String(parent2.id), variantId };
-  if (nonEmptyString2(body.sku)) ids.sku = body.sku;
+  if (nonEmptyString3(body.sku)) ids.sku = body.sku;
   if (parent2.permalink !== "") ids.url = parent2.permalink;
   if (options) ids.options = options;
   const sighting = { surface: "platform", scope: "variant", ids };
-  if (nonEmptyString2(name)) sighting.title = name;
-  const price = readMinor(body.prices, "price");
-  if (price) {
-    sighting.price = observe4(price.value, price.raw, "platform", `${pointer}/prices/price`, fetchedAt);
+  if (nonEmptyString3(name)) sighting.title = name;
+  const price2 = readMinor(body.prices, "price");
+  if (price2) {
+    sighting.price = observe4(price2.value, price2.raw, "platform", `${pointer}/prices/price`, fetchedAt);
     const regular = readMinor(body.prices, "regular_price");
-    if (regular && body.on_sale === true && !sameMoney(price.value, regular.value)) {
+    if (regular && body.on_sale === true && !sameMoney(price2.value, regular.value)) {
       sighting.listPrice = observe4(regular.value, regular.raw, "platform", `${pointer}/prices/regular_price`, fetchedAt);
     }
   }
@@ -25353,11 +26222,11 @@ function availabilityOf2(body, pointer, fetchedAt) {
   }
   return void 0;
 }
-function optionsOf2(attributes2) {
+function optionsOf3(attributes2) {
   if (!Array.isArray(attributes2)) return void 0;
   const pairs = [];
   for (const attribute of attributes2) {
-    if (isRecord2(attribute) && nonEmptyString2(attribute.name) && typeof attribute.value === "string") {
+    if (isRecord3(attribute) && nonEmptyString3(attribute.name) && typeof attribute.value === "string") {
       pairs.push([attribute.name, attribute.value]);
     }
   }
@@ -25383,7 +26252,7 @@ async function probeWooCheckout(ctx, targets, options) {
     await runProbe(run, targets);
   } catch (err) {
     if (isOwnershipRefusal(err)) return { sightings: [], issues: [ownershipIssue()] };
-    run.issues.push(makeIssue("checkout", "probe-failed", errorText2(err)));
+    run.issues.push(makeIssue("checkout", "probe-failed", errorText3(err)));
   }
   return { sightings: run.sightings, issues: run.issues };
 }
@@ -25391,19 +26260,19 @@ async function runProbe(run, targets) {
   const opened = await openCart(run);
   if (!opened) return;
   const token = opened.headers["cart-token"];
-  if (!nonEmptyString2(token)) {
+  if (!nonEmptyString3(token)) {
     run.issues.push(makeIssue("checkout", "probe-failed", "the shop did not return a cart token"));
     return;
   }
   run.headers = { "cart-token": token };
   const nonce = opened.headers["nonce"];
-  if (nonEmptyString2(nonce)) run.headers.nonce = nonce;
+  if (nonEmptyString3(nonce)) run.headers.nonce = nonce;
   for (const target of targets) {
     try {
       await probeTarget(run, target);
     } catch (err) {
       if (isOwnershipRefusal(err)) throw err;
-      run.issues.push(makeIssue("checkout", "probe-failed", `${target.variantId}: ${errorText2(err)}`));
+      run.issues.push(makeIssue("checkout", "probe-failed", `${target.variantId}: ${errorText3(err)}`));
     }
     if (!await emptyCart(run, target.variantId)) break;
   }
@@ -25412,10 +26281,10 @@ async function runProbe(run, targets) {
 async function openCart(run) {
   try {
     const res = await run.ctx.fetcher.get(`${run.base}/cart`);
-    if (isOk2(res.status)) return res;
+    if (isOk3(res.status)) return res;
     run.issues.push(makeIssue("checkout", "probe-failed", `could not open a cart: HTTP ${res.status}`));
   } catch (err) {
-    run.issues.push(makeIssue("checkout", "probe-failed", `could not open a cart: ${errorText2(err)}`));
+    run.issues.push(makeIssue("checkout", "probe-failed", `could not open a cart: ${errorText3(err)}`));
   }
   return void 0;
 }
@@ -25426,7 +26295,7 @@ async function probeTarget(run, target) {
     headers: run.headers,
     json: { id: Number(target.variantId), quantity: 1 }
   });
-  const addBody = parseJson2(added.body)?.value;
+  const addBody = parseJson3(added.body)?.value;
   if (added.status === 200 || added.status === 201) {
     await addedToCart(run, target, added, addBody);
     return;
@@ -25461,7 +26330,7 @@ async function addedToCart(run, target, added, addBody) {
     await updateCustomer(run, target, sighting);
   } catch (err) {
     if (isOwnershipRefusal(err)) throw err;
-    run.issues.push(makeIssue("checkout", "probe-failed", `${target.variantId}: update-customer failed: ${errorText2(err)}`));
+    run.issues.push(makeIssue("checkout", "probe-failed", `${target.variantId}: update-customer failed: ${errorText3(err)}`));
   }
   run.sightings.push(sighting);
 }
@@ -25471,18 +26340,18 @@ async function updateCustomer(run, target, sighting) {
     headers: run.headers,
     json: { shipping_address: run.shipTo, billing_address: run.shipTo }
   });
-  if (!isOk2(res.status)) throw new Error(`HTTP ${res.status}`);
-  const cart = parseJson2(res.body)?.value;
-  if (!isRecord2(cart)) throw new Error("unreadable cart");
+  if (!isOk3(res.status)) throw new Error(`HTTP ${res.status}`);
+  const cart = parseJson3(res.body)?.value;
+  if (!isRecord3(cart)) throw new Error("unreadable cart");
   const picked = pickItem(cart, target.variantId);
   if (!picked) throw new Error("cart response does not contain the requested variant");
-  const price = readMinor(picked.item.prices, "price");
-  if (price) {
-    sighting.price = observe4(price.value, price.raw, "checkout", `${url}#/items/${picked.index}/prices/price`, res.fetchedAt);
+  const price2 = readMinor(picked.item.prices, "price");
+  if (price2) {
+    sighting.price = observe4(price2.value, price2.raw, "checkout", `${url}#/items/${picked.index}/prices/price`, res.fetchedAt);
   }
   const country = run.shipTo.country.toUpperCase();
   const packages = Array.isArray(cart.shipping_rates) ? cart.shipping_rates : [];
-  const hasRate = packages.some((pkg) => isRecord2(pkg) && Array.isArray(pkg.shipping_rates) && pkg.shipping_rates.length > 0);
+  const hasRate = packages.some((pkg) => isRecord3(pkg) && Array.isArray(pkg.shipping_rates) && pkg.shipping_rates.length > 0);
   if (hasRate) {
     const cost = readMinor(cart.totals, "total_shipping");
     if (cost) {
@@ -25492,7 +26361,7 @@ async function updateCustomer(run, target, sighting) {
       run.issues.push(makeIssue("checkout", "probe-failed", `${target.variantId}: shipping total could not be read`));
     }
   } else {
-    const label = nonEmptyString2(target.sku) ? target.sku : target.variantId;
+    const label = nonEmptyString3(target.sku) ? target.sku : target.variantId;
     run.issues.push(makeIssue("checkout", "no-shipping-rate", `no shipping rate for ${country} on ${label}`));
   }
   const landed = readMinor(cart.totals, "total_price");
@@ -25504,11 +26373,11 @@ async function emptyCart(run, variantId) {
   let reason;
   try {
     const res = await run.ctx.fetcher.send("DELETE", `${run.base}/cart/items`, { headers: run.headers });
-    if (isOk2(res.status)) return true;
+    if (isOk3(res.status)) return true;
     reason = `HTTP ${res.status}`;
   } catch (err) {
     if (isOwnershipRefusal(err)) throw err;
-    reason = errorText2(err);
+    reason = errorText3(err);
   }
   run.issues.push(
     makeIssue("checkout", "cart-not-emptied", `could not empty the probe cart after ${variantId} (${reason}); remove its items from the shop admin`)
@@ -25519,11 +26388,11 @@ async function confirmEmpty(run) {
   let cart;
   try {
     const res = await run.ctx.fetcher.get(`${run.base}/cart`, { headers: run.headers });
-    cart = isOk2(res.status) ? parseJson2(res.body)?.value : void 0;
+    cart = isOk3(res.status) ? parseJson3(res.body)?.value : void 0;
   } catch {
     cart = void 0;
   }
-  if (!isRecord2(cart)) {
+  if (!isRecord3(cart)) {
     run.issues.push(makeIssue("checkout", "cart-not-emptied", "could not read the probe cart to confirm it is empty; check the shop admin"));
     return;
   }
@@ -25534,23 +26403,23 @@ async function confirmEmpty(run) {
   }
 }
 function pickItem(cart, variantId) {
-  if (!isRecord2(cart) || !Array.isArray(cart.items)) return void 0;
+  if (!isRecord3(cart) || !Array.isArray(cart.items)) return void 0;
   const items = cart.items;
-  const index2 = items.findIndex((item2) => isRecord2(item2) && String(item2.id) === variantId);
+  const index2 = items.findIndex((item2) => isRecord3(item2) && String(item2.id) === variantId);
   const item = items[index2];
-  return isRecord2(item) ? { item, index: index2 } : void 0;
+  return isRecord3(item) ? { item, index: index2 } : void 0;
 }
 var NOT_ABOUT_THE_PRODUCT = /nonce|cookie|auth|permission|forbidden|rate_limit|too_many|invalid_json|missing_param/i;
 function refusalCode(status, body) {
   if (!REFUSAL_STATUSES.has(status)) return void 0;
-  if (!isRecord2(body) || typeof body.code !== "string") return void 0;
+  if (!isRecord3(body) || typeof body.code !== "string") return void 0;
   return NOT_ABOUT_THE_PRODUCT.test(body.code) ? void 0 : body.code;
 }
 function idsOf2(target) {
   const ids = { variantId: target.variantId };
-  if (nonEmptyString2(target.productId)) ids.productId = target.productId;
-  if (nonEmptyString2(target.sku)) ids.sku = target.sku;
-  if (nonEmptyString2(target.url)) ids.url = target.url;
+  if (nonEmptyString3(target.productId)) ids.productId = target.productId;
+  if (nonEmptyString3(target.sku)) ids.sku = target.sku;
+  if (nonEmptyString3(target.url)) ids.url = target.url;
   return ids;
 }
 function ownershipIssue() {
@@ -25646,9 +26515,12 @@ var DEFAULT_CLOAKING_PROFILES = {
 };
 function endpoint(value, name, store) {
   if (value === void 0 || typeof value === "boolean") return;
-  fields(value, name, ["url"]);
-  if (typeof value.url !== "string") throw new ConfigError(`${name}.url must be a URL; use ${name}: true to discover it`);
-  httpUrl2(value.url, `${name}.url`, store);
+  fields(value, name, ["url", "agentProfile"]);
+  if (value.url !== void 0) httpUrl2(value.url, `${name}.url`, store);
+  if (value.agentProfile !== void 0) {
+    const profile2 = httpUrl2(value.agentProfile, `${name}.agentProfile`);
+    if (profile2.protocol !== "https:") throw new ConfigError(`${name}.agentProfile must be an https URL`);
+  }
 }
 function checkConfig(config, rules, { partial = false } = {}) {
   fields(config, "config", [
@@ -25828,7 +26700,8 @@ function decodeSegment(segment) {
     return segment;
   }
 }
-var endpointUrl = (option, store) => typeof option === "object" ? new URL(option.url, store).href : void 0;
+var endpointUrl = (option, store) => typeof option === "object" && option.url !== void 0 ? new URL(option.url, store).href : void 0;
+var agentProfile = (option) => typeof option === "object" ? option.agentProfile : void 0;
 async function runAudit(config, deps = {}) {
   const now = deps.now ?? (() => /* @__PURE__ */ new Date());
   const log = deps.log ?? (() => {
@@ -25934,14 +26807,15 @@ async function runAudit(config, deps = {}) {
   }
   if (config.ucp || config.mcp) {
     const refs = productRefs(pageUrls, sightings, key);
+    const from = platform === "woocommerce" || platform === "shopify" ? platform : void 0;
     if (config.ucp) {
-      const ucp = await collectUcp(ctx, { url: ucpUrl, products: refs });
+      const ucp = await collectUcp(ctx, { url: ucpUrl, agentProfile: agentProfile(config.ucp), platform: from, products: refs });
       sightings.push(...ucp.sightings);
       issues.push(...ucp.issues);
       log("info", `ucp: ${ucp.sightings.length} statements`);
     }
     if (config.mcp) {
-      const mcp = await collectMcp(ctx, { url: mcpUrl, products: refs });
+      const mcp = await collectMcp(ctx, { url: mcpUrl, agentProfile: agentProfile(config.mcp), platform: from, products: refs });
       sightings.push(...mcp.sightings);
       issues.push(...mcp.issues);
       log("info", `mcp: ${mcp.sightings.length} statements`);
@@ -26186,6 +27060,8 @@ async function demo(clean2, html3, color) {
         platform: "woocommerce",
         checkout: { shipTo: { country: "US", postcode: "94103" } },
         cloaking: true,
+        ucp: true,
+        mcp: true,
         ownershipToken: OWNERSHIP_TOKEN2,
         maxAge: { feed: "24h" },
         sample: 50,
