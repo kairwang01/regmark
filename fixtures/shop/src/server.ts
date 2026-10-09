@@ -6,8 +6,10 @@
 
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { gzipSync } from 'node:zlib';
 import { buildShop, clientOf } from './shop.ts';
 import type { Shop } from './shop.ts';
+import { renderAcpFeed } from './render-acp.ts';
 import { renderFeed } from './render-feed.ts';
 import { renderHome, renderProductPage, renderRobots, renderSitemap } from './render-page.ts';
 import { createStoreApi } from './store-api.ts';
@@ -20,6 +22,7 @@ const HTML = 'text/html; charset=utf-8';
 const TEXT = 'text/plain; charset=utf-8';
 const XML = 'application/xml; charset=utf-8';
 const JSON_TYPE = 'application/json; charset=utf-8';
+const JSONL = 'application/jsonl; charset=utf-8';
 
 export type RunningShop = {
   origin: string;
@@ -100,6 +103,10 @@ async function route(req: IncomingMessage, res: ServerResponse, env: Env): Promi
   if (path === '/robots.txt') return send(res, 200, TEXT, renderRobots(origin));
   if (path === '/sitemap.xml') return send(res, 200, XML, renderSitemap(shop, origin));
   if (path === '/feeds/google.xml') return send(res, 200, XML, renderFeed(shop, origin));
+  if (path === '/feeds/acp.jsonl') return send(res, 200, JSONL, renderAcpFeed(shop, origin));
+  // The compressed file OpenAI asks for, served the way a static host serves
+  // a .gz file: as a file of its own type, with no Content-Encoding.
+  if (path === '/feeds/acp.jsonl.gz') return send(res, 200, 'application/gzip', gzipSync(renderAcpFeed(shop, origin)));
   if (path === '/.well-known/regmark.txt') return send(res, 200, TEXT, `regmark-verify=${shop.token}\n`);
   if (path === '/__regmark/expected.json') {
     const body = JSON.stringify({ mode: shop.mode, defects: shop.defects, expected: shop.expected });
@@ -177,7 +184,7 @@ async function readBody(req: IncomingMessage): Promise<{ tooLarge: boolean; text
   return { tooLarge, text: Buffer.concat(chunks).toString('utf8') };
 }
 
-function send(res: ServerResponse, status: number, type: string, body: string): void {
+function send(res: ServerResponse, status: number, type: string, body: string | Buffer): void {
   res.writeHead(status, { 'content-type': type });
   res.end(body);
 }

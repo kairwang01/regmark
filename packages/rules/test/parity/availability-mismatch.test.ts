@@ -112,3 +112,18 @@ test('read-only: a surface agrees with the page when any of its variants matches
   ]);
   assert.deepEqual(findings, []);
 });
+
+test('an ACP feed that says in stock when the platform says out of stock is reported', () => {
+  const findings = run(rule, [platform('TEE-M', 'out_of_stock'), variant('acp', { aliases: ['TEE-M'], url: URL }, { availability: stock('acp', 'in_stock') })]);
+  assert.deepEqual(brief(findings), [{ variant: 'TEE-M', surface: 'acp' }]);
+});
+
+test("an ACP feed's unknown is silent: it asserts nothing about stock", () => {
+  for (const datum of ['in_stock', 'out_of_stock'] as const) {
+    assert.deepEqual(run(rule, [platform('TEE-M', datum), variant('acp', { aliases: ['TEE-M'], url: URL }, { availability: stock('acp', 'unknown') })]), []);
+  }
+});
+
+test("an ACP feed's pre-order is buyable, so it agrees with a platform in stock", () => {
+  assert.deepEqual(run(rule, [platform('TEE-M', 'in_stock'), variant('acp', { aliases: ['TEE-M'], url: URL }, { availability: stock('acp', 'preorder') })]), []);
+});

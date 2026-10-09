@@ -106,6 +106,43 @@ export function parseRfc3339(text: string): number | undefined {
   });
 }
 
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const ISO_DATETIME = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?([Zz]|[+-]\d{2}:?\d{2})$/;
+
+/**
+ * An ISO 8601 date, "2026-10-07", or a date-time with a zone, as a sale window
+ * in an Agentic Commerce Protocol feed may write one: "2026-10-07T23:59Z" or
+ * "2026-10-07T23:59:59-05:00". Seconds and the colon in the offset are
+ * optional; the zone is not, for the same reason as in RFC 3339. A date alone
+ * is returned as the instant its UTC day starts, flagged so the caller can
+ * read it as a whole day.
+ */
+export function parseIso8601(text: string): { time: number; dateOnly: boolean } | undefined {
+  const trimmed = text.trim();
+  const date = ISO_DATE.exec(trimmed);
+  if (date) {
+    const time = instant({ year: Number(date[1]), month: Number(date[2]), day: Number(date[3]), hour: 0, minute: 0, second: 0, ms: 0, offset: 0 });
+    return time === undefined ? undefined : { time, dateOnly: true };
+  }
+  const m = ISO_DATETIME.exec(trimmed);
+  if (!m) return undefined;
+  const zone = m[8]!;
+  const offset = zone === 'Z' || zone === 'z' ? 0 : numericOffset(zone);
+  if (offset === undefined) return undefined;
+  const ms = m[7] ? Number(m[7].slice(0, 3).padEnd(3, '0')) : 0;
+  const time = instant({
+    year: Number(m[1]),
+    month: Number(m[2]),
+    day: Number(m[3]),
+    hour: Number(m[4]),
+    minute: Number(m[5]),
+    second: Number(m[6] ?? 0),
+    ms,
+    offset,
+  });
+  return time === undefined ? undefined : { time, dateOnly: false };
+}
+
 /** The text as an ISO 8601 instant in UTC, or undefined when it is not a date in its syntax. */
 export function readDate(date: Pick<DateText, 'text' | 'syntax'>): string | undefined {
   const time = date.syntax === 'rfc822' ? parseRfc822(date.text) : parseRfc3339(date.text);

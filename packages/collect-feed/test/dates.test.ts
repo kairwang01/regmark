@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { parseRfc3339, parseRfc822, readDate } from '../src/dates.ts';
+import { parseIso8601, parseRfc3339, parseRfc822, readDate } from '../src/dates.ts';
 
 const at = (iso: string) => Date.parse(iso);
 
@@ -109,5 +109,24 @@ describe('readDate', () => {
   it('does not read one syntax as the other', () => {
     assert.equal(readDate({ text: '2026-09-30T08:00:00Z', syntax: 'rfc822' }), undefined);
     assert.equal(readDate({ text: 'Wed, 30 Sep 2026 08:00:00 GMT', syntax: 'rfc3339' }), undefined);
+  });
+});
+
+describe('ISO 8601 dates in a sale window', () => {
+  it('reads a date alone as the start of its UTC day, and says it was a date', () => {
+    assert.deepStrictEqual(parseIso8601('2026-10-07'), { time: at('2026-10-07T00:00:00Z'), dateOnly: true });
+  });
+
+  it('reads a date-time with seconds or without, and an offset with a colon or without', () => {
+    assert.deepStrictEqual(parseIso8601('2026-10-07T23:59:59Z'), { time: at('2026-10-07T23:59:59Z'), dateOnly: false });
+    assert.equal(parseIso8601('2026-10-07T23:59Z')?.time, at('2026-10-07T23:59:00Z'));
+    assert.equal(parseIso8601('2016-02-24T11:07+0100')?.time, at('2016-02-24T10:07:00Z'));
+    assert.equal(parseIso8601('2026-10-07T18:59:59.250-05:00')?.time, at('2026-10-07T23:59:59.250Z'));
+  });
+
+  it('reads nothing without a zone, and nothing that is not a real date', () => {
+    for (const text of ['2026-10-07T23:59', '2026-10-07T23:59:59', '2026-02-30', '2026-10-07T24:00Z', '2026-10-7', '07/10/2026', '']) {
+      assert.equal(parseIso8601(text), undefined, text);
+    }
   });
 });

@@ -27,3 +27,35 @@ export function at(id: string, field: string): string {
 export function observation<T>(value: T, raw: string, locator: string) {
   return { value, raw, surface: 'feed' as const, locator, fetchedAt: FETCHED_AT };
 }
+
+// ── Agentic Commerce Protocol feeds ─────────────────────────────────────
+
+export const ACP_URL = 'https://shop.example/feeds/acp.jsonl';
+
+/**
+ * The minimal record from OpenAI's products spec, which carries every field
+ * the OpenAI format requires. Tests spread it and change what they test.
+ */
+export const MUG = {
+  item_id: 'MUG-350-BLUE',
+  title: 'Blue ceramic mug, 350 mL',
+  description: 'Dishwasher-safe glazed ceramic mug with a handle.',
+  url: 'https://example.com/products/mug-blue',
+  brand: 'Northline',
+  seller_name: 'Northline Home',
+  image_url: 'https://example.com/images/mug-blue.jpg',
+  price: '18.00 USD',
+  availability: 'in_stock',
+} as const;
+
+/** JSON Lines: one record per line. */
+export const jsonl = (...records: object[]): string => records.map((r) => JSON.stringify(r)).join('\n');
+
+/** Locator of one field of one flat record, as the ACP collector writes it. */
+export function acpAt(id: string, field: string, feedUrl = ACP_URL): string {
+  return `${feedUrl}#item[id="${id}"]/${field}`;
+}
+
+export function acpObservation<T>(value: T, raw: string, locator: string) {
+  return { value, raw, surface: 'acp' as const, locator, fetchedAt: FETCHED_AT };
+}

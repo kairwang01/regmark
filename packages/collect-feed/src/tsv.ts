@@ -7,11 +7,12 @@ export function headerName(cell: string): string {
 }
 
 /**
- * Splits tab-separated text into rows of cells. A cell that opens with a
- * double quote runs to the closing quote, may hold tabs and newlines, and
- * writes a literal quote as "".
+ * Splits delimited text into rows of cells: tab-separated by default, or
+ * comma-separated for CSV. A cell that opens with a double quote runs to the
+ * closing quote, may hold delimiters and newlines, and writes a literal quote
+ * as "".
  */
-export function splitRows(text: string): string[][] {
+export function splitRows(text: string, delimiter: '\t' | ',' = '\t'): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = '';
@@ -36,7 +37,7 @@ export function splitRows(text: string): string[][] {
     }
     if (ch === '"' && cell === '') {
       quoted = true;
-    } else if (ch === '\t') {
+    } else if (ch === delimiter) {
       row.push(cell);
       cell = '';
     } else if (ch === '\n' || ch === '\r') {
@@ -50,7 +51,7 @@ export function splitRows(text: string): string[][] {
     }
     i += 1;
   }
-  if (quoted) throw new Error('tab-separated feed has an unterminated quoted cell');
+  if (quoted) throw new Error(`${delimiter === ',' ? 'comma' : 'tab'}-separated feed has an unterminated quoted cell`);
   if (cell !== '' || row.length > 0) {
     row.push(cell);
     rows.push(row);

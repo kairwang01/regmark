@@ -17,7 +17,8 @@ function money(amount: string, currency: string | null): string {
   return xml(currency === null ? amount : `${amount} ${currency}`);
 }
 
-function variantUrl(origin: string, p: ProductSays, v: VariantSays): string {
+/** The variant's page: the product page with its options in the query, as WooCommerce links a variation. */
+export function variantUrl(origin: string, p: ProductSays, v: VariantSays): string {
   const base = `${origin}/product/${p.slug}/`;
   const entries = Object.entries(v.options);
   if (entries.length === 0) return base;

@@ -26,6 +26,8 @@ test('malformed nested configuration is rejected before any network request', as
     [{ page: { descriptionSelectors: 'p' } }, /list of non-empty strings/],
     [{ pages: ['ftp://shop.example/product'] }, /http or https/],
     [{ feed: 'https://user:password@shop.example/feed' }, /URL credentials/],
+    [{ acpFeed: 'sftp://shop.example/products.jsonl.gz' }, /acpFeed must be an http or https URL/],
+    [{ acpFeed: 42 }, /acpFeed/],
     [{ sample: Number.MAX_SAFE_INTEGER + 1 }, /sample must be a whole number/],
     [{ budget: [] }, /budget must be an object/],
     [{ feed: '/feed.xml', maxAge: '24h' }, /maxAge must be an object/],

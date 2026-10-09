@@ -65,3 +65,20 @@ test('an end date with no datum for the price is silent', () => {
     [],
   );
 });
+
+test('an ACP sale still offered at the datum price after the end of its window is reported, the end read as an instant', () => {
+  // The ACP collector keeps a timed window's end as a UTC instant, since its sale dates schedule nothing.
+  const findings = run(rule, [
+    variant('checkout', { variantId: '101', sku: 'TEE-M', url: URL }, { price: price('checkout', '39.00') }),
+    variant('acp', { aliases: ['TEE-M'], url: URL }, { price: price('acp', '39.00'), priceValidUntil: until('acp', '2026-10-07T23:59:59.000Z') }),
+  ]);
+  assert.deepEqual(brief(findings), [{ variant: 'TEE-M', surface: 'acp' }]);
+});
+
+test('an ACP sale whose window ends later today is silent', () => {
+  const findings = run(rule, [
+    variant('checkout', { variantId: '101', sku: 'TEE-M', url: URL }, { price: price('checkout', '39.00') }),
+    variant('acp', { aliases: ['TEE-M'], url: URL }, { price: price('acp', '39.00'), priceValidUntil: until('acp', '2026-10-09T23:59:59.000Z') }),
+  ]);
+  assert.deepEqual(findings, []);
+});

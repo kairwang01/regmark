@@ -6,7 +6,7 @@ a first audit. This reference describes the current source; `--strict` and the
 expanded nested-field validation are new since the `v0.1.0` release. Use the
 reference from your release tag when running a pinned bundle.
 
-[Commands](#command-line) · [Config fields](#fields) · [Sampling](#which-products-get-audited) · [Baseline](#which-surface-is-believed) · [Budgets](#budgets) · [Request policy](#how-requests-are-made) · [Ownership](#writes) · [Cloaking check](#the-cloaking-check)
+[Commands](#command-line) · [Config fields](#fields) · [ACP feed](#the-acp-feed) · [Sampling](#which-products-get-audited) · [Baseline](#which-surface-is-believed) · [Budgets](#budgets) · [Request policy](#how-requests-are-made) · [Ownership](#writes) · [Cloaking check](#the-cloaking-check)
 
 Unknown flags, unknown top-level or nested config fields, invalid field types,
 invalid HTTP(S) URLs and unknown platform, surface or budget rule names stop
@@ -33,7 +33,8 @@ line replaces it.
 
 | Flag | Value | Default | What it does |
 |---|---|---|---|
-| `--feed` | URL, absolute or relative to the store | none | Reads a product feed in Google Merchant format: RSS, Atom or tab-separated text. The file is read once, whole. |
+| `--feed` | URL, absolute or relative to the store | none | Reads a product feed in Google Merchant format: RSS, Atom or tab-separated text. The file is read once, whole. A file published gzipped, such as `feed.xml.gz`, is unpacked. |
+| `--acp-feed` | URL, absolute or relative to the store | none | Reads an Agentic Commerce Protocol product feed, the catalogue a shopping agent sells from, as the `acp` surface. See [The ACP feed](#the-acp-feed). The file is read once, whole, and unpacked when it is gzipped. |
 | `--platform` | `woocommerce`, `shopify`, `auto` or `none` | `auto` | The storefront API to read. `auto` tries WooCommerce, then Shopify. `none` reads no storefront API. The pages, and the feed if one is given, are still read. |
 | `--checkout` | switch | off | Runs the checkout probe. Needs `--platform woocommerce` or `auto`, and a verified ownership token. Any other platform value stops the run with exit 2. With `auto`, a shop that is not WooCommerce gets a `probe-unsupported` issue and no probe. |
 | `--cloaking` | switch | off | Runs the cloaking check: each sampled page that was read is fetched again once per client profile, by default as a desktop browser and as a shopping agent, and `content.cloaking` compares what each was told. Needs a verified ownership token. See [The cloaking check](#the-cloaking-check). |
@@ -81,8 +82,9 @@ given. Without a terminal, nothing is printed unless `--verbose` is given.
 
 Audits a fixture shop that ships with the tool. The shop runs on a local port
 for the length of the run. The settings are fixed in code: the WooCommerce
-platform, a feed with a `maxAge` of 24 hours, the checkout probe, the cloaking
-check and a sample of 50. The config file is not read.
+platform, a feed with a `maxAge` of 24 hours, the shop's ACP feed
+(`/feeds/acp.jsonl.gz`), the checkout probe, the cloaking check and a sample of
+50. The config file is not read.
 
 | Flag | Default | What it does |
 |---|---|---|
@@ -184,8 +186,9 @@ export default {
 A flag replaces the file's value, one field at a time:
 
 - `store`: a URL on the command line replaces the file's `store`.
-- `platform`, `feed`, `sample`, `seed` and `datum`: a flag replaces the file's
-  value. `--page` replaces the file's `pages`.
+- `platform`, `feed`, `acpFeed`, `sample`, `seed` and `datum`: a flag replaces
+  the file's value (`--acp-feed` replaces `acpFeed`). `--page` replaces the
+  file's `pages`.
 - `strict`: `--strict` sets it to true. No CLI flag sets a configured true value back to false.
 - `budget`: the file's entries are kept. Each rule given with `--budget`
   replaces its own entry.
@@ -215,6 +218,7 @@ exit code 2 and a message naming the mistake.
 |---|---|---|---|
 | `store` | string, URL | none. Required from the file or the command line. | The shop's origin, such as `https://shop.example`. Only the origin is used; a path is dropped. Must be http or https. |
 | `feed` | string | none | A feed URL, absolute or relative to `store`. Same as `--feed`. The feed's host is added to the host allowlist. |
+| `acpFeed` | string | none | An Agentic Commerce Protocol feed URL, absolute or relative to `store`. Same as `--acp-feed`. Its host is added to the host allowlist. |
 | `platform` | `"woocommerce"`, `"shopify"`, `"auto"` or `"none"` | `auto` when neither the flag nor the file sets it | The storefront API to read. `"none"` reads no API. Same as `--platform`. |
 | `checkout` | object: `{ "shipTo": ShipTo }` | off | Turns on the checkout probe. The key's presence in the file is enough. |
 | `checkout.shipTo` | `ShipTo` | `{ "country": "US" }` from `--checkout`. Required in the file. | The destination for the probe. Sent to the shop as the shipping and billing address. |
@@ -284,11 +288,64 @@ not in the file; set `REGMARK_OWNERSHIP_TOKEN` in the environment instead.
 }
 ```
 
+## The ACP feed
+
+`--acp-feed` reads the product feed a shop sends to a shopping agent under the
+[Agentic Commerce Protocol](https://github.com/agentic-commerce-protocol/agentic-commerce-protocol).
+The protocol has no public feed URL: OpenAI takes the file by SFTP or through
+its API, so point `--acp-feed` at a copy you publish, such as the file your
+export job uploads, served from the shop's host or another host you name.
+
+The format is told from the file, not from its name, and the file may be
+gzipped (`.jsonl.gz`, `.csv.gz`, `.tsv.gz`), as OpenAI asks for it:
+
+- **OpenAI's file-upload format** as JSON Lines, CSV or TSV: one row per item
+  or variant, with `item_id`, `url`, `price` written as `79.99 USD`,
+  `sale_price`, `availability` (`in_stock`, `out_of_stock`, `pre_order`,
+  `backorder`, `unknown`), `gtin`, `mpn`, `brand`, `group_id`,
+  `variant_dict`, `shipping_price` or the `shipping` tuple, and
+  `accepts_returns`, `return_deadline_in_days` and `return_policy`. The
+  [products spec](https://developers.openai.com/commerce/specs/file-upload/products)
+  defines them.
+- **OpenAI's Google-compatible profile**, a CSV or TSV file with Google's
+  column names (`id`, `link`, `image_link`, `item_group_id`) and spellings
+  (`preorder`). A delimited file with a `url` column is read in the format
+  above; one with `link` and no `url`, in this profile.
+- **The protocol's Product and Variant model**, as `products.jsonl` (one
+  Product per line) or a `{"products": [...]}` document as the Feed API
+  returns it. Prices are whole minor units: `{"amount": 1999, "currency": "USD"}`.
+
+Parquet, which OpenAI also accepts, is not read; nor are XML and a bare JSON
+array, which no ACP format uses. Each stops the read with a `parse-error` that
+says what to export instead.
+
+The ACP formats are not Google's, and are read by their own rules:
+
+- A valid `sale_price` is the price whatever its dates say: in this contract
+  sale dates schedule nothing. The end of its `sale_price_effective_date` is
+  kept, so [`price.sale-expired`](rules.md#pricesale-expired-warn) can report
+  a sale price still offered after the date it says it ends. A sale that is
+  not above zero, below `price` and in its currency is not used, and the
+  regular price is.
+- A row with `is_eligible_search=false` is held back from agents on purpose.
+  It still lists its variant, so `variant.missing` does not fire for it, but
+  none of its facts are compared.
+- Money is read only as the spec writes it, `79.99 USD`. `$79.99` and
+  `1,299.00 USD` are reported as unreadable rather than guessed at. An amount
+  with no currency is kept, for `price.currency-ambiguous` to report.
+- A value the format would reject, such as an availability it does not
+  accept, is reported with the issue code the
+  [report format](report-format.md#collection-issue-codes) lists, and left out.
+
+No ACP format states when the file was generated, so for
+[`--max-age acp=...`](#scope) an ACP feed is dated only by the
+`Last-Modified` header of the response.
+
 ## Which products get audited
 
 This is a sampled audit, not a full crawler. Pages are parsed from the server
 response with no browser or JavaScript execution. Shopify collection is
-read-only; UCP, ACP and MCP collectors are not implemented. A fact that cannot
+read-only; UCP and MCP collectors are not implemented. A fact that cannot
 be extracted cannot be compared. Review `surfaces`, `counts`, skipped rules
 and `issues` together when assessing the result.
 
@@ -317,8 +374,8 @@ The steps below run in this order. Each one uses the output of the one before.
 5. **Details.** For WooCommerce, a second read fetches the variations of the
    sampled products only. For Shopify, the listing read in step 2 already has
    the variants, so there is no second read.
-6. **Feed.** With `--feed`, the feed is read once. Its items are kept when their
-   product URL matches the URL of a sampled product. An item whose product the
+6. **Feeds.** With `--feed`, `--acp-feed` or both, each feed is read once. Its
+   items are kept when their product URL matches the URL of a sampled product. An item whose product the
    platform does not list at all is a stray. Up to `sample` distinct stray
    product URLs are added to the page list. Strays are not chosen by the seed.
 7. **Page list.** The first rule that applies decides the list:
@@ -375,8 +432,8 @@ surface in the list that gave an observation of that fact. The default list is
   conditions under "When no backend was read".
 - `--datum` and the file's `datum` replace the default list. The names are
   `page`, `jsonld`, `microdata`, `opengraph`, `feed`, `ucp`, `acp`, `mcp`,
-  `platform` and `checkout`; any other name stops the run. `ucp`, `acp` and
-  `mcp` are accepted, but no collector reads them in this release.
+  `platform` and `checkout`; any other name stops the run. `ucp` and `mcp` are
+  accepted, but no collector reads them in this release.
 
 ## Budgets
 
@@ -410,7 +467,7 @@ Every request goes through one fetcher. The table gives the values in
 |---|---|---|---|
 | Pacing: `minIntervalMs` | `1000` ms | yes, `fetch.minIntervalMs` | The minimum gap between two requests to one host. It applies to every request, including robots.txt and redirects. Hosts are compared with `www.` removed. |
 | Timeout: `timeoutMs` | `15000` ms | yes, `fetch.timeoutMs` | The time allowed for one request. |
-| Size: `maxBytes` | `5242880` bytes (5 MiB) | no | The largest response body accepted, counted after decompression. |
+| Size: `maxBytes` | `5242880` bytes (5 MiB) | no | The largest response body accepted, counted after decompression, including the unpacking of a feed published as a gzip file. |
 | Redirects: `maxRedirects` | `5` | no | The most redirects followed for a read. |
 | robots.txt: `respectRobots` | `true` | yes, `fetch.respectRobots` | Whether robots.txt is obeyed for reads. |
 | Robots agent: `agentToken` | `Regmark` | no | The name matched against robots.txt groups. |
@@ -419,7 +476,8 @@ Every request goes through one fetcher. The table gives the values in
 
 ### Host allowlist
 
-A run contacts only the store's host, and the feed's host when `feed` is set.
+A run contacts only the store's host, and the host of each feed that is set,
+`feed` and `acpFeed`.
 A page or sitemap outside that allowlist is refused with `foreign-host`.
 Redirects outside the allowlist are not followed: the caller receives the 3xx
 response. Redirects between allowed origins may be followed, but caller-supplied

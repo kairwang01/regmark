@@ -32,7 +32,7 @@ Usage
 
 Surfaces (audit)
   --feed <url>              product feed in Google Merchant format
-  --acp-feed <url>          product feed in Agentic Commerce Protocol format
+  --acp-feed <url>          agent product feed (ACP): JSON Lines, CSV or TSV, may be .gz
   --platform <name>         woocommerce, shopify, auto or none; default auto
   --ucp                     read the shop's UCP catalogue (/.well-known/ucp)
   --mcp                     read the shop's storefront MCP server
@@ -205,6 +205,7 @@ async function demo(clean: boolean, html: string | undefined, color: boolean): P
       {
         store: shop.origin,
         feed: '/feeds/google.xml',
+        acpFeed: '/feeds/acp.jsonl.gz',
         platform: 'woocommerce',
         checkout: { shipTo: { country: 'US', postcode: '94103' } },
         cloaking: true,

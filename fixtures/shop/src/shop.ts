@@ -53,10 +53,17 @@ export type ProductSays = {
   jsonldShape: TruthProduct['jsonldShape'];
   /** What a person sees. Price and stock are those of the first variant. */
   page: { title: string; descriptionHtml: string; reviews: string[]; price: string; listPrice: string | null; stock: Stock };
+  /** The description as plain text, as the agent feed states it. */
+  description: string;
   og: { price: string; currency: string; stock: Stock };
   /** May list fewer variants than exist. */
   jsonld: VariantSays[];
   feed: VariantSays[];
+  /**
+   * The Agentic Commerce Protocol feed, for shopping agents. Like the Google
+   * feed it states shipping and no return policy.
+   */
+  acp: VariantSays[];
   /** What the storefront API reports. It never carries GTIN, shipping or return policy. */
   platform: VariantSays[];
   checkout: CheckoutTruth[];
@@ -150,9 +157,11 @@ function cleanProduct(p: TruthProduct, now: Date): ProductSays {
       listPrice: first.listPrice,
       stock: firstStock,
     },
+    description: p.description,
     og: { price: first.price, currency: CURRENCY, stock: firstStock },
     jsonld: p.variants.map((v) => says(v, now)),
     feed: p.variants.map((v) => ({ ...says(v, now), returnDays: null })),
+    acp: p.variants.map((v) => ({ ...says(v, now), returnDays: null })),
     platform: p.variants.map((v) => ({ ...says(v, now), gtin: null, shipping: null, returnDays: null })),
     checkout: p.variants.map((v) => ({ sku: v.sku, wooId: v.wooId, price: v.price, refuses: v.inStock ? null : 'out_of_stock' })),
   };
@@ -276,6 +285,7 @@ const DEFECTS: Applied[] = [
       const p = product(shop, 'enamel-mug');
       variant(p.jsonld, 'MUG-WHT').shipping = null;
       variant(p.feed, 'MUG-WHT').shipping = null;
+      variant(p.acp, 'MUG-WHT').shipping = null;
     },
   },
   {
@@ -379,6 +389,22 @@ const DEFECTS: Applied[] = [
     apply(shop) {
       const p = product(shop, 'rain-shell');
       p.agent = { ...p.agent, reviews: [...p.page.reviews, AGENT_ONLY_REVIEW] };
+    },
+  },
+  {
+    id: 'D21',
+    summary: 'The ACP feed still offers SOCK-M at its old price; the cart charges more',
+    expected: [{ rule: 'price.mismatch', product: 'trail-socks', variant: 'SOCK-M', surface: 'acp' }],
+    apply(shop) {
+      variant(product(shop, 'trail-socks').acp, 'SOCK-M').price = '10.00';
+    },
+  },
+  {
+    id: 'D22',
+    summary: 'The ACP feed tells shopping agents BEANIE-NVY is in stock; it is sold out',
+    expected: [{ rule: 'availability.mismatch', product: 'wool-beanie', variant: 'BEANIE-NVY', surface: 'acp' }],
+    apply(shop) {
+      variant(product(shop, 'wool-beanie').acp, 'BEANIE-NVY').stock = 'in_stock';
     },
   },
 ];
