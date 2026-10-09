@@ -32,5 +32,7 @@ export type EndpointOptions = {
    * the bare number its storefront API gives, so the ids are written that way.
    */
   platform?: 'woocommerce' | 'shopify';
+  /** The version of Regmark asking, given to an MCP server as clientInfo. */
+  clientVersion?: string;
   products: readonly ProductRef[];
 };

@@ -1,6 +1,6 @@
 {
   "name": "@regmark/collect-protocol",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Reads the endpoints shopping agents call directly: a shop's UCP catalogue and its storefront MCP server.",
   "license": "Apache-2.0",
   "author": "Kair Wang",

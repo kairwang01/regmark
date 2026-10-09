@@ -43,7 +43,7 @@ export type FetchPolicy = {
 };
 
 export const DEFAULT_POLICY: Omit<FetchPolicy, 'hosts'> = {
-  userAgent: 'Regmark/0.1.0 (+https://github.com/kairwang01/regmark)',
+  userAgent: 'Regmark/0.0.0-dev (+https://github.com/kairwang01/regmark)',
   agentToken: 'Regmark',
   minIntervalMs: 1000,
   timeoutMs: 15_000,

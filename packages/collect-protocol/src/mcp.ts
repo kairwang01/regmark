@@ -30,7 +30,6 @@ export const MCP_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'] as const;
 /** Where a shop's storefront MCP server answers, by the convention Shopify set. */
 export const MCP_PATH = '/api/mcp';
 
-const CLIENT = { name: 'regmark', version: '0.1.0' };
 
 /** tools/list may be paged. A catalogue server has a handful of tools; this many pages is plenty. */
 const MAX_TOOL_PAGES = 5;
@@ -44,7 +43,7 @@ export async function collectMcp(ctx: CollectContext, options: EndpointOptions):
   const session = rpcSession('mcp', url);
   const fail = (code: string, message: string): CollectResult => ({ sightings: [], issues: [issue('mcp', code, message, url)] });
 
-  const init = await rpc(ctx, session, 'initialize', { protocolVersion: MCP_VERSIONS[0], capabilities: {}, clientInfo: CLIENT });
+  const init = await rpc(ctx, session, 'initialize', { protocolVersion: MCP_VERSIONS[0], capabilities: {}, clientInfo: { name: 'regmark', version: options.clientVersion ?? '0.0.0-dev' } });
   if (!init.ok) return { sightings: [], issues: [init.issue] };
   const version = isRecord(init.result) ? init.result.protocolVersion : undefined;
   if (typeof version !== 'string' || !(MCP_VERSIONS as readonly string[]).includes(version)) {

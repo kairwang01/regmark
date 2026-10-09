@@ -338,7 +338,7 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
       log('info', `ucp: ${ucp.sightings.length} statements`);
     }
     if (config.mcp) {
-      const mcp = await collectMcp(ctx, { url: mcpUrl, agentProfile: agentProfile(config.mcp), platform: from, products: refs });
+      const mcp = await collectMcp(ctx, { url: mcpUrl, agentProfile: agentProfile(config.mcp), platform: from, clientVersion: deps.version ?? DEFAULT_VERSION, products: refs });
       sightings.push(...mcp.sightings);
       issues.push(...mcp.issues);
       log('info', `mcp: ${mcp.sightings.length} statements`);

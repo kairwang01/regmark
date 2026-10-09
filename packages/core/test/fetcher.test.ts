@@ -69,7 +69,7 @@ test('get() decompresses, and honours a declared legacy charset', async () => {
 });
 
 test('get() identifies itself', async () => {
-  assert.match((await local().get(`${origin}/ua`)).body, /^Regmark\/\d+\.\d+\.\d+ \(\+https:\/\//);
+  assert.match((await local().get(`${origin}/ua`)).body, /^Regmark\/\d+\.\d+\.\d+(-[\w.]+)? \(\+https:\/\//);
 });
 
 test('a private address is refused unless the run opted in', async () => {

@@ -22,7 +22,7 @@ describe('collectMcp: the conversation', () => {
 
     assert.deepEqual(result.issues, []);
     assert.deepEqual(methods(calls), ['initialize', 'notifications/initialized', 'tools/list', 'tools/call']);
-    assert.deepEqual((calls[0]!.body as { params: unknown }).params, { protocolVersion: MCP_VERSIONS[0], capabilities: {}, clientInfo: { name: 'regmark', version: '0.1.0' } });
+    assert.deepEqual((calls[0]!.body as { params: unknown }).params, { protocolVersion: MCP_VERSIONS[0], capabilities: {}, clientInfo: { name: 'regmark', version: '0.0.0-dev' } });
     assert.equal(calls[0]!.headers.accept, 'application/json, text/event-stream');
     assert.equal(calls[0]!.headers['mcp-session-id'], undefined);
     for (const later of calls.slice(1)) {
