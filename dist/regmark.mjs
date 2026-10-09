@@ -2894,7 +2894,7 @@ import { pipeline, Writable } from "node:stream";
 import { TextDecoder as TextDecoder2 } from "node:util";
 import zlib from "node:zlib";
 var DEFAULT_POLICY = {
-  userAgent: "Regmark/0.1.0 (+https://github.com/kairwang01/regmark)",
+  userAgent: "Regmark/0.0.0-dev (+https://github.com/kairwang01/regmark)",
   agentToken: "Regmark",
   minIntervalMs: 1e3,
   timeoutMs: 15e3,
@@ -25792,7 +25792,6 @@ function offHost(found, endpoint2) {
 // packages/collect-protocol/src/mcp.ts
 var MCP_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26"];
 var MCP_PATH = "/api/mcp";
-var CLIENT = { name: "regmark", version: "0.1.0" };
 var MAX_TOOL_PAGES = 5;
 var SESSION_ID = /^[\x21-\x7e]{1,512}$/;
 async function collectMcp(ctx, options) {
@@ -25800,7 +25799,7 @@ async function collectMcp(ctx, options) {
   const url = options.url ?? new URL(MCP_PATH, ctx.store).href;
   const session = rpcSession("mcp", url);
   const fail2 = (code2, message) => ({ sightings: [], issues: [issue("mcp", code2, message, url)] });
-  const init2 = await rpc(ctx, session, "initialize", { protocolVersion: MCP_VERSIONS[0], capabilities: {}, clientInfo: CLIENT });
+  const init2 = await rpc(ctx, session, "initialize", { protocolVersion: MCP_VERSIONS[0], capabilities: {}, clientInfo: { name: "regmark", version: options.clientVersion ?? "0.0.0-dev" } });
   if (!init2.ok) return { sightings: [], issues: [init2.issue] };
   const version2 = isRecord(init2.result) ? init2.result.protocolVersion : void 0;
   if (typeof version2 !== "string" || !MCP_VERSIONS.includes(version2)) {
@@ -27168,7 +27167,7 @@ async function runAudit(config, deps = {}) {
       log("info", `ucp: ${ucp.sightings.length} statements`);
     }
     if (config.mcp) {
-      const mcp = await collectMcp(ctx, { url: mcpUrl, agentProfile: agentProfile(config.mcp), platform: from, products: refs });
+      const mcp = await collectMcp(ctx, { url: mcpUrl, agentProfile: agentProfile(config.mcp), platform: from, clientVersion: deps.version ?? DEFAULT_VERSION, products: refs });
       sightings.push(...mcp.sightings);
       issues.push(...mcp.issues);
       log("info", `mcp: ${mcp.sightings.length} statements`);
@@ -27278,7 +27277,7 @@ Exit code: 0 within budget, 1 over budget, 2 the audit could not run or read no 
 Documentation: ${DOCS}
 `;
 async function version() {
-  if (true) return "0.1.0";
+  if (true) return "0.2.0";
   const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   return pkg.version;
 }
