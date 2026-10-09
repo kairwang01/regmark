@@ -26,7 +26,7 @@ const AVAILABILITY: ReadonlyMap<string, Availability> = new Map([
 
 const OPTION_FIELDS = ['color', 'size', 'material', 'pattern'] as const;
 
-function resolveUrl(link: string, feedUrl: string): string | undefined {
+export function resolveUrl(link: string, feedUrl: string): string | undefined {
   try {
     return new URL(link, feedUrl).href;
   } catch {
