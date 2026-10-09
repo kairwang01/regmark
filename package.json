@@ -42,12 +42,12 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "node scripts/build.mjs",
+    "bundle": "node scripts/bundle.mjs",
     "test": "node --test \"packages/*/test/**/*.test.ts\" \"fixtures/*/test/**/*.test.ts\"",
     "bench": "node --test \"e2e/**/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json",
     "regmark": "node packages/cli/src/bin.ts",
-    "prepublishOnly": "pnpm build && pnpm typecheck && pnpm test && pnpm bench"
+    "prepublishOnly": "pnpm typecheck && pnpm test && pnpm bench && node scripts/bundle.mjs --check"
   },
   "devDependencies": {
     "@types/node": "^22.18.0",

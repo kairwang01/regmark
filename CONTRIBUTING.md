@@ -27,7 +27,7 @@ dependencies are installed, the tests and the benchmark need no network access
 and no API keys.
 
 `dist/regmark.mjs` is the whole tool bundled into one file, for `npx` and for
-the GitHub Action. It is rebuilt with `pnpm build` when a release is cut. Leave
+the GitHub Action. It is rebuilt with `pnpm bundle` when a release is cut. Leave
 it out of pull requests: a 2 MB generated file makes a diff unreadable.
 
 ## How the code is laid out

@@ -192,7 +192,7 @@ empties the cart after every item, and says so loudly if it could not.
 
 Version 0.1.0. It works, it is young, and its rules have met few real shops.
 
-- 684 unit tests and a type check.
+- Close to 700 unit tests and a type check.
 - A benchmark that runs the tool against the two shops in this repository. One
   has 19 seeded defects that should give 22 findings; the tool reports those 22
   and nothing else. The other has none; the tool reports nothing.
