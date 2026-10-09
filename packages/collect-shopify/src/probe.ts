@@ -19,14 +19,19 @@ import { errorText, isOk, isOwnershipRefusal, isRecord, nonEmptyString, parseJso
 export type ShopifyProbeTarget = { variantId: string; productId?: string; sku?: string; url?: string };
 /**
  * `city` is accepted for symmetry with the WooCommerce probe and not sent:
- * Shopify's rate endpoints take a postcode, a country and a province.
+ * Shopify's rate endpoints take a postcode, a country and a province. `wait`
+ * is how the rate check pauses between checks, for tests to replace.
  */
-export type ShopifyProbeOptions = { shipTo: { country: string; postcode?: string; state?: string; city?: string } };
+export type ShopifyProbeOptions = {
+  shipTo: { country: string; postcode?: string; state?: string; city?: string };
+  wait?: (ms: number) => Promise<void>;
+};
 
 type Run = {
   ctx: CollectContext;
   origin: string;
   shipTo: ShopifyProbeOptions['shipTo'];
+  wait: (ms: number) => Promise<void>;
   cookies: CookieJar;
   /** The cart's currency, read when it was opened. Every amount in the cart is in it. */
   currency: string | null;
@@ -50,9 +55,13 @@ class NotTheCart extends Error {}
 const CHALLENGE_STATUSES = new Set([403, 429, 430]);
 
 // Shopify works out rates in the background and answers null until they are
-// ready. The fetcher spaces requests to one host by its minimum interval, a
-// second by default, so this gives the shop several seconds.
-const RATE_CHECKS = 4;
+// ready. Each check waits longer than the last, whatever the fetcher's own
+// spacing (which may be none): the shop gets several seconds, and the checks
+// are not the burst of identical requests bot protection watches for.
+const RATE_WAITS_MS = [500, 1000, 2000, 4000] as const;
+const RATE_CHECKS = RATE_WAITS_MS.length;
+
+const sleep = (ms: number) => new Promise<void>((wake) => setTimeout(wake, ms));
 
 export async function probeShopifyCart(
   ctx: CollectContext,
@@ -64,6 +73,7 @@ export async function probeShopifyCart(
     ctx,
     origin: ctx.store.origin,
     shipTo: options.shipTo,
+    wait: options.wait ?? sleep,
     cookies: new Map(),
     currency: null,
     dirty: false,
@@ -151,6 +161,12 @@ async function probeTarget(run: Run, target: ShopifyProbeTarget): Promise<void> 
 
   const refusal = cartRefusal(added.status, body);
   if (refusal !== undefined) {
+    // A product sold only by subscription refuses a plain add, which the
+    // probe makes: that says nothing about whether it can be bought.
+    if (await needsSellingPlan(run, target)) {
+      run.issues.push(issue('probe-failed', `${target.variantId}: the cart refused it (${refusal}), and it is sold only by subscription, which the probe does not add; whether it can be bought was not judged`));
+      return;
+    }
     run.sightings.push({
       surface: 'checkout',
       scope: 'variant',
@@ -160,6 +176,30 @@ async function probeTarget(run: Run, target: ShopifyProbeTarget): Promise<void> 
     return;
   }
   throw new Error(`add.js returned HTTP ${added.status}`);
+}
+
+/**
+ * Whether the target's product says it can be bought only with a selling
+ * plan, from the product's own /products/<handle>.js. products.json does not
+ * say. Asked only after the cart refused an add; when the answer cannot be
+ * had, the refusal stands as the cart gave it.
+ */
+async function needsSellingPlan(run: Run, target: ShopifyProbeTarget): Promise<boolean> {
+  let path: string;
+  try {
+    path = new URL(target.url ?? '').pathname.replace(/\/$/, '');
+  } catch {
+    return false;
+  }
+  if (!/^\/products\/[^/]+$/.test(path)) return false;
+  try {
+    const res = await read(run, `${run.origin}${path}.js`);
+    const product = isOk(res.status) ? parseJson(res.body)?.value : undefined;
+    return isRecord(product) && product.requires_selling_plan === true;
+  } catch (err) {
+    if (isOwnershipRefusal(err)) throw err;
+    return false;
+  }
 }
 
 async function addedToCart(run: Run, target: ShopifyProbeTarget, added: Fetched, body: unknown): Promise<void> {
@@ -213,6 +253,7 @@ async function estimateShipping(run: Run, target: ShopifyProbeTarget, sighting: 
   const prepared = await write(run, `${run.origin}/cart/prepare_shipping_rates.json?${query}`);
   let answer = rateAnswer(prepared, 'prepare_shipping_rates.json');
   for (let check = 0; answer.kind === 'pending' && check < RATE_CHECKS; check++) {
+    await run.wait(RATE_WAITS_MS[check]!);
     answer = rateAnswer(await read(run, `${run.origin}/cart/async_shipping_rates.json?${query}`), 'async_shipping_rates.json');
   }
 
@@ -257,15 +298,18 @@ function rateAnswer(res: Fetched, step: 'prepare_shipping_rates.json' | 'async_s
 /**
  * The shop answered the rate request with errors. Errors keyed by an address
  * field, such as {"zip": ["is not valid for United States"]}, refuse the
- * destination. Errors under "error" are Shopify failing to calculate, which
- * says nothing about where the shop ships.
+ * destination. Errors under "error", and the {status, message, description}
+ * envelope Shopify's Ajax endpoints answer any failure with, are the request
+ * failing, which says nothing about where the shop ships.
  */
+const GENERAL_ERROR_KEYS: ReadonlySet<string> = new Set(['error', 'errors', 'status', 'message', 'description']);
+
 function rateRefusal(body: Record<string, unknown>, status: number, country: string, target: ShopifyProbeTarget): CollectIssue {
   const general: string[] = [];
   const fields: string[] = [];
   for (const [key, value] of Object.entries(body)) {
     const texts = (Array.isArray(value) ? value : [value]).filter(nonEmptyString);
-    if (key === 'error' || key === 'errors') general.push(...texts);
+    if (GENERAL_ERROR_KEYS.has(key)) general.push(...texts);
     else fields.push(...texts.map((text) => `${key} ${text}`));
   }
   if (fields.length > 0) return issue('no-shipping-rate', `no shipping rate for ${country} on ${labelOf(target)}: ${fields.join('; ')}`);

@@ -19,7 +19,12 @@ const OWNERSHIP = 'the checkout probe needs proof that you control this shop; se
 const SESSION = 'cart=c1; _shopify_essential=:s1:';
 
 const trace = (calls: readonly Call[]) => calls.map((c) => `${c.method} ${c.path}`);
-const probe = (shop: FakeCart, targets: ShopifyProbeTarget[], shipTo = SHIP_TO) => probeShopifyCart(makeContext(shop), targets, { shipTo });
+/** The pauses the rate check asked for, in the last probe run. The tests do not sleep through them. */
+let waits: number[] = [];
+const probe = (shop: FakeCart, targets: ShopifyProbeTarget[], shipTo = SHIP_TO) => {
+  waits = [];
+  return probeShopifyCart(makeContext(shop), targets, { shipTo, wait: async (ms) => void waits.push(ms) });
+};
 
 /** The probe stops at the cart: no request may go near checkout or payment. */
 function neverPastTheCart(shop: FakeCart): void {
@@ -236,6 +241,8 @@ test('rates that are not ready yet are checked again until they are', async () =
   assert.deepEqual(result.issues, []);
   assert.deepEqual(result.sightings[0]?.shipping?.value, { free: false, cost: usd(62000), country: 'US' });
   assert.equal(shop.calls.filter((c) => c.path === '/cart/async_shipping_rates.json').length, 3);
+  // Each check waits longer than the last, whatever the fetcher's spacing.
+  assert.deepEqual(waits, [500, 1000, 2000]);
 });
 
 test('rates still not ready after four checks fail the estimate, and keep the price', async () => {
@@ -246,6 +253,7 @@ test('rates still not ready after four checks fail the estimate, and keep the pr
     { surface: 'checkout', code: 'probe-failed', message: '101: shipping estimate failed: the rates were not ready after 4 checks' },
   ]);
   assert.equal(shop.calls.filter((c) => c.path === '/cart/async_shipping_rates.json').length, 4);
+  assert.deepEqual(waits, [500, 1000, 2000, 4000]);
   const [sighting] = result.sightings;
   assert.equal(sighting?.shipping, undefined);
   assert.deepEqual(sighting?.price?.value, usd(390000));
@@ -681,4 +689,47 @@ test('a write refused for ownership mid-run discards everything gathered', async
     sightings: [],
     issues: [{ surface: 'checkout', code: 'ownership-not-verified', message: OWNERSHIP }],
   });
+});
+
+// ── Subscriptions and error envelopes ───────────────────────────────────
+
+test('a refusal of a product sold only by subscription is not taken as the product being unbuyable', async () => {
+  const shop = createFakeCart({
+    canned: {
+      '/cart/add.js': [{ status: 422, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 422, message: 'Cart Error', description: 'Variant can only be purchased with a selling plan.' }) }],
+      '/products/classic-tee.js': [{ status: 200, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 10, handle: 'classic-tee', requires_selling_plan: true }) }],
+    },
+  });
+  const result = await probe(shop, [TEE_M]);
+  assert.deepEqual(result.sightings, []);
+  assert.deepEqual(result.issues.map((i) => i.code), ['probe-failed']);
+  assert.match(result.issues[0]!.message, /^101: the cart refused it \(Variant can only be purchased with a selling plan\.\), and it is sold only by subscription/);
+  const read = shop.calls.find((c) => c.path === '/products/classic-tee.js');
+  assert.equal(read?.method, 'GET');
+  assert.equal(read?.asOwner, true);
+});
+
+test('a refusal of a product that needs no selling plan still counts as the cart refusing it', async () => {
+  const shop = createFakeCart({
+    canned: {
+      '/cart/add.js': [{ status: 422, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 422, message: 'Cart Error', description: 'Classic Tee is sold out.' }) }],
+      '/products/classic-tee.js': [{ status: 200, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 10, handle: 'classic-tee', requires_selling_plan: false }) }],
+    },
+  });
+  const result = await probe(shop, [TEE_M]);
+  assert.deepEqual(result.sightings.map((s) => s.purchasable?.value), [false]);
+  assert.deepEqual(result.issues, []);
+});
+
+test('a rate request failing with Shopify\'s error envelope is the request failing, not the destination refused', async () => {
+  const shop = createFakeCart({
+    canned: {
+      '/cart/prepare_shipping_rates.json': [
+        { status: 400, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'bad_request', message: 'Parameter Missing or Invalid', description: 'Required parameter missing or invalid: shipping_address' }) },
+      ],
+    },
+  });
+  const result = await probe(shop, [TEE_M]);
+  assert.deepEqual(result.issues.map((i) => i.code), ['probe-failed']);
+  assert.match(result.issues[0]!.message, /^101: the shop could not calculate shipping rates: bad_request; Parameter Missing or Invalid; Required parameter/);
 });
