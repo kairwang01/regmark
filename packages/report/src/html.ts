@@ -159,6 +159,8 @@ td.budget{font:400 .78rem/1.9 var(--mono);color:var(--muted);white-space:nowrap}
 .group>h3{display:flex;align-items:baseline;gap:.8rem;flex-wrap:wrap;font:500 .95rem/1.4 var(--mono)}
 .group>h3 small{font:400 .88rem/1.4 var(--sans);color:var(--muted)}
 .group>p.more{color:var(--muted);font-size:.88rem;margin:.6rem 0 0}
+.group>p.help{max-width:46rem;margin:.55rem 0 0;color:var(--text-2);font-size:.92rem;line-height:1.6}
+.group>p.help b{color:var(--text);font-weight:600}
 ol.proofs{list-style:none;margin:.7rem 0 0;padding:0;border-top:1px solid var(--rule-2)}
 .proof{display:grid;grid-template-columns:11rem minmax(0,1fr);gap:1rem;padding:.9rem 0;border-bottom:1px solid var(--rule)}
 .subject{margin:0;font:600 .86rem/1.5 var(--mono);overflow-wrap:anywhere}
@@ -213,6 +215,7 @@ export function renderHtml(result: AuditResult, options: HtmlOptions = {}): stri
       const rest = all.length - Math.min(all.length, max);
       return `<div class="group" id="rule-${esc(r.id)}">
 <h3>${esc(r.id)}<small>${esc(r.summary)}</small></h3>
+${r.help ? `<p class="help"><b>Usual cause and fix.</b> ${esc(r.help)}</p>` : ''}
 <ol class="proofs">${all.slice(0, max).map(finding).join('')}</ol>
 ${rest > 0 ? `<p class="more">and ${rest} more, in the JSON report.</p>` : ''}
 </div>`;

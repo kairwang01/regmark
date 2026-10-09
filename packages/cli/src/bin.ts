@@ -3,27 +3,35 @@
 // summary, writes any report files asked for, and sets the exit code. All the
 // judgement lives in runAudit; nothing here decides what a finding is.
 
+import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { parseArgs } from 'node:util';
-import { renderHtml, renderJson, renderJUnit, renderSarif, renderTerminal } from '@regmark/report';
+import { parseArgs, styleText } from 'node:util';
+import { renderHtml, renderJson, renderJUnit, renderMarkdown, renderSarif, renderTerminal } from '@regmark/report';
 import { allRules } from '@regmark/rules';
-import type { Surface } from '@regmark/core';
+import type { AuditResult, Surface } from '@regmark/core';
 import { ConfigError, runAudit } from './audit.ts';
 import type { AuditConfig } from './audit.ts';
+
+// Set by the bundler. When the sources are run directly it is read from package.json.
+declare const __REGMARK_VERSION__: string | undefined;
+
+const DOCS = 'https://github.com/kairwang01/regmark/blob/main/docs';
 
 const USAGE = `regmark: check that what a shop tells machines matches what its checkout charges
 
 Usage
-  regmark audit <store-url> [options]
-  regmark rules
-  regmark --version
+  regmark demo                      audit a bundled shop that has 19 defects planted in it
+  regmark audit <store-url>         audit a real shop
+  regmark explain <rule>            the usual cause of a finding, and the fix
+  regmark rules                     list every rule
+  regmark init <store-url>          write a starter regmark.config.json
 
-Surfaces
+Surfaces (audit)
   --feed <url>              product feed in Google Merchant format
-  --platform <name>         read the catalogue from the storefront API: woocommerce or shopify
-  --checkout                run the checkout probe (woocommerce; needs an ownership token)
+  --platform <name>         woocommerce, shopify, auto or none; default auto
+  --checkout                run the checkout probe (WooCommerce; needs an ownership token)
   --ship-to <CC[:postcode]> destination for the checkout probe, default US
   --page <url>              audit this product page; repeatable
 
@@ -34,23 +42,25 @@ Scope
   --budget <rule=n>         allow up to n findings for a rule; repeatable
 
 Output
-  --json <file>   --sarif <file>   --junit <file>   --html <file>
+  --html <file>   --json <file>   --sarif <file>   --junit <file>   --markdown <file>
   --quiet                   do not print the summary
   --no-color
-  --verbose                 progress on stderr
+  --verbose                 every step on stderr
 
 Other
-  --config <file>           JSON, or a module with a default export
+  --config <file>           JSON, or a module with a default export; ./regmark.config.json is read if present
   --interval <ms>           gap between requests to one host, default 1000
   --allow-private-network   for a shop on your own machine or network
 
 The ownership token is read from REGMARK_OWNERSHIP_TOKEN. Put the line
 regmark-verify=<token> in /.well-known/regmark.txt on the shop.
 
-Exit code: 0 within budget, 1 budget exceeded, 2 the audit could not run.
+Exit code: 0 within budget, 1 over budget, 2 the audit could not run.
+Documentation: ${DOCS}
 `;
 
 async function version(): Promise<string> {
+  if (typeof __REGMARK_VERSION__ === 'string') return __REGMARK_VERSION__;
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
   return pkg.version;
 }
@@ -84,6 +94,121 @@ const wholeNumber = (flag: string, text: string): number => {
   return Number(text);
 };
 
+const out = (text: string) => process.stdout.write(text);
+const note = (text: string) => process.stderr.write(text);
+const dim = (text: string) => (process.stderr.isTTY && !process.env.NO_COLOR ? styleText('dim', text) : text);
+
+/** The anchor GitHub gives a rule's heading in docs/rules.md. */
+const ruleAnchor = (id: string, severity: string) => `${id.replace(/\./g, '')}-${severity}`;
+
+function explain(id: string | undefined): number {
+  const rule = allRules.find((r) => r.id === id);
+  if (!rule) {
+    note(id ? `regmark: no rule called "${id}"\n\n` : 'regmark: which rule?\n\n');
+    for (const r of allRules) note(`  ${r.id}\n`);
+    return 2;
+  }
+  out(`\n  ${rule.id}  (${rule.severity})\n\n  ${rule.summary}\n`);
+  if (rule.help) out(`\n  ${wrap(rule.help, 76).join('\n  ')}\n`);
+  out(`\n  Exactly when it fires: ${DOCS}/rules.md#${ruleAnchor(rule.id, rule.severity)}\n\n`);
+  return 0;
+}
+
+function wrap(text: string, width: number): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(/\s+/)) {
+    if (line && line.length + 1 + word.length > width) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = line ? `${line} ${word}` : word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+async function init(target: string | undefined): Promise<number> {
+  if (!target) throw new ConfigError('which shop? regmark init <store-url>');
+  const store = new URL(target).origin;
+  const file = 'regmark.config.json';
+  if (existsSync(file)) throw new ConfigError(`${file} already exists; edit it, or delete it and run init again`);
+  const config = { store, platform: 'auto', sample: 25, budget: {} };
+  await writeFile(file, `${JSON.stringify(config, null, 2)}\n`);
+  out(`
+  Wrote ${file}
+
+  Next:
+    regmark audit                      read ${new URL(store).host} and report
+    regmark audit --html report.html   and keep a report to share
+
+  To let Regmark compare against real checkout totals (WooCommerce):
+    1. choose a token of 16 or more letters and digits
+    2. serve the line  regmark-verify=<token>  at ${store}/.well-known/regmark.txt
+    3. REGMARK_OWNERSHIP_TOKEN=<token> regmark audit --checkout
+
+  Every option: ${DOCS}/configuration.md
+
+`);
+  return 0;
+}
+
+type Outputs = { json?: string; sarif?: string; junit?: string; html?: string; markdown?: string };
+
+async function writeReports(result: AuditResult, files: Outputs): Promise<void> {
+  const renderers: Array<[string | undefined, () => string]> = [
+    [files.json, () => renderJson(result)],
+    [files.sarif, () => renderSarif(result)],
+    [files.junit, () => renderJUnit(result)],
+    [files.html, () => renderHtml(result)],
+    [files.markdown, () => renderMarkdown(result)],
+  ];
+  for (const [file, render] of renderers) {
+    if (file) await writeFile(file, render());
+  }
+}
+
+/** A run against the shop that ships inside the tool: the fastest way to see what a report looks like. */
+async function demo(clean: boolean, html: string | undefined, color: boolean): Promise<number> {
+  const { OWNERSHIP_TOKEN, startShop } = await import('@regmark/fixture-shop');
+  const shop = await startShop({ mode: clean ? 'clean' : 'misprint' });
+  let result: AuditResult;
+  try {
+    result = await runAudit(
+      {
+        store: shop.origin,
+        feed: '/feeds/google.xml',
+        platform: 'woocommerce',
+        checkout: { shipTo: { country: 'US', postcode: '94103' } },
+        ownershipToken: OWNERSHIP_TOKEN,
+        sample: 50,
+        fetch: { allowPrivateNetwork: true, minIntervalMs: 0 },
+      },
+      { version: await version() },
+    );
+  } finally {
+    await shop.close();
+  }
+  // The shop ran on a local port; give it a name a reader can keep in mind.
+  const named = JSON.parse(
+    JSON.stringify(result)
+      .replaceAll(shop.origin, 'https://demo-shop.example')
+      .replaceAll(new URL(shop.origin).host, 'demo-shop.example'),
+  ) as AuditResult;
+
+  out(renderTerminal(named, { color }));
+  const file = html ?? 'regmark-demo.html';
+  await writeFile(file, renderHtml(named));
+  out(
+    clean
+      ? `  That was the same shop with nothing wrong in it: every surface agrees with the checkout.\n`
+      : `  That was a shop bundled with Regmark, with 19 defects planted in it. Each one is a\n  way real shops go wrong; run  regmark explain price.mismatch  to read about one.\n`,
+  );
+  out(`\n  The full report is in ${file}\n  Now a real one:  regmark audit https://your-shop.example\n\n`);
+  return 0;
+}
+
 async function main(argv: string[]): Promise<number> {
   const { values, positionals } = parseArgs({
     args: argv,
@@ -102,44 +227,64 @@ async function main(argv: string[]): Promise<number> {
       sarif: { type: 'string' },
       junit: { type: 'string' },
       html: { type: 'string' },
+      markdown: { type: 'string' },
       quiet: { type: 'boolean' },
       'no-color': { type: 'boolean' },
       verbose: { type: 'boolean' },
       config: { type: 'string' },
       interval: { type: 'string' },
       'allow-private-network': { type: 'boolean' },
+      clean: { type: 'boolean' },
       version: { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
     },
   });
 
   if (values.version) {
-    process.stdout.write(`${await version()}\n`);
+    out(`${await version()}\n`);
     return 0;
   }
   const [command, target] = positionals;
-  if (values.help || !command) {
-    process.stdout.write(USAGE);
-    return command || values.help ? 0 : 2;
-  }
-  if (command === 'rules') {
-    const width = Math.max(...allRules.map((r) => r.id.length));
-    for (const r of allRules) process.stdout.write(`${r.id.padEnd(width)}  ${r.severity.padEnd(5)}  ${r.summary}\n`);
+  if (values.help) {
+    out(USAGE);
     return 0;
   }
+  if (!command) {
+    // Asked for nothing: that is a mistake, so the usage goes where mistakes go.
+    note(USAGE);
+    return 2;
+  }
+  // FORCE_COLOR is the usual way to ask for colour when output is not a terminal, as in a CI log.
+  const color = !values['no-color'] && !process.env.NO_COLOR && (process.stdout.isTTY === true || Boolean(process.env.FORCE_COLOR));
+
+  if (command === 'rules') {
+    const width = Math.max(...allRules.map((r) => r.id.length));
+    for (const r of allRules) out(`${r.id.padEnd(width)}  ${r.severity.padEnd(5)}  ${r.summary}\n`);
+    return 0;
+  }
+  if (command === 'explain') return explain(target);
+  if (command === 'init') return init(target);
+  if (command === 'demo') return demo(values.clean === true, values.html, color);
   if (command !== 'audit') throw new ConfigError(`unknown command "${command}"; try regmark --help`);
 
-  const fromFile = values.config ? await loadConfig(values.config) : {};
+  const configFile = values.config ?? (existsSync('regmark.config.json') ? 'regmark.config.json' : undefined);
+  const fromFile = configFile ? await loadConfig(configFile) : {};
   const store = target ?? fromFile.store;
   if (!store) throw new ConfigError('which shop? regmark audit <store-url>');
-  if (values.platform && values.platform !== 'woocommerce' && values.platform !== 'shopify') throw new ConfigError(`unknown platform "${values.platform}"; this release supports woocommerce and shopify`);
+  const platforms = ['woocommerce', 'shopify', 'auto', 'none'];
+  if (values.platform && !platforms.includes(values.platform)) {
+    throw new ConfigError(`unknown platform "${values.platform}"; choose one of ${platforms.join(', ')}`);
+  }
+  const platformChoice = values.platform ?? fromFile.platform ?? 'auto';
+  // Checked even without --checkout: a mistyped flag should not pass silently.
+  const shipTo = values['ship-to'] ? parseShipTo(values['ship-to']) : undefined;
 
   const config: AuditConfig = {
     ...fromFile,
     store,
+    platform: platformChoice === 'none' ? undefined : (platformChoice as AuditConfig['platform']),
     ...(values.feed ? { feed: values.feed } : {}),
-    ...(values.platform ? { platform: values.platform as 'woocommerce' | 'shopify' } : {}),
-    ...(values.checkout ? { checkout: { shipTo: parseShipTo(values['ship-to'] ?? 'US') } } : {}),
+    ...(values.checkout ? { checkout: { shipTo: shipTo ?? { country: 'US' } } } : {}),
     ...(values.page?.length ? { pages: values.page } : {}),
     ...(values.sample ? { sample: wholeNumber('--sample', values.sample) } : {}),
     ...(values.seed ? { seed: wholeNumber('--seed', values.seed) } : {}),
@@ -153,26 +298,28 @@ async function main(argv: string[]): Promise<number> {
     },
   };
 
+  // An audit paces itself at a request a second, so a minute of silence is
+  // normal. On a terminal, say what is happening; in a pipe, say nothing
+  // unless asked.
+  const progress = values.verbose || (process.stderr.isTTY === true && !values.quiet);
   const result = await runAudit(config, {
     version: await version(),
-    log: values.verbose ? (level, message) => process.stderr.write(`[${level}] ${message}\n`) : undefined,
+    log: progress ? (level, message) => (level === 'debug' && !values.verbose ? undefined : note(dim(`  ${message}\n`))) : undefined,
   });
 
-  const files: Array<[string | undefined, () => string]> = [
-    [values.json, () => renderJson(result)],
-    [values.sarif, () => renderSarif(result)],
-    [values.junit, () => renderJUnit(result)],
-    [values.html, () => renderHtml(result)],
-  ];
-  for (const [file, render] of files) {
-    if (file) await writeFile(file, render());
-  }
+  await writeReports(result, values);
   if (!values.quiet) {
-    const color = !values['no-color'] && !process.env.NO_COLOR && process.stdout.isTTY === true;
-    process.stdout.write(renderTerminal(result, { color }));
+    out(renderTerminal(result, { color }));
+    if (result.findings.length > 0) out(`  Usual cause and fix for a rule:  regmark explain ${result.findings[0]!.rule}\n\n`);
   }
   return result.ok ? 0 : 1;
 }
+
+// `regmark audit … | head` closes the pipe early. That is not an error worth a stack trace.
+process.stdout.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EPIPE') process.exit(0);
+  throw err;
+});
 
 main(process.argv.slice(2)).then(
   (code) => {

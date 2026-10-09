@@ -58,6 +58,7 @@ export default defineRule({
   id: 'content.instruction-like',
   severity: 'error',
   summary: 'Product text addressed to a language model rather than to a shopper.',
+  help: 'Remove it and find out how it got there. In a review it is user content to moderate. In a description it came from a supplier\'s data or from someone with access they should not have.',
   check(product: ProductNode): Finding[] {
     const findings: Finding[] = [];
     for (const sample of product.text) {

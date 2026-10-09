@@ -12,6 +12,7 @@ export default defineRule({
   id: 'price.tax-basis',
   severity: 'warn',
   summary: 'Two surfaces state prices exactly one tax rate apart: one includes tax and the other does not.',
+  help: 'One surface includes tax and the other does not. Decide which one the shop publishes and make the feed, the structured data and the page agree. A shop that shows tax-free prices to visitors abroad will see this whenever it is crawled from abroad.',
   check(product, ctx) {
     const findings: Finding[] = [];
     const report = (actual: Observation<Money>, expected: Observation<Money>, rate: number, variant?: string) => {

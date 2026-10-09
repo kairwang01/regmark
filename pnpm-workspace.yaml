@@ -1,3 +1,8 @@
 packages:
   - packages/*
   - fixtures/*
+
+# esbuild ships its binary as an optional dependency. Its install script only
+# double-checks that binary, so it does not need to run.
+allowBuilds:
+  esbuild: false

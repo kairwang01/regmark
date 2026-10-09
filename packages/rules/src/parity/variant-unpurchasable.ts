@@ -5,6 +5,7 @@ export default defineRule({
   id: 'variant.unpurchasable',
   severity: 'error',
   summary: 'Everything says the variant can be bought, and the cart refuses it.',
+  help: 'Something the storefront does not show is blocking the sale: a minimum quantity, a purchasable flag, a region or shipping restriction, a required option. Lift it, or stop advertising the variant as available.',
   needsAll: ['checkout'],
   check(product) {
     const findings: Finding[] = [];

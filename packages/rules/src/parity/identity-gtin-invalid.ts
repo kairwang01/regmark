@@ -31,6 +31,7 @@ export default defineRule({
   id: 'identity.gtin-invalid',
   severity: 'warn',
   summary: 'A GTIN that fails its check digit, has an impossible length, or is given to two different variants.',
+  help: 'Check the number against the packaging. A failed check digit is usually a typing error, and one GTIN on several variants is usually copy and paste. An empty field is better than an invented number.',
   check(product, ctx) {
     const index = gtinIndex(ctx.graph);
     return product.variants.flatMap((offer): Finding[] => {

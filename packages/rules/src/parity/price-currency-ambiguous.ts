@@ -11,6 +11,7 @@ export default defineRule({
   id: ID,
   severity: 'error',
   summary: 'A machine-readable price with no currency, or with a different currency from the one the shop charges in.',
+  help: 'Put priceCurrency on every Offer, next to the price itself. When a multi-currency plugin converts prices in the browser, the structured data and meta tags keep the base currency: have the plugin rewrite them too, or serve one currency per URL.',
   check(product, ctx) {
     const findings: Finding[] = [];
 

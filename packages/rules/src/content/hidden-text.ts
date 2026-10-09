@@ -52,6 +52,7 @@ export default defineRule({
   id: 'content.hidden-text',
   severity: 'warn',
   summary: 'Text kept in the page but deliberately kept from the eye.',
+  help: 'Remove the hidden block. If it is left over from old search-engine practice it now counts against the shop. If nobody on the team put it there, treat it as a sign that the site has been tampered with.',
   check(product: ProductNode): Finding[] {
     const findings: Finding[] = [];
     for (const sample of product.text) {

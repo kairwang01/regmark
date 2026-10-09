@@ -224,6 +224,8 @@ export type Rule = {
   severity: Severity;
   /** One line, shown in reports next to the id. */
   summary: string;
+  /** The usual cause and where to fix it, in two or three sentences. Shown beside the findings. */
+  help?: string;
   /** The rule is skipped unless at least one of these was collected. */
   needsAny?: readonly Surface[];
   /** The rule is skipped unless every one of these was collected. */
@@ -236,6 +238,8 @@ export type RuleSummary = {
   id: string;
   severity: Severity;
   summary: string;
+  /** Copied from the rule, so a report can explain a finding without loading the rule catalogue. */
+  help?: string;
   findings: number;
   /** Largest count that still passes. null means unlimited. */
   budget: number | null;

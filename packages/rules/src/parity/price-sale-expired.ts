@@ -38,6 +38,7 @@ export default defineRule({
   id: ID,
   severity: 'warn',
   summary: 'A surface says the price stopped applying on a date already past, yet it is still the price.',
+  help: 'The sale was extended and its end date was not. Move priceValidUntil, or the feed\'s sale_price_effective_date, to the real end of the sale, or end the sale price.',
   check(product, ctx) {
     const findings: Finding[] = [];
     const now = ctx.now;

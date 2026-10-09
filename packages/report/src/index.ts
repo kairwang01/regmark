@@ -5,3 +5,5 @@ export { renderSarif } from './sarif.ts';
 export { renderJUnit } from './junit.ts';
 export { renderHtml } from './html.ts';
 export type { HtmlOptions } from './html.ts';
+export { renderMarkdown } from './markdown.ts';
+export type { MarkdownOptions } from './markdown.ts';

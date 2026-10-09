@@ -54,6 +54,7 @@ export default defineRule({
   id: 'content.invisible-chars',
   severity: 'warn',
   summary: 'Characters that render as nothing and can carry text a person never sees.',
+  help: 'Strip zero-width and tag characters from product text when it is imported. They come along with text copied from documents, and they can also be used to get text past a human reviewer.',
   check(product: ProductNode): Finding[] {
     const findings: Finding[] = [];
     for (const sample of product.text) {

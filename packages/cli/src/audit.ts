@@ -17,6 +17,7 @@ import type { ProbeTarget } from '@regmark/collect-woo';
 import { buildGraph, createFetcher, DEFAULT_DATUM, FetchRefused, runRules, urlKey, verifyOwnership } from '@regmark/core';
 import type { AuditResult, CollectContext, CollectIssue, FetchPolicy, Rule, Sighting, Surface } from '@regmark/core';
 import { allRules } from '@regmark/rules';
+import { detectPlatform } from './detect.ts';
 
 export type ShipTo = { country: string; postcode?: string; state?: string; city?: string };
 
@@ -25,8 +26,12 @@ export type AuditConfig = {
   store: string;
   /** Product feed URL, absolute or relative to the store. */
   feed?: string;
-  /** Read the catalogue from the shop's storefront API. */
-  platform?: 'woocommerce' | 'shopify';
+  /**
+   * Read the catalogue from the shop's storefront API. 'auto' finds out which
+   * platform the shop runs on with one or two reads. Left unset, no backend is
+   * read and the audit works from the pages alone.
+   */
+  platform?: 'woocommerce' | 'shopify' | 'auto';
   /** Run the checkout probe. WooCommerce only in this release; needs a verified ownership token. */
   checkout?: { shipTo: ShipTo };
   /** Product page URLs to audit. Without this the sample comes from the platform, the sitemap or the feed. */
@@ -139,7 +144,9 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
   }
   if (store.protocol !== 'http:' && store.protocol !== 'https:') throw new ConfigError('store must be an http or https URL');
   store = new URL(store.origin);
-  if (config.checkout && config.platform !== 'woocommerce') throw new ConfigError('the checkout probe needs platform "woocommerce" in this release');
+  if (config.checkout && config.platform !== 'woocommerce' && config.platform !== 'auto') {
+    throw new ConfigError('the checkout probe needs platform "woocommerce" in this release');
+  }
   const size = config.sample ?? 25;
   if (!Number.isInteger(size) || size < 1) throw new ConfigError('sample must be a positive whole number');
 
@@ -156,10 +163,16 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
   //    for the sample because it lists what the shop sells, not what some
   //    other surface claims it sells.
   type Parent = { id: number; permalink: string; variants: number };
+  let platform = config.platform === 'auto' ? undefined : config.platform;
+  if (config.platform === 'auto') {
+    platform = (await detectPlatform(ctx)) ?? undefined;
+    log('info', platform ? `platform: ${platform}` : 'platform: none recognised, reading pages only');
+  }
+
   let parents: Parent[] = [];
   let chosen: Parent[] = [];
   const pick = (all: Parent[]): Parent[] => sample(all.filter((p) => p.variants <= (config.maxVariants ?? 30)), size, config.seed ?? 1);
-  if (config.platform === 'woocommerce') {
+  if (platform === 'woocommerce') {
     const listing = await collectWooCatalog(ctx, { select: () => false });
     issues.push(...listing.issues);
     parents = listing.parents.map((p) => ({ id: p.id, permalink: p.permalink, variants: Math.max(1, p.variationIds.length) }));
@@ -170,7 +183,7 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
       sightings.push(...catalog.sightings);
       issues.push(...catalog.issues.filter((i) => !listing.issues.some((l) => l.code === i.code && l.locator === i.locator)));
     }
-  } else if (config.platform === 'shopify') {
+  } else if (platform === 'shopify') {
     // One request lists products and their variants together, so the listing
     // is read once and the sample is cut from what it returned.
     const listing = await collectShopifyCatalog(ctx, {});
@@ -180,7 +193,7 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
     const keep = new Set(chosen.map((p) => String(p.id)));
     sightings.push(...listing.sightings.filter((s) => s.ids.productId !== undefined && keep.has(s.ids.productId)));
   }
-  if (config.platform) log('info', `platform: ${parents.length} products listed, ${chosen.length} sampled`);
+  if (platform) log('info', `catalogue: ${parents.length} products listed, ${chosen.length} sampled`);
 
   // 2. The feed, read whole (it is one file) and then cut down to the sample.
   let feedSightings: Sighting[] = [];
@@ -197,7 +210,7 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
     pageUrls = config.pages.map((u) => new URL(u, store).href);
   } else if (chosen.length) {
     pageUrls = chosen.map((p) => p.permalink);
-  } else if (config.platform) {
+  } else if (platform) {
     pageUrls = [];
   } else {
     const fromSitemap = await discoverFromSitemap(ctx, new URL(config.sitemap ?? '/sitemap.xml', store).href, issues);
@@ -222,15 +235,17 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
 
   // 4. The pages themselves.
   if (pageUrls.length) {
+    log('info', `pages: reading ${pageUrls.length}`);
     const pages = await collectPages(ctx, pageUrls, config.page);
     sightings.push(...pages.sightings);
     issues.push(...pages.issues);
-    log('info', `pages: ${pageUrls.length} read`);
   }
 
   // 5. The checkout probe: the only step that writes, and only after the
   //    operator has shown the shop is theirs.
-  if (config.checkout) {
+  if (config.checkout && platform !== 'woocommerce') {
+    issues.push({ surface: 'checkout', code: 'probe-unsupported', message: 'checkout probe skipped: it needs a WooCommerce shop in this release' });
+  } else if (config.checkout) {
     const ownership = await verifyOwnership(store, config.ownershipToken, fetcher);
     if (!ownership.verified) {
       issues.push({ surface: 'checkout', code: 'ownership-not-verified', message: `checkout probe skipped: ${ownership.detail}` });
@@ -239,10 +254,10 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
       const targets: ProbeTarget[] = sightings
         .filter((s) => s.surface === 'platform' && s.ids.variantId)
         .map((s) => ({ variantId: s.ids.variantId!, productId: s.ids.productId, sku: s.ids.sku, url: s.ids.url }));
+      log('info', `checkout: probing ${targets.length} variants`);
       const probe = await probeWooCheckout(ctx, targets, { shipTo: config.checkout.shipTo });
       sightings.push(...probe.sightings);
       issues.push(...probe.issues);
-      log('info', `checkout: ${targets.length} variants probed (${ownership.method} verification)`);
     }
   }
 
@@ -251,7 +266,7 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
   const run = runRules(graph, deps.rules ?? allRules, { datum, budget: config.budget, now: now() });
   return {
     schema: 'regmark.audit/v0',
-    tool: { name: 'regmark', version: deps.version ?? '0.0.1' },
+    tool: { name: 'regmark', version: deps.version ?? '0.1.0' },
     store: store.origin,
     startedAt,
     finishedAt: now().toISOString(),

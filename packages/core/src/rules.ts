@@ -79,7 +79,7 @@ export function runRules(graph: OfferGraph, rules: readonly Rule[], options: Run
   const summaries: RuleSummary[] = [];
   for (const rule of rules) {
     const budget = options.budget?.[rule.id] ?? defaultBudget(rule.severity);
-    const base = { id: rule.id, severity: rule.severity, summary: rule.summary, budget };
+    const base = { id: rule.id, severity: rule.severity, summary: rule.summary, ...(rule.help ? { help: rule.help } : {}), budget };
     const missingAll = (rule.needsAll ?? []).filter((s) => !collected.has(s));
     const missingAny = rule.needsAny && !rule.needsAny.some((s) => collected.has(s));
     if (missingAll.length || missingAny) {

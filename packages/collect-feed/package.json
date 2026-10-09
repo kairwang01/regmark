@@ -1,6 +1,6 @@
 {
   "name": "@regmark/collect-feed",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Reads Google Merchant format product feeds.",
   "license": "Apache-2.0",
   "author": "Kair Wang",
@@ -8,5 +8,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "dependencies": { "@regmark/core": "workspace:*", "fast-xml-parser": "^5.2.5" }
+  "dependencies": {
+    "@regmark/core": "workspace:*",
+    "fast-xml-parser": "^5.2.5"
+  },
+  "private": true
 }

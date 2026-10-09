@@ -11,6 +11,7 @@ export default defineRule({
   id: ID,
   severity: 'error',
   summary: 'A surface says an item can be bought when it cannot, or the reverse.',
+  help: 'Stock changed after the surface was written. A feed lags by its export interval, and structured data for a product with variants often copies the parent\'s status to every variant. Shorten the feed schedule and emit availability per variant.',
   check(product, ctx) {
     const findings: Finding[] = [];
 

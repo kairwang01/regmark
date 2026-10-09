@@ -6,8 +6,8 @@
 // reports that is not on the list is a false alarm, and the clean shop, which
 // has no defects, must produce no findings at all.
 //
-// These are the release gates from the roadmap: recall of at least 90 percent,
-// zero false alarms on the clean shop, and no cart left behind by the probe.
+// These are the release gates: every seeded defect found, zero false alarms
+// on the clean shop, and no cart left behind by the probe.
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
@@ -59,7 +59,8 @@ test('misprinted shop: every seeded defect is found and nothing else is reported
   for (const f of extra) t.diagnostic(`EXTRA  ${show(f)}`);
   for (const i of result.issues) t.diagnostic(`ISSUE  ${i.surface} ${i.code} ${i.message}`);
 
-  assert.ok(recall >= 0.9, `recall ${(recall * 100).toFixed(1)}% is under the 90% gate`);
+  // Every seeded defect, not most of them: a rule that stops finding its defect is a regression.
+  assert.deepEqual(missed.map((e) => `${e.defect} ${e.rule}`), [], `recall is ${(recall * 100).toFixed(1)}%`);
   assert.deepEqual(extra.map(show), [], 'the tool reported findings that are not seeded defects');
   assert.equal(result.ok, false);
   assert.deepEqual(result.surfaces.sort(), ['checkout', 'feed', 'jsonld', 'opengraph', 'page', 'platform']);

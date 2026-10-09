@@ -8,6 +8,7 @@ export default defineRule({
   id: 'policy.return-missing',
   severity: 'info',
   summary: 'No surface gives a return policy for the product in a form a machine can read.',
+  help: 'Add hasMerchantReturnPolicy to the Offer or to the organisation\'s structured data. Search engines read it, and an agent cannot tell a shopper what a PDF or an image says.',
   needsAny: ['platform', 'checkout'],
   check(product) {
     if (!product.variants.some(isReal)) return [];

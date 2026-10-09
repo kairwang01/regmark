@@ -6,6 +6,7 @@ export default defineRule({
   id: 'identity.unmatched',
   severity: 'warn',
   summary: 'Something a surface lists cannot be tied to anything the shop sells.',
+  help: 'A feed or a page still lists something the shop no longer sells, or lists it under an identifier nothing else uses. Remove the stale entry, or give every surface the same SKU or GTIN for it.',
   needsAny: ['platform', 'checkout'],
   check(product) {
     const real = product.variants.filter(isReal);

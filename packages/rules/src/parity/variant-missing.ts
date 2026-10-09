@@ -9,6 +9,7 @@ export default defineRule({
   id: 'variant.missing',
   severity: 'error',
   summary: "A surface lists some of a product's variants and leaves others out.",
+  help: 'The structured data describes only the default variant. Emit one Offer per variant, as a ProductGroup with hasVariant or as an offers array, each with its own sku, price and availability.',
   needsAny: ['platform', 'checkout'],
   check(product) {
     const real = product.variants.filter(isReal);

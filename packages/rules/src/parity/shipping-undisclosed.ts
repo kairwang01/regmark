@@ -10,6 +10,7 @@ export default defineRule({
   id: ID,
   severity: 'warn',
   summary: 'A buyer cannot learn the shipping cost before checkout.',
+  help: 'Add shippingDetails to the structured data, or shipping to the feed, so that a buyer, or an agent buying for one, can know the full cost before reaching the cart.',
   needsAll: ['checkout'],
   check(product) {
     const findings: Finding[] = [];

@@ -10,6 +10,7 @@ export default defineRule({
   id: ID,
   severity: 'error',
   summary: 'A surface states a shipping cost the checkout does not charge.',
+  help: 'The shipping cost in the feed or in shippingDetails is not what the cart charges for this destination. A free-shipping threshold is the usual cause: an item marked free is only free above it.',
   needsAll: ['checkout'],
   check(product, ctx) {
     const findings: Finding[] = [];

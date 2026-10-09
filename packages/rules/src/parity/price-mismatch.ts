@@ -12,6 +12,7 @@ export default defineRule({
   id: ID,
   severity: 'error',
   summary: 'A surface states a price the datum does not back up.',
+  help: 'Usually a cache or a schedule. The feed is regenerated less often than prices change, or a theme or SEO plugin builds the structured data from the regular price while a sale is running. Regenerate the feed when prices change, and make the structured data read the same price field the product page displays.',
   check(product, ctx) {
     const findings: Finding[] = [];
 

@@ -7,6 +7,9 @@ export function renderSarif(result: AuditResult): string {
   const rules = result.rules.map((rule) => ({
     id: rule.id,
     shortDescription: { text: rule.summary },
+    // Shown by GitHub beside the alert: why this usually happens and what to change.
+    ...(rule.help ? { help: { text: rule.help } } : {}),
+    helpUri: `https://github.com/kairwang01/regmark/blob/main/docs/rules.md#${rule.id.replace(/\./g, '')}-${rule.severity}`,
     defaultConfiguration: { level: sarifLevel(rule.severity) },
   }));
 
