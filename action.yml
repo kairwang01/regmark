@@ -1,5 +1,5 @@
-name: Regmark audit
-description: Catch ecommerce product-data mismatches across pages, structured data, feeds and storefront APIs, with optional verified WooCommerce cart probes.
+name: Regmark ecommerce audit
+description: Catch price, stock and shipping mismatches between product pages, JSON-LD, feeds, agent endpoints and checkout.
 author: Kair Wang
 branding:
   icon: crosshair
@@ -12,44 +12,104 @@ inputs:
   feed:
     description: Product feed URL in Google Merchant format, absolute or relative to the store.
     required: false
+  acp-feed:
+    description: Product feed URL in Agentic Commerce Protocol (ACP) format, absolute or relative to the store.
+    required: false
   platform:
     description: woocommerce, shopify, auto or none. Left empty, the config file decides, and without one the tool works it out.
     required: false
+  ucp:
+    description: Set to true to read the shop's Universal Commerce Protocol catalogue, discovered at /.well-known/ucp.
+    required: false
+    default: 'false'
+  mcp:
+    description: Set to true to read the shop's storefront MCP server.
+    required: false
+    default: 'false'
   checkout:
-    description: Set to true to run the checkout probe (WooCommerce). Needs ownership-token.
+    description: Set to true to run the checkout probe (WooCommerce or Shopify). Needs ownership-token.
     required: false
     default: 'false'
   ship-to:
     description: Destination for the checkout probe, as CC or CC:postcode. Left empty, the config file decides, and without one it is US.
     required: false
+  cloaking:
+    description: Set to true to fetch each sampled page again as a browser and as a shopping agent and compare what each is told. Needs ownership-token.
+    required: false
+    default: 'false'
   ownership-token:
     description: The token served at /.well-known/regmark.txt on the shop. Pass it from a secret.
+    required: false
+  pages:
+    description: Product page URLs to audit, one per line. Left empty, the sample comes from the platform, the sitemap or the feed.
     required: false
   sample:
     description: How many products to audit. Left empty, the config file decides, and without one it is 25.
     required: false
   budget:
-    description: Allowed findings per rule, one rule=number per line.
+    description: Allowed findings per rule, one rule=number per line, such as price.mismatch=0.
+    required: false
+  max-age:
+    description: Oldest a feed may be, one surface=age per line, such as feed=24h. Turns on the availability.stale rule.
     required: false
   config:
     description: Path to a regmark config file in the repository.
     required: false
   strict:
-    description: Set to true to fail on any collection issue, including a missing feed or unverified checkout.
+    description: Set to true to fail on any collection issue, including a missing feed or an unverified checkout.
     required: false
     default: 'false'
+  comment:
+    description: Set to true to post the Markdown report as one pull request comment, updated on every run. Needs pull-requests write permission.
+    required: false
+    default: 'false'
+  github-token:
+    description: Token used for the pull request comment.
+    required: false
+    default: ${{ github.token }}
+  upload-report:
+    description: Set to false to skip uploading the reports as a workflow artifact.
+    required: false
+    default: 'true'
   report-name:
     description: Name of the uploaded artifact that holds the HTML, JSON, SARIF and Markdown reports.
     required: false
     default: regmark-report
   args:
-    description: Extra command-line arguments, passed through as written.
+    description: Extra command-line arguments, separated by spaces, passed through as written.
     required: false
 
 outputs:
   ok:
     description: true when products were read, every rule is within budget and the requested collection policy passes.
     value: ${{ steps.audit.outputs.ok }}
+  exit-code:
+    description: The exit code of the audit. 0 within budget, 1 over budget, 2 the audit could not run, read no product, or failed strict collection.
+    value: ${{ steps.audit.outputs.exit-code }}
+  findings:
+    description: Number of findings of any severity.
+    value: ${{ steps.audit.outputs.findings }}
+  errors:
+    description: Number of error-level findings.
+    value: ${{ steps.audit.outputs.errors }}
+  warnings:
+    description: Number of warn-level findings.
+    value: ${{ steps.audit.outputs.warnings }}
+  products:
+    description: Number of products that were read and compared.
+    value: ${{ steps.audit.outputs.products }}
+  report-dir:
+    description: Directory that holds every report.
+    value: regmark-report
+  json:
+    description: Path of the JSON report.
+    value: regmark-report/regmark.json
+  html:
+    description: Path of the self-contained HTML report.
+    value: regmark-report/regmark.html
+  markdown:
+    description: Path of the Markdown report.
+    value: regmark-report/regmark.md
   sarif:
     description: Path of the SARIF report, for github/codeql-action/upload-sarif.
     value: regmark-report/regmark.sarif
@@ -69,11 +129,17 @@ runs:
         REGMARK_OWNERSHIP_TOKEN: ${{ inputs.ownership-token }}
         INPUT_STORE: ${{ inputs.store }}
         INPUT_FEED: ${{ inputs.feed }}
+        INPUT_ACP_FEED: ${{ inputs.acp-feed }}
         INPUT_PLATFORM: ${{ inputs.platform }}
+        INPUT_UCP: ${{ inputs.ucp }}
+        INPUT_MCP: ${{ inputs.mcp }}
         INPUT_CHECKOUT: ${{ inputs.checkout }}
         INPUT_SHIP_TO: ${{ inputs.ship-to }}
+        INPUT_CLOAKING: ${{ inputs.cloaking }}
+        INPUT_PAGES: ${{ inputs.pages }}
         INPUT_SAMPLE: ${{ inputs.sample }}
         INPUT_BUDGET: ${{ inputs.budget }}
+        INPUT_MAX_AGE: ${{ inputs.max-age }}
         INPUT_CONFIG: ${{ inputs.config }}
         INPUT_STRICT: ${{ inputs.strict }}
         INPUT_ARGS: ${{ inputs.args }}
@@ -88,14 +154,27 @@ runs:
         [ -n "$INPUT_PLATFORM" ] && args+=(--platform "$INPUT_PLATFORM")
         [ -n "$INPUT_SAMPLE" ] && args+=(--sample "$INPUT_SAMPLE")
         [ -n "$INPUT_FEED" ] && args+=(--feed "$INPUT_FEED")
+        [ -n "$INPUT_ACP_FEED" ] && args+=(--acp-feed "$INPUT_ACP_FEED")
         [ -n "$INPUT_CONFIG" ] && args+=(--config "$INPUT_CONFIG")
+        [ "$INPUT_UCP" = "true" ] && args+=(--ucp)
+        [ "$INPUT_MCP" = "true" ] && args+=(--mcp)
         [ "$INPUT_STRICT" = "true" ] && args+=(--strict)
         [ "$INPUT_CHECKOUT" = "true" ] && args+=(--checkout)
+        [ "$INPUT_CLOAKING" = "true" ] && args+=(--cloaking)
         [ -n "$INPUT_SHIP_TO" ] && args+=(--ship-to "$INPUT_SHIP_TO")
+        # One entry per line; blank lines are ignored.
         while IFS= read -r line; do
           line="${line//[[:space:]]/}"
           [ -n "$line" ] && args+=(--budget "$line")
         done <<< "$INPUT_BUDGET"
+        while IFS= read -r line; do
+          line="${line//[[:space:]]/}"
+          [ -n "$line" ] && args+=(--max-age "$line")
+        done <<< "$INPUT_MAX_AGE"
+        while IFS= read -r line; do
+          line="${line//[[:space:]]/}"
+          [ -n "$line" ] && args+=(--page "$line")
+        done <<< "$INPUT_PAGES"
         # Split on whitespace without expanding wildcard patterns from inputs.
         read -r -a extra <<< "${INPUT_ARGS//$'\n'/ }"
         set +e
@@ -104,9 +183,43 @@ runs:
         set -e
         [ -f regmark-report/regmark.md ] && cat regmark-report/regmark.md >> "$GITHUB_STEP_SUMMARY"
         if [ "$code" -eq 0 ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; else echo "ok=false" >> "$GITHUB_OUTPUT"; fi
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        if [ -f regmark-report/regmark.json ]; then
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync("regmark-report/regmark.json", "utf8"));
+            const n = (s) => r.findings.filter((f) => f.severity === s).length;
+            const lines = [`findings=${r.findings.length}`, `errors=${n("error")}`, `warnings=${n("warn")}`, `products=${r.counts.products}`];
+            require("fs").appendFileSync(process.env.GITHUB_OUTPUT, lines.join("\n") + "\n");
+          '
+        fi
         exit "$code"
 
-    - if: always()
+    - if: always() && inputs.comment == 'true' && github.event.pull_request.number
+      shell: bash
+      # A fork's pull request gets a read-only token: a comment that cannot be
+      # posted must not turn a passing audit red.
+      continue-on-error: true
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPOSITORY: ${{ github.repository }}
+      run: |
+        [ -f regmark-report/regmark.md ] || exit 0
+        marker='<!-- regmark-report -->'
+        report="$(head -c 60000 regmark-report/regmark.md)"
+        if [ "$(wc -c < regmark-report/regmark.md)" -gt 60000 ]; then
+          report="$report"$'\n\n'"_The report was cut short here. The full report is in the workflow artifact._"
+        fi
+        body="$marker"$'\n'"$report"
+        existing="$(gh api "repos/$REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
+          --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -n 1)"
+        if [ -n "$existing" ]; then
+          gh api -X PATCH "repos/$REPOSITORY/issues/comments/$existing" -f body="$body" > /dev/null
+        else
+          gh api -X POST "repos/$REPOSITORY/issues/$PR_NUMBER/comments" -f body="$body" > /dev/null
+        fi
+
+    - if: always() && inputs.upload-report != 'false'
       uses: actions/upload-artifact@v7
       with:
         name: ${{ inputs.report-name }}

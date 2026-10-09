@@ -38,7 +38,8 @@
     "README.md",
     "README.zh-CN.md",
     "LICENSE",
-    "docs/"
+    "CHANGELOG.md",
+    "docs/*.md"
   ],
   "packageManager": "pnpm@11.23.0",
   "engines": {
@@ -57,5 +58,8 @@
     "@types/node": "^22.18.0",
     "esbuild": "^0.28.2",
     "typescript": "^5.9.2"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
