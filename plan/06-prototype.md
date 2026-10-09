@@ -2,72 +2,78 @@
 title: 原型与实测
 slug: prototype
 nav: 原型与实测
-summary: 原型已经能跑。用预置缺陷的样板店量过，也在真实店铺上试过一次。结果和它说明不了的事，都写在这里。
+summary: 现在是 0.2.0。用预置缺陷的样板店量过，第一个版本也在真实店铺上试过一次。结果和它说明不了的事，都写在这里。
 ---
 
 ## 做到哪了
 
-2026 年 10 月 9 日有了第一个能跑的版本，当天整理成 0.1.0，源码在 [GitHub](https://github.com/kairwang01/regmark) 上，可以用 `npx --allow-git=all github:kairwang01/regmark demo` 直接试，还没有发布到 npm。怎么用见[使用说明](07-usage.md)。
+2026 年 10 月 9 日有了第一个能跑的版本，当天整理成 0.1.0。现在是 0.2.0，源码在 [GitHub](https://github.com/kairwang01/regmark) 上，`npx regmark demo` 可以直接试。怎么用见[使用说明](07-usage.md)。
 
 | 模块 | 状态 | 说明 |
 |---|---|---|
 | 商品页采集 | 已实现 | 可见价格和库存、JSON-LD、microdata、Open Graph、商品文本 |
-| feed 采集 | 已实现 | Google Merchant 格式的 RSS、Atom 和制表符分隔文本 |
+| feed 采集 | 已实现 | Google Merchant 格式的 RSS、Atom 和制表符分隔文本，并记下 feed 自己说的生成时间 |
 | WooCommerce | 已实现 | 商品接口和结账探针 |
-| Shopify | 做了一半 | 只读公开的商品接口，结账探针没做 |
-| 协议端点 | 没开始 | UCP、ACP、MCP 都还没有采集器 |
+| Shopify | 已实现 | 公开的商品接口，和购物车探针。探针读得到这一行的价格和最便宜的运费，读不到含税的到手总价 |
+| 代理直接读的出口 | 0.2.0 新增，只读 | UCP 目录、店铺 MCP 服务、ACP 商品 feed。UCP 的结账会话还没做 |
 | 事实表与身份对齐 | 已实现 | |
-| 规则 | 15 条 | 12 条套准，3 条内容卫生 |
+| 规则 | 17 条 | 13 条套准，4 条内容卫生。0.2.0 新增 `availability.stale` 和 `content.cloaking` |
 | 报告 | 已实现 | 终端、JSON、SARIF、JUnit、Markdown、单文件 HTML。每条规则附带通常的原因和修法 |
-| 命令行 | 已实现 | `audit`、`demo`、`explain`、`init`，自动识别平台，预算，退出码 |
-| 归属验证 | 已实现 | 站点文件或 DNS 记录 |
+| 命令行 | 已实现 | `audit`、`demo`、`explain`、`rules`、`init`，自动识别平台，预算，退出码，`--strict` |
+| 归属验证 | 已实现 | 站点文件或 DNS 记录。结账探针和伪装检查都要先过这一关 |
 | 探店代理 | 没开始 | |
-| GitHub Action | 已实现 | 结果写进任务摘要，报告存为产物 |
+| GitHub Action | 已实现 | 结果写进任务摘要，可以贴成合并请求里的一条评论，报告存为产物 |
 
-源码约 8,200 行，测试约 8,000 行，共 688 项单元测试，全部通过。
+源码约 12,700 行，测试约 12,800 行，共 1155 项单元测试，全部通过。
 
 ## 报告长什么样
 
 <!-- figure:reports -->
 
-终端里是下面这样。这是对错版店跑出来的真实输出，只把本机地址换成了 `shop.example`，后半段省略。
+终端里是下面这样。这是 0.2.0 对错版店跑出来的真实输出，只把本机地址换成了 `shop.example`，中间省略了几段。
 
 ```terminal
   shop.example    20 variants    0s
-  C page jsonld opengraph    M feed    Y –    K platform checkout
+  C page jsonld opengraph    M feed    Y acp ucp mcp    K platform checkout
 
-  ✗ price.mismatch              3 findings
+  ✗ price.mismatch              5 findings
       TOTE-NAT     M feed 22.00 USD  ≠  K checkout 24.00 USD
                    https://shop.example/feeds/google.xml#item[id="TOTE-NAT"]/price
       TEE-BLU-M    C jsonld 45.00 USD  ≠  K checkout 39.00 USD
                    https://shop.example/product/classic-tee/#jsonld[0]/hasVariant/1/offers/price
       enamel-mug   C opengraph 14.00 USD  ≠  K checkout 16.00 USD
                    https://shop.example/product/enamel-mug/#meta[property="product:price:amount"]
-  ✗ availability.mismatch       2 findings
+      SOCK-M       Y acp 10.00 USD  ≠  K checkout 12.00 USD
+                   https://shop.example/feeds/acp.jsonl.gz#item[id="SOCK-M"]/price
+      SOCK-M       Y ucp 11.00 USD  ≠  K checkout 12.00 USD
+                   https://shop.example/ucp/v1/catalog/lookup#lookup_catalog[id="402"]/products/3/variants/1/price
+  …
+  ✗ availability.mismatch       4 findings
       SOCK-L       C jsonld in_stock  ≠  K platform out_of_stock
                    https://shop.example/product/trail-socks/#jsonld[0]/hasVariant/2/offers/availability
+      BEANIE-NVY   Y acp in_stock  ≠  K platform out_of_stock
+                   https://shop.example/feeds/acp.jsonl.gz#item[id="BEANIE-NVY"]/availability
       BEANIE-NVY   M feed in_stock  ≠  K platform out_of_stock
                    https://shop.example/feeds/google.xml#item[id="BEANIE-NVY"]/availability
-  ✗ variant.unpurchasable       1 finding
-      LAMP-BRS   the cart refuses it, though platform says it can be bought
-                 https://shop.example/wp-json/wc/store/v1/cart/add-item
-  ✗ shipping.mismatch           1 finding
-      TEE-BLU-S   M feed free  ≠  K checkout 6.20 USD
-                  https://shop.example/feeds/google.xml#item[id="TEE-BLU-S"]/shipping
+      BEANIE-NVY   Y mcp in_stock  ≠  K platform out_of_stock
+                   https://shop.example/api/mcp#lookup_catalog[id="302"]/result/structuredContent/products/2/variants/1/availability
+  ! availability.stale          1 finding
+      canvas-tote   feed was generated 9 days before the audit, longer ago than its maxAge of 24 hours; every item in it is that old
+                    https://shop.example/feeds/google.xml#/rss/channel/lastBuildDate
   …
 
-  12 errors, 9 warnings, 1 note. 7 rules over budget.
+  20 errors, 10 warnings, 1 note. 8 rules over budget.
 ```
 
-每一行开头的 C、M、K 是色版：这条说法来自哪一类出口。`≠` 右边永远是被相信的那一方。
+每一行开头的 C、M、Y、K 是色版：这条说法来自哪一类出口。`≠` 右边永远是被相信的那一方。
 
 ## 用样板店量工具本身
 
-仓库里带着两家很小的假店，卖同样的 10 件商品、19 个变体。对照店的每个出口都和结账一致。错版店在它的基础上埋了 19 个缺陷，每个缺陷只让一个出口说错一件事，并且事先写明它应当被哪条规则、在哪个变体、哪个出口上报出来，一共 22 条。
+仓库里带着两家很小的假店，卖同样的 10 件商品、19 个变体。对照店的每个出口都和结账一致。错版店在它的基础上埋了 27 个缺陷（0.1.0 时是 19 个），每个缺陷只让一个出口说错一件事，并且事先写明它应当被哪条规则、在哪个变体、哪个出口上报出来，一共 31 条。
 
-| 量的是什么 | 结果 | 路线图里定的门槛 |
+| 量的是什么 | 结果 | 门槛 |
 |---|---|---|
-| 错版店：应报 22 条，报出几条 | 22 条 | 至少九成 |
+| 错版店：应报 31 条，报出几条 | 31 条 | 路线图定的是至少九成，现在的检查要求全中 |
 | 错版店：报了几条不该报的 | 0 条 | |
 | 对照店：报了几条 | 0 条 | 0 条 |
 | 结账探针跑完，店里还留着几个有货的购物车 | 0 个 | 0 个 |
@@ -96,6 +102,14 @@ summary: 原型已经能跑。用预置缺陷的样板店量过，也在真实�
 | 一条评论是写给语言模型看的 | `content.instruction-like` |
 | 描述里夹着看不见的 Unicode 字符 | `content.invisible-chars` |
 | 没有任何出口给出退货政策 | `policy.return-missing` |
+| feed 自己说是九天前生成的，导出任务早就停了 | `availability.stale` |
+| ACP feed 里还是旧价格，购物车收得更多 | `price.mismatch` |
+| ACP feed 告诉代理有货，实际售罄 | `availability.mismatch` |
+| UCP 目录里还是上个月的价格 | `price.mismatch` |
+| 店铺的 MCP 服务告诉代理有货，实际售罄 | `availability.mismatch` |
+| UCP 目录只列了三个尺码里的一个 | `variant.missing` |
+| 同一个页面，给自称购物代理的客户端的 JSON-LD 价格，比给浏览器的低 | `content.cloaking` |
+| 一条只给购物代理看的评论，是写给它们而不是写给顾客的 | `content.instruction-like` |
 
 这个基准放在每次提交都跑的检查里。以后每加一条规则，先在错版店里埋一个对应的缺陷。
 
@@ -103,7 +117,7 @@ summary: 原型已经能跑。用预置缺陷的样板店量过，也在真实�
 
 ## 在真实店铺上试了一次
 
-同一天，用这个版本对一批公开的 WooCommerce 店铺跑了只读检查：读它们公开的商品接口，再各读 5 个商品页，拿页面上说的和接口说的比。只发读请求，遵守 robots.txt，每个主机每秒最多一次，不碰购物车，不读 feed。
+10 月 9 日，用当天的第一个版本对一批公开的 WooCommerce 店铺跑了只读检查：读它们公开的商品接口，再各读 5 个商品页，拿页面上说的和接口说的比。只发读请求，遵守 robots.txt，每个主机每秒最多一次，不碰购物车，不读 feed。
 
 一共试了 16 家。5 家没读成：两家回了限流或拒绝，一家服务器报错，一家跳到了别的域名，一家在 robots.txt 里禁止抓取接口。每一种情况工具都停了下来，没有重试。
 
@@ -132,7 +146,7 @@ summary: 原型已经能跑。用预置缺陷的样板店量过，也在真实�
 
 - **说明不了这些问题有多普遍。** 11 家店是随手凑的样本，都是 WooCommerce，都是肯让一台云服务器读接口的店。
 - **最该测的两块没测到。** 商品 feed 不公开，结账探针要店主授权。feed 滞后和运费对不上，恰恰是预期中最常出问题的地方，从外面量不了。这也是这个工具应当由店主自己来跑的原因。
-- **Shopify 没测成。** Shopify 的边缘网络对云服务器的地址直接回 429。工具不绕过拒绝，所以这台机器上做不了 Shopify 的样本。
+- **Shopify 没测成。** Shopify 的边缘网络对云服务器的地址直接回 429。工具不绕过拒绝，所以这台机器上做不了 Shopify 的样本。0.2.0 新增的 Shopify 购物车探针，以及 UCP、MCP、ACP 三类出口，目前拿得出的证据只有样板店上的基准，还没有一次真实店铺上的实测记录。
 - **不能用它来证明市场需要这个工具。** 它只证明了工具在真实店铺上能跑、会在该停的时候停、能找到核对得上的问题。有没有人愿意把它接进自己的流程，要等发布之后才知道。
 
 ## 和方案不一样的地方
@@ -142,6 +156,6 @@ summary: 原型已经能跑。用预置缺陷的样板店量过，也在真实�
 | 用 Vitest 测试 | 用 Node 自带的测试运行器 | 少一组依赖。Node 22 能直接运行 TypeScript，测试不需要构建 |
 | 用 parse5 解析 HTML | 用 cheerio，它底层就是 parse5 | 可见价格要靠选择器来取，cheerio 自带 |
 | 用 Zod 校验内部数据 | 暂时手写检查 | 目前只有配置一处需要，等报告格式对外稳定时再引入 |
-| 13 条套准规则 | 12 条 | `price.tax-basis` 提前做了。`availability.stale` 和 `content.cloaking` 推后，它们需要采集器现在还拿不到的信息 |
-| Shopify 排在第二阶段 | 只读部分提前做了 | 本来想用它做实测样本，结果被拒之门外，见上 |
+| 13 条套准规则 | 0.1.0 是 12 条，0.2.0 补齐到 13 条 | `price.tax-basis` 提前做了。`availability.stale` 和 `content.cloaking` 在 0.1.0 时推后，因为采集器当时还拿不到 feed 的生成时间，也不会换一个身份再读一遍页面；0.2.0 补上了 |
+| Shopify 排在第二阶段 | 只读部分在 0.1.0 提前做了，购物车探针在 0.2.0 补上 | 本来想用它做实测样本，结果被拒之门外，见上 |
 | 隐藏文字一律报 | 只报障眼法和堆关键词 | 见上一节 |
