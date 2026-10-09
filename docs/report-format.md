@@ -105,6 +105,7 @@ locator in `properties`.
 | `feed` | `<feed URL>#item[id="<item id>"]/<field>` | `https://shop.example/feeds/google.xml#item[id="TOTE-NAT"]/price` |
 | `platform` | `<storefront API URL>#<JSON pointer>` | `https://shop.example/wp-json/wc/store/v1/products/403#/is_in_stock` |
 | `checkout` | `<cart API URL>#<JSON pointer>`. A refused add-to-cart has no pointer. | `https://shop.example/wp-json/wc/store/v1/cart/update-customer#/totals/total_shipping` |
+| `ucp`, `mcp` | `<endpoint URL>#<operation>[<what was asked>]`, then a JSON pointer into the answer. The operation is `lookup_catalog` with the id that found the variant, or `search_catalog` with the query. Over MCP the pointer starts inside the JSON-RPC response, at `/result/structuredContent`. | `https://shop.example/ucp/v1/catalog/lookup#lookup_catalog[id="402"]/products/3/variants/1/price` |
 
 ## Collection issue codes
 
@@ -128,6 +129,14 @@ locator in `properties`.
 | `view-failed` | page | The cloaking check could not read a page as one client profile: an HTTP error status, a refusal or a network error. The message starts with `as <profile>:`. |
 | `view-redirected` | page | A page read as one client profile was answered from another origin, where Regmark does not pose as the profile, so it is not compared. |
 | `probe-unsupported` | checkout | The probe was skipped, because the platform is not WooCommerce. |
+| `not-found` | ucp, mcp | No UCP profile or no MCP server at the URL (404 or 410), or the catalogue has nothing for a sampled product; then the locator is the product page. |
+| `not-supported` | ucp, mcp | The UCP profile offers no REST or MCP endpoint, or no catalogue capability, for the version spoken; or the MCP server lists no UCP catalogue tool, or does not know a method. The message names what the server does list. |
+| `version-unsupported` | ucp, mcp | The shop speaks no UCP version, or the server no MCP revision, that Regmark reads. The message lists both sides' versions. |
+| `parse-error` | ucp, mcp | An answer was not JSON, not a UCP profile or payload, or not a JSON-RPC answer to the request. |
+| `fetch-failed` | ucp, mcp | A request failed: an HTTP error status, a refusal other than robots, a JSON-RPC error, a tool that reported an error, or a UCP answer with `ucp.status` `error`. The message starts with the request, such as `lookup_catalog:`, then the refusal code or the shop's own error code. |
+| `robots-disallowed` | ucp, mcp | robots.txt does not allow the request. |
+| `field-unreadable` | ucp, mcp | A variant's price is not a whole number of minor units with a three-letter currency, so no price is read for it. |
+| `too-many-variants` | ucp, mcp | A sampled product has more than 50 variant ids, more than five lookups hold, so it is not looked up at all. |
 
 A collection issue does not change the exit code by itself. It does when it
 leaves nothing to check: an audit that read no product exits 2.

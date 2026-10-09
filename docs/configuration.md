@@ -6,7 +6,7 @@ a first audit. This reference describes the current source; `--strict` and the
 expanded nested-field validation are new since the `v0.1.0` release. Use the
 reference from your release tag when running a pinned bundle.
 
-[Commands](#command-line) · [Config fields](#fields) · [Sampling](#which-products-get-audited) · [Baseline](#which-surface-is-believed) · [Budgets](#budgets) · [Request policy](#how-requests-are-made) · [Ownership](#writes) · [Cloaking check](#the-cloaking-check)
+[Commands](#command-line) · [Config fields](#fields) · [Sampling](#which-products-get-audited) · [Baseline](#which-surface-is-believed) · [Budgets](#budgets) · [Request policy](#how-requests-are-made) · [Ownership](#writes) · [Cloaking check](#the-cloaking-check) · [Agent endpoints](#the-agent-endpoints)
 
 Unknown flags, unknown top-level or nested config fields, invalid field types,
 invalid HTTP(S) URLs and unknown platform, surface or budget rule names stop
@@ -37,6 +37,8 @@ line replaces it.
 | `--platform` | `woocommerce`, `shopify`, `auto` or `none` | `auto` | The storefront API to read. `auto` tries WooCommerce, then Shopify. `none` reads no storefront API. The pages, and the feed if one is given, are still read. |
 | `--checkout` | switch | off | Runs the checkout probe. Needs `--platform woocommerce` or `auto`, and a verified ownership token. Any other platform value stops the run with exit 2. With `auto`, a shop that is not WooCommerce gets a `probe-unsupported` issue and no probe. |
 | `--cloaking` | switch | off | Runs the cloaking check: each sampled page that was read is fetched again once per client profile, by default as a desktop browser and as a shopping agent, and `content.cloaking` compares what each was told. Needs a verified ownership token. See [The cloaking check](#the-cloaking-check). |
+| `--ucp` | switch | off | Reads the shop's UCP catalogue: the business profile at `/.well-known/ucp`, then a catalogue lookup of the sampled products. UCP `2026-08-25` and `2026-04-08`. Read-only. See [The agent endpoints](#the-agent-endpoints). |
+| `--mcp` | switch | off | Reads the shop's storefront MCP server at `/api/mcp`: the MCP handshake, `tools/list`, then UCP's catalogue tools for the sampled products. MCP `2025-11-25`, `2025-06-18` and `2025-03-26`. Never calls a cart, checkout or order tool. See [The agent endpoints](#the-agent-endpoints). |
 | `--ship-to` | `CC` or `CC:postcode` | the config file's `checkout.shipTo`, else `US` | The destination for the probe. The country must be two letters; this is checked even when no probe runs. The text after the colon is sent as the postcode. It takes effect when the probe runs: with `--checkout`, or with `checkout` in the config file. |
 | `--page` | product page URL | none | Reads this page instead of the sampled page list. Repeat the flag for more pages. See [Which products get audited](#which-products-get-audited). |
 
@@ -80,7 +82,8 @@ given. Without a terminal, nothing is printed unless `--verbose` is given.
 
 Audits a fixture shop that ships with the tool. The shop runs on a local port
 for the length of the run. The settings are fixed in code: the WooCommerce
-platform, a feed, the checkout probe, the cloaking check and a sample of 50.
+platform, a feed, the checkout probe, the cloaking check, the UCP and MCP
+readers and a sample of 50.
 The config file is not read.
 
 | Flag | Default | What it does |
@@ -198,6 +201,9 @@ A flag replaces the file's value, one field at a time:
 - `cloaking`: the check runs when `--cloaking` is given or the file's
   `cloaking` is `true` or an object. With both, the file's `userAgents` are
   kept. No flag turns off a check the file asks for.
+- `ucp` and `mcp`: each is read when its flag is given or the file's value is
+  `true` or an object. With both, the file's `url` and `agentProfile` are kept.
+  No flag turns off a reader the file asks for.
 - `ownershipToken`: a non-empty `REGMARK_OWNERSHIP_TOKEN` replaces the file's
   value.
 
@@ -221,6 +227,12 @@ exit code 2 and a message naming the mistake.
 | `checkout.shipTo.city` | string | none | Sent as part of the address. The command line does not set it. |
 | `cloaking` | `true`, `false` or object: `{ "userAgents": { name: User-Agent } }` | off | Turns on the cloaking check. Same as `--cloaking`. `true` uses the two default profiles. Needs a verified ownership token. |
 | `cloaking.userAgents` | object: profile name to User-Agent string | `browser` and `agent`, below | The clients to pose as, in the order they are read. At least one. A name is lower-case letters, digits and `-`, starting with a letter, at most 32 characters; it appears in findings and issues. A User-Agent is printable ASCII. Name one profile `browser` to make it the reference the others are compared with; without one, each profile is compared with Regmark's own read of the page. The defaults are `DEFAULT_CLOAKING_PROFILES` in `packages/cli/src/config.ts`: `browser`, a desktop Chrome User-Agent, and `agent`, a User-Agent carrying the `ChatGPT-User` token. |
+| `ucp` | `true`, `false` or object: `{ "url"?: string, "agentProfile"?: string }` | off | Reads the shop's UCP catalogue. Same as `--ucp`. `true` reads the profile at `/.well-known/ucp`. |
+| `ucp.url` | string, URL | `/.well-known/ucp` | The business profile to read, absolute or relative to `store`. Its host is added to the host allowlist. |
+| `ucp.agentProfile` | string, https URL | `AGENT_PROFILES` in `packages/collect-protocol/src/ucp.ts`, for the version spoken | The agent profile named in every catalogue request. The shop fetches it, so it must be public. It must declare the UCP version the shop speaks and the catalogue capabilities. |
+| `mcp` | `true`, `false` or object: `{ "url"?: string, "agentProfile"?: string }` | off | Reads the shop's storefront MCP server. Same as `--mcp`. `true` reads `/api/mcp`. |
+| `mcp.url` | string, URL | `/api/mcp` | The MCP endpoint, absolute or relative to `store`. Its host is added to the host allowlist. On Shopify, `/api/ucp/mcp` is the endpoint with catalogue tools. |
+| `mcp.agentProfile` | string, https URL | the `2026-08-25` entry of `AGENT_PROFILES` | The agent profile sent in `meta` with each catalogue tool call. |
 | `pages` | string[] | none | Product page URLs to read. Replaces the sampled page list. Same as `--page`. |
 | `sitemap` | string | `/sitemap.xml` | The sitemap to read product URLs from. Used only when there is no platform and no `pages`. Relative to `store`. |
 | `page` | object (`PageOptions`) | built-in readers | Options for reading each product page. The fields are listed below. |
@@ -283,8 +295,8 @@ not in the file; set `REGMARK_OWNERSHIP_TOKEN` in the environment instead.
 ## Which products get audited
 
 This is a sampled audit, not a full crawler. Pages are parsed from the server
-response with no browser or JavaScript execution. Shopify collection is
-read-only; UCP, ACP and MCP collectors are not implemented. A fact that cannot
+response with no browser or JavaScript execution. Shopify collection and the
+UCP and MCP readers are read-only. A fact that cannot
 be extracted cannot be compared. Review `surfaces`, `counts`, skipped rules
 and `issues` together when assessing the result.
 
@@ -334,12 +346,17 @@ The steps below run in this order. Each one uses the output of the one before.
 8. **Pages.** Each page in the list is fetched and read. A 404 or 410 response
    is recorded as a `not-found` issue. Other failures are recorded as
    `fetch-failed` or `robots-disallowed` issues. A failed page never stops the run.
-9. **Checkout probe.** The probe runs only when the config has `checkout` or
+9. **Agent endpoints.** With `--ucp` or `ucp`, then with `--mcp` or `mcp`,
+   the shop's agent endpoints are asked about the products in the page list,
+   and nothing else: by the variant ids the platform gave, otherwise by the
+   SKUs the pages and the feed state, otherwise by the URL handle. See
+   [The agent endpoints](#the-agent-endpoints).
+10. **Checkout probe.** The probe runs only when the config has `checkout` or
    `--checkout` is given. It is skipped, and an issue is recorded, when the
    platform is not WooCommerce (`probe-unsupported`), or when ownership is not
    verified (`ownership-not-verified`). Otherwise it runs against the sampled
    WooCommerce variants. See [Writes](#writes).
-10. **Cloaking check.** With `--cloaking` or `cloaking`, each page from step 8
+11. **Cloaking check.** With `--cloaking` or `cloaking`, each page from step 8
     that was read is fetched again once per client profile. It is skipped, with
     an `ownership-not-verified` issue on the `page` surface, when ownership is
     not verified. See [The cloaking check](#the-cloaking-check).
@@ -371,8 +388,9 @@ surface in the list that gave an observation of that fact. The default list is
   conditions under "When no backend was read".
 - `--datum` and the file's `datum` replace the default list. The names are
   `page`, `jsonld`, `microdata`, `opengraph`, `feed`, `ucp`, `acp`, `mcp`,
-  `platform` and `checkout`; any other name stops the run. `ucp`, `acp` and
-  `mcp` are accepted, but no collector reads them in this release.
+  `platform` and `checkout`; any other name stops the run. `ucp` and `mcp` are
+  read by `--ucp` and `--mcp`. `acp` is accepted, but no collector reads it in
+  this release.
 
 ## Budgets
 
@@ -415,7 +433,10 @@ Every request goes through one fetcher. The table gives the values in
 
 ### Host allowlist
 
-A run contacts only the store's host, and the feed's host when `feed` is set.
+A run contacts only the store's host, the feed's host when `feed` is set, and
+the hosts of `ucp.url` and `mcp.url` when they are set. An endpoint that a UCP
+profile names on another host is refused, as described in
+[The agent endpoints](#the-agent-endpoints).
 A page or sitemap outside that allowlist is refused with `foreign-host`.
 Redirects outside the allowlist are not followed: the caller receives the 3xx
 response. Redirects between allowed origins may be followed, but caller-supplied
@@ -471,7 +492,9 @@ with the refusal code and the URL, for example `foreign-host: https://...`.
 
 ### Writes
 
-Only the checkout probe writes to the shop. A write is made only after the run
+Only the checkout probe writes to the shop. The UCP and MCP readers send POST
+requests, but each one only asks a question; see
+[The agent endpoints](#the-agent-endpoints). A write is made only after the run
 has verified that the operator controls the shop, in one of two ways:
 
 - The file `/.well-known/regmark.txt` on the shop has a line that is exactly
@@ -514,3 +537,109 @@ second per host adds about 50 seconds to the run. A page that fails for one
 profile is a `view-failed` issue naming the profile, and the other profiles are
 still read. What is compared, and when it is reported, is in
 [docs/rules.md](rules.md#contentcloaking-error).
+
+### The agent endpoints
+
+`--ucp` and `--mcp` read what a shopping agent is told when it asks the shop
+directly: the Y plate. Each asks about the products in the page list and
+nothing else, and neither creates a cart, a checkout session or an order.
+Their requests are paced and checked against robots.txt like reads, and need
+no ownership. A POST among them only asks: a catalogue lookup or search, or a
+message of the MCP handshake. It is never redirected; a 3xx answer is a
+`fetch-failed` issue.
+
+**UCP** (surface `ucp`). Regmark reads the catalogue of the Universal Commerce
+Protocol, releases `2026-08-25` and `2026-04-08` (`UCP_VERSIONS` in
+`packages/collect-protocol/src/ucp.ts`):
+
+1. It reads the business profile at `/.well-known/ucp`, or at `ucp.url`.
+2. It speaks the newest version both sides know. The profile's `ucp.version`
+   is the shop's current one; an older one listed in `supported_versions` is
+   read from its own profile, which must name that version. A shop that offers
+   neither version is a `version-unsupported` issue.
+3. It uses the profile's `dev.ucp.shopping` service for that version: REST when
+   offered (`POST <endpoint>/catalog/lookup` and `/catalog/search`), otherwise
+   MCP (`tools/call` of `lookup_catalog` and `search_catalog`, as UCP's MCP
+   binding defines, without a handshake). Entries for another version are
+   ignored. A profile with neither, or without the catalogue capabilities
+   `dev.ucp.shopping.catalog.lookup` or `.search`, is a `not-supported` issue.
+4. It looks the products up, ten ids to a request, batched across products. The
+   ids are the platform's variant ids, written `gid://shopify/ProductVariant/<id>`
+   on Shopify; without a platform, the SKUs, or the URL handle. A product that
+   no lookup found and that the platform did not list is searched for by its
+   title, and a result is taken only when it names the same page or handle. A
+   product the platform listed is never searched for: a search may return part
+   of a product's variants, and the rest would look missing. A product with more
+   than 50 variant ids is not looked up (`too-many-variants`).
+5. When the profile declares Shopify's catalogue extension
+   (`dev.shopify.catalog`), each request asks for unavailable variants too
+   (`filters.available: false`). Without it Shopify leaves sold-out variants out
+   of the answer.
+
+Every request names an agent profile, as UCP requires: over REST in the
+`UCP-Agent` header, with `Request-Id` and `Content-Digest`; over MCP in
+`arguments.meta`. The shop fetches that profile to learn what the caller
+understands. By default it is the example agent profile Shopify publishes for
+the version spoken (`AGENT_PROFILES`), which declares the catalogue
+capabilities and Shopify's extension. Set `ucp.agentProfile` to send your own.
+
+**MCP** (surface `mcp`). Regmark reads the storefront MCP server at `/api/mcp`,
+or at `mcp.url`, over MCP's Streamable HTTP transport, revisions `2025-11-25`,
+`2025-06-18` and `2025-03-26` (`MCP_VERSIONS` in
+`packages/collect-protocol/src/mcp.ts`). It sends `initialize`, the
+`notifications/initialized` notification and `tools/list` (at most five pages),
+then the same lookups and searches as above as `tools/call`. It returns the
+session id and the protocol version the server chose on every later request,
+and reads an answer sent as JSON or as an event stream. A server that answers
+with another protocol version is a `version-unsupported` issue.
+
+It calls two tools only, `lookup_catalog` and `search_catalog`, and only when
+`tools/list` gives them UCP's input shape (a `catalog` argument) and does not
+mark them as changing anything (`readOnlyHint: false` or
+`destructiveHint: true`). A cart, checkout or order tool is never called,
+whatever the server lists. A server without a usable catalogue tool is a
+`not-supported` issue that names the tools it does list. `filters.available:
+false` is sent when the tools' input schema declares it.
+
+On Shopify, the storefront's `/api/mcp` has listed only
+`search_shop_policies_and_faqs` since Shopify moved its catalogue tools to
+`/api/ucp/mcp` in 2026, so `--mcp` alone reports `not-supported` there. Set
+`mcp.url` to `/api/ucp/mcp`, or use `--ucp`, which finds the same catalogue
+through the profile. Shopify's earlier catalogue tools, `search_shop_catalog`
+and `get_product_details`, are not read: their shapes are no longer published.
+
+**What is read.** From each variant a lookup found by its own id, or a search
+returned: the price and the list price, in whole minor units of the currency
+(cents for USD, none for JPY); the list price only when it is above the price,
+so Shopify's `0` for "none" is not one; the stock, from `available` qualified by
+a well-known `status`; the SKU; a GTIN from a `barcodes` entry of type `GTIN`,
+`EAN`, `UPC`, `JAN` or `ISBN`; the options; and the variant id, bare or from a
+Shopify gid, as an alias that joins the platform's variant. Every statement
+carries the URL of the sampled page, so it joins the product the other surfaces
+describe. A variant a lookup found only as the product's featured variant (a
+lookup by handle) is a statement about the product, not that variant. A price
+per unit of weight or time (`quantity_unit` other than `C62`) is not read. A
+price without a three-letter currency is a `field-unreadable` issue. Shipping,
+tax, descriptions and media are not read.
+
+**Hosts.** A profile may name its endpoint on a host the run does not contact.
+Shopify names the shop's `myshopify.com` host even when the audit names the
+shop's own domain. That request is refused with `foreign-host`, and the issue
+says what to set: on Shopify, `ucp.url` set to
+`https://<shop>.myshopify.com/.well-known/ucp` adds that host, and the same
+profile is served there.
+
+**Cost.** UCP makes one request for the profile, then one per ten variant ids,
+plus one search per product no lookup found. MCP adds three requests for the
+handshake. For 25 products of two variants each, UCP makes 6 requests and MCP 8.
+
+**Issues.** `not-found`: no profile or no MCP server at the URL (404 or 410),
+or a sampled product the catalogue has nothing for. `not-supported`: no usable
+service or catalogue capability, or no catalogue tool. `version-unsupported`:
+no protocol version in common, including a UCP `version_unsupported` error.
+`parse-error`: an answer that is not JSON, not a UCP profile or payload, or not
+a JSON-RPC answer. `fetch-failed`: an HTTP error, a refusal other than robots,
+a JSON-RPC error, a tool that reported an error, or a UCP answer with
+`ucp.status: "error"`; the message names the request and the shop's own error
+code. `robots-disallowed`: robots.txt does not allow the request. A failed
+lookup stops that reader, so one problem is one issue, not one per batch.

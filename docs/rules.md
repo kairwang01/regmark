@@ -9,6 +9,16 @@ because a check that cries wolf gets removed from the pipeline it was added to.
 
 - **Surface**: where a statement was read from. See `Surface` in
   `packages/core/src/types.ts`.
+- **Plate**: surfaces grouped the way a press sheet is separated: C the page
+  (`page`, `jsonld`, `microdata`, `opengraph`), M the feed (`feed`), Y the
+  endpoints a shopping agent calls directly (`ucp`, `acp`, `mcp`), and K the key
+  plate the others are registered against (`platform`, `checkout`). `ucp` is
+  the shop's UCP catalogue (`--ucp`) and `mcp` its storefront MCP server's
+  catalogue tools (`--mcp`); see
+  [docs/configuration.md](configuration.md#the-agent-endpoints). Both state
+  price, list price, stock and identifiers per variant. A variant they found
+  only as a product's featured variant is a product-level sighting, so neither
+  ever names part of a product's variants by accident.
 - **Datum**: the surface that is believed, chosen per fact by
   `ctx.pick(observations)`, which returns the observation from the first
   surface in the run's datum order (default `checkout`, `platform`, `page`)
@@ -141,7 +151,10 @@ the page's buyability.
 *A surface lists some of a product's variants and leaves others out.*
 
 Considered surfaces: `jsonld`, `microdata`, `ucp`, `acp`, `mcp`. Feeds are
-exempt, because leaving variants out of a feed is often deliberate.
+exempt, because leaving variants out of a feed is often deliberate. The `ucp`
+and `mcp` readers look each variant up by its own id, and ask for sold-out
+variants too where the server lets them, so a variant missing there is one the
+catalogue does not answer for.
 
 Call a variant *real* when its `surfaces` include `platform` or `checkout`. For
 each considered surface `S`: if at least one real variant has `S` in its
