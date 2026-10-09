@@ -194,8 +194,12 @@ async function writeReports(result: AuditResult, files: Outputs): Promise<void> 
   }
 }
 
-/** A run against the shop that ships inside the tool: the fastest way to see what a report looks like. */
-async function demo(clean: boolean, html: string | undefined, color: boolean): Promise<number> {
+/**
+ * A run against the shop that ships inside the tool: the fastest way to see
+ * what a report looks like. It writes the same report files an audit does,
+ * and always the HTML one.
+ */
+async function demo(clean: boolean, files: Outputs & { quiet?: boolean }, color: boolean): Promise<number> {
   const { OWNERSHIP_TOKEN, startShop } = await import('@regmark/fixture-shop');
   const shop = await startShop({ mode: clean ? 'clean' : 'misprint' });
   const planted = shop.shop.defects.length;
@@ -228,9 +232,10 @@ async function demo(clean: boolean, html: string | undefined, color: boolean): P
       .replaceAll(new URL(shop.origin).host, 'demo-shop.example'),
   ) as AuditResult;
 
+  const file = files.html ?? 'regmark-demo.html';
+  await writeReports(named, { ...files, html: file });
+  if (files.quiet) return 0;
   out(renderTerminal(named, { color }));
-  const file = html ?? 'regmark-demo.html';
-  await writeFile(file, renderHtml(named));
   out(
     clean
       ? `  That was the same shop with nothing wrong in it: every surface agrees with the checkout.\n`
@@ -301,7 +306,7 @@ async function main(argv: string[]): Promise<number> {
   }
   if (command === 'explain') return explain(target);
   if (command === 'init') return init(target);
-  if (command === 'demo') return demo(values.clean === true, values.html, color);
+  if (command === 'demo') return demo(values.clean === true, values, color);
   if (command !== 'audit') throw new ConfigError(`unknown command "${command}"; try regmark --help`);
 
   const configFile = values.config ?? (existsSync('regmark.config.json') ? 'regmark.config.json' : undefined);

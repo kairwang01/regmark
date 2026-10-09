@@ -299,6 +299,20 @@ test('demo --html writes the report to the name given', async () => {
   assert.ok(!existsSync(path.join(dir, 'regmark-demo.html')));
 });
 
+test('demo writes every report format it is asked for, as an audit does', async () => {
+  const dir = await freshDir();
+  const res = await run(['demo', '--json', 'r.json', '--sarif', 'r.sarif', '--junit', 'r.xml', '--markdown', 'r.md', '--quiet'], { cwd: dir });
+  assert.equal(res.code, 0, res.stderr);
+  assert.equal(res.stdout, '', '--quiet prints nothing');
+  const json = JSON.parse(await readFile(path.join(dir, 'r.json'), 'utf8')) as { store: string; findings: unknown[] };
+  assert.equal(json.store, 'https://demo-shop.example');
+  assert.equal(json.findings.length, 31);
+  for (const file of ['r.sarif', 'r.xml', 'r.md', 'regmark-demo.html']) {
+    const text = await readFile(path.join(dir, file), 'utf8');
+    assert.ok(!text.includes('127.0.0.1'), file);
+  }
+});
+
 test('demo does not crash when its stdout reader closes early', async () => {
   const dir = await freshDir();
   const child = spawn(process.execPath, [BIN, 'demo'], { cwd: dir, env: { ...process.env, NO_COLOR: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });

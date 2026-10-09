@@ -27567,7 +27567,7 @@ async function writeReports(result, files) {
     if (file) await writeFile(file, render3());
   }
 }
-async function demo(clean2, html3, color) {
+async function demo(clean2, files, color) {
   const { OWNERSHIP_TOKEN: OWNERSHIP_TOKEN2, startShop: startShop2 } = await Promise.resolve().then(() => (init_src(), src_exports));
   const shop = await startShop2({ mode: clean2 ? "clean" : "misprint" });
   const planted = shop.shop.defects.length;
@@ -27596,9 +27596,10 @@ async function demo(clean2, html3, color) {
   const named = JSON.parse(
     JSON.stringify(result).replaceAll(shop.origin, "https://demo-shop.example").replaceAll(new URL(shop.origin).host, "demo-shop.example")
   );
+  const file = files.html ?? "regmark-demo.html";
+  await writeReports(named, { ...files, html: file });
+  if (files.quiet) return 0;
   out(renderTerminal(named, { color }));
-  const file = html3 ?? "regmark-demo.html";
-  await writeFile(file, renderHtml(named));
   out(
     clean2 ? `  That was the same shop with nothing wrong in it: every surface agrees with the checkout.
 ` : `  That was a shop bundled with Regmark, with ${planted} defects planted in it. Each one is a
@@ -27671,7 +27672,7 @@ async function main(argv) {
   }
   if (command === "explain") return explain(target);
   if (command === "init") return init(target);
-  if (command === "demo") return demo(values.clean === true, values.html, color);
+  if (command === "demo") return demo(values.clean === true, values, color);
   if (command !== "audit") throw new ConfigError(`unknown command "${command}"; try regmark --help`);
   const configFile = values.config ?? (existsSync("regmark.config.json") ? "regmark.config.json" : void 0);
   const fromFile = configFile ? await loadConfig(configFile) : {};

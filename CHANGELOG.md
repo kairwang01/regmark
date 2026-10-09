@@ -56,6 +56,8 @@ describe before, probes Shopify carts, and installs from npm.
 - The bundle is 1 MB instead of 2.7 MB: only cheerio's parser is included,
   not the HTTP client and character-set library Regmark never calls.
 - The User-Agent names the running version.
+- `regmark demo` writes every report format it is asked for (`--json`,
+  `--sarif`, `--junit`, `--markdown`), so each can be tried without a shop.
 - Releases are cut by a workflow: a `vX.Y.Z` tag on main is verified, released
   as a draft with the bundle and its SHA-256, published to npm with
   provenance, and the `v0` tag is moved to it.
