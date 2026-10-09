@@ -55,7 +55,7 @@ regmark audit https://shop.example --feed /feeds/google.xml \
 
 A relative feed URL is resolved against the shop's origin. An absolute feed URL on another host is allowed because you explicitly named it. `--feed` expects a URL, not a local filesystem path.
 
-Regmark tries WooCommerce, then Shopify. It reads the public catalogue when available, and the server-returned HTML for each sampled product. It does not execute JavaScript. The default baseline is the platform API, falling back to the visible page. Actual cart totals are only read when a verified WooCommerce checkout probe runs.
+Regmark tries WooCommerce, then Shopify. It reads the public catalogue when available, and the server-returned HTML for each sampled product. It does not execute JavaScript. The default baseline is the platform API, falling back to the visible page. What a real cart charges is only read when a verified checkout probe runs, on WooCommerce or Shopify.
 
 Each host is paced at one request per second by default, so catalogue, page and variation reads can take minutes. Use `--verbose` for progress in a CI log. Start with a small sample before increasing coverage.
 
@@ -103,7 +103,7 @@ regmark audit --html report.html --json report.json
 
 CLI flags override matching file fields. Budgets merge per rule. A `checkout` object in the config turns on cart probing, even without `--checkout`; keep a separate read-only config if you use both modes. Prefer the environment variable for the ownership token. [Full precedence rules](configuration.md#precedence).
 
-## Optional: a WooCommerce cart probe
+## Optional: a cart probe
 
 Use a staging shop you control. Create a token containing 16–128 letters, digits, `_` or `-`, serve `regmark-verify=<token>` at `/.well-known/regmark.txt`, and put that token in the `REGMARK_OWNERSHIP_TOKEN` environment variable or CI secret. DNS TXT verification is also supported.
 
@@ -112,7 +112,9 @@ regmark audit https://staging.shop.example --platform woocommerce \
   --feed /feeds/google.xml --checkout --ship-to US:94103 --html report.html
 ```
 
-The probe creates cart/session state, adds one unit per tested variant, sets the destination, reads totals and attempts to empty the cart after each variant. It does not place an order or pay. Verify that the report includes checkout observations and review any cleanup or ownership issue. Shopify has no checkout probe in this release. [Verification details](configuration.md#writes).
+On a Shopify shop, use `--platform shopify`.
+
+The probe creates cart/session state, adds one unit per tested variant, sets the destination, reads totals and attempts to empty the cart after each variant. It does not place an order or pay. Verify that the report includes checkout observations and review any cleanup or ownership issue. On Shopify the probe reads the line price and the cheapest shipping rate, but no total, because Shopify works out tax only at checkout, which the probe never reaches. [What the probe reads](configuration.md#the-checkout-probe) · [Verification details](configuration.md#writes).
 
 ## Common problems
 

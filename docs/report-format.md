@@ -107,7 +107,7 @@ locator in `properties`.
 | `acp`, a Product and its Variants | `<feed URL>#product[id="<product id>"]/variant[id="<variant id>"]/<field>` | `https://shop.example/feeds/products.jsonl#product[id="prod_classic_tee"]/variant[id="sku124-red-m"]/price` |
 | `feed`, `acp`, the time it was generated | `<feed URL>#<path>`: a path into the document, or `header(last-modified)` | `https://shop.example/feeds/google.xml#/rss/channel/lastBuildDate` |
 | `platform` | `<storefront API URL>#<JSON pointer>` | `https://shop.example/wp-json/wc/store/v1/products/403#/is_in_stock` |
-| `checkout` | `<cart API URL>#<JSON pointer>`. A refused add-to-cart has no pointer. | `https://shop.example/wp-json/wc/store/v1/cart/update-customer#/totals/total_shipping` |
+| `checkout` | `<cart API URL>#<JSON pointer>`. A refused add-to-cart has no pointer. On Shopify the URL of a shipping rate carries the destination in its query. | `https://shop.example/wp-json/wc/store/v1/cart/update-customer#/totals/total_shipping`, `https://shop.example/cart/add.js#/items/0/final_price` |
 
 ## Collection issue codes
 
@@ -127,11 +127,11 @@ locator in `properties`.
 | `feed-field-unreadable` | feed, acp | A field, such as a price, could not be read as the value it should be. |
 | `feed-field-ignored` | acp | A value that reads, but that the format says is not used: a sale price that is not below the price, a `variant_dict` on a row that is not one of a group, a return window without `accepts_returns=true`, a shipping tuple beside `shipping_price`, or a second name for a value already given. |
 | `feed-line-unreadable` | acp | A line of a JSON Lines feed is not a JSON object. The other lines are read. |
-| `probe-failed` | checkout | A step of the checkout probe failed. The message names the variant and the step. |
-| `no-shipping-rate` | checkout | The shop offered no shipping rate for the destination. |
-| `cart-not-emptied` | checkout | The probe could not empty the cart, or could not confirm that it is empty. The message says to check the shop admin. |
+| `probe-failed` | checkout | A step of the checkout probe failed. The message names the variant and the step. Also used when something other than the cart answered, such as the shop's bot protection, a redirect or a page in place of the cart's JSON: the probe stops there, and no later variant is probed. |
+| `no-shipping-rate` | checkout | The shop offered no shipping rate for the destination, or refused the address. On Shopify the message quotes the shop's reason. |
+| `cart-not-emptied` | checkout | The probe could not empty the cart, or could not confirm that it is empty. On WooCommerce the message says to check the shop admin. A Shopify cart left behind is anonymous and holds no stock. |
 | `ownership-not-verified` | checkout | The probe was skipped, because ownership of the shop was not shown. |
-| `probe-unsupported` | checkout | The probe was skipped, because the platform is not WooCommerce. |
+| `probe-unsupported` | checkout | The probe was skipped, because the platform is neither WooCommerce nor Shopify. |
 
 A collection issue does not change the exit code by itself. It does when it
 leaves nothing to check: an audit that read no product exits 2.
