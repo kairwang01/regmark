@@ -3,7 +3,7 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
 import zlib from 'node:zlib';
-import { createFetcher, FetchRefused, verifyOwnership } from '../src/index.ts';
+import { createFetcher, DEFAULT_POLICY, FetchRefused, verifyOwnership } from '../src/index.ts';
 
 let server: http.Server;
 let origin: string;
@@ -204,4 +204,152 @@ test('verifyOwnership() rejects a file served from somewhere the shop redirected
   const store = new URL('https://shop.example');
   const redirected = { get: async () => ({ url: 'https://cdn.example/regmark.txt', status: 200, headers: {}, body: 'regmark-verify=tok_0123456789abcdef', fetchedAt: '' }) };
   assert.equal((await verifyOwnership(store, 'tok_0123456789abcdef', redirected, async () => [])).verified, false);
+});
+
+// ── Owner reads and queries ─────────────────────────────────────────────
+
+/**
+ * A shop whose robots.txt shuts every crawler out. It records each request
+ * with the User-Agent it came with, and answers /hop by redirecting to the
+ * same path on localhost, which is the same server under another origin.
+ */
+async function closedShop() {
+  const seen: string[] = [];
+  const shop = http.createServer((req, res) => {
+    seen.push(`${req.method} ${req.headers.host?.split(':')[0]}${req.url} ${req.headers['user-agent']}`);
+    const port = (shop.address() as AddressInfo).port;
+    if (req.url === '/robots.txt') return void res.end('User-agent: *\nDisallow: /');
+    if (req.url === '/hop') return void res.writeHead(302, { location: `http://localhost:${port}/landing` }).end();
+    if (req.url === '/moved') return void res.writeHead(301, { location: '/landing' }).end();
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ asked: JSON.parse(body), type: req.headers['content-type'] })));
+      return;
+    }
+    res.writeHead(200).end(String(req.headers['user-agent']));
+  });
+  await new Promise<void>((resolve) => shop.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${(shop.address() as AddressInfo).port}`;
+  const fetcher = (extra = {}) =>
+    createFetcher({ hosts: ['127.0.0.1', 'localhost'], allowPrivateNetwork: true, minIntervalMs: 0, respectRobots: true, ...extra });
+  return { base, seen, fetcher, close: () => new Promise<void>((resolve) => shop.close(() => resolve())) };
+}
+
+const AGENT_UA = 'Mozilla/5.0; compatible; ChatGPT-User/1.0';
+
+test('a User-Agent header is refused unless the read is made as the owner, and nothing is sent', async () => {
+  const before = hits.length;
+  const f = local();
+  f.authorizeWrites();
+  await assert.rejects(f.get(`${origin}/ua`, { headers: { 'user-agent': AGENT_UA } }), refusal('write-not-authorized'));
+  // Header names are case-insensitive, and so is the check.
+  await assert.rejects(f.get(`${origin}/ua`, { headers: { 'User-Agent': AGENT_UA } }), refusal('write-not-authorized'));
+  await assert.rejects(f.query(`${origin}/ua`, {}, { headers: { 'user-agent': AGENT_UA } }), refusal('write-not-authorized'));
+  assert.equal(hits.length, before);
+  // Other caller headers need no ownership.
+  assert.equal((await local().get(`${origin}/headers`, { headers: { accept: 'text/html' } })).status, 200);
+});
+
+test('an owner read is refused until ownership has been verified, and nothing is sent', async () => {
+  const before = hits.length;
+  const f = local();
+  await assert.rejects(f.get(`${origin}/ua`, { asOwner: true }), refusal('write-not-authorized'));
+  await assert.rejects(f.get(`${origin}/ua`, { asOwner: true, headers: { 'user-agent': AGENT_UA } }), refusal('write-not-authorized'));
+  await assert.rejects(f.query(`${origin}/ua`, {}, { asOwner: true }), refusal('write-not-authorized'));
+  assert.equal(hits.length, before);
+  f.authorizeWrites();
+  assert.equal((await f.get(`${origin}/ua`, { asOwner: true, headers: { 'user-agent': AGENT_UA } })).body, AGENT_UA);
+  // Without a User-Agent of its own, an owner read still says it is Regmark.
+  assert.match((await f.get(`${origin}/ua`, { asOwner: true })).body, /^Regmark\//);
+});
+
+test('an owner read does not consult robots.txt, which speaks to crawlers', async () => {
+  const shop = await closedShop();
+  try {
+    await assert.rejects(shop.fetcher().get(`${shop.base}/product`), refusal('robots'));
+    shop.seen.length = 0;
+    const owner = shop.fetcher();
+    owner.authorizeWrites();
+    const r = await owner.get(`${shop.base}/product`, { asOwner: true, headers: { 'user-agent': AGENT_UA } });
+    assert.equal(r.status, 200);
+    assert.equal(r.body, AGENT_UA);
+    // A redirect within the shop keeps the owner's standing and the caller's User-Agent.
+    const moved = await owner.get(`${shop.base}/moved`, { asOwner: true, headers: { 'user-agent': AGENT_UA } });
+    assert.equal(new URL(moved.url).pathname, '/landing');
+    assert.equal(moved.body, AGENT_UA);
+    assert.deepEqual(shop.seen, [`GET 127.0.0.1/product ${AGENT_UA}`, `GET 127.0.0.1/moved ${AGENT_UA}`, `GET 127.0.0.1/landing ${AGENT_UA}`]);
+  } finally {
+    await shop.close();
+  }
+});
+
+test('an owner read redirected to another origin is an ordinary read there', async () => {
+  const shop = await closedShop();
+  try {
+    const f = shop.fetcher();
+    f.authorizeWrites();
+    // localhost's robots.txt shuts crawlers out; the owner of 127.0.0.1 is one there.
+    await assert.rejects(f.get(`${shop.base}/hop`, { asOwner: true, headers: { 'user-agent': AGENT_UA } }), refusal('robots'));
+    assert.deepEqual(shop.seen, [`GET 127.0.0.1/hop ${AGENT_UA}`, `GET localhost/robots.txt ${DEFAULT_POLICY.userAgent}`]);
+    // Where robots.txt allows it, the read goes ahead as Regmark, not as the client it was posing as.
+    const open = shop.fetcher({ respectRobots: false });
+    open.authorizeWrites();
+    const landed = await open.get(`${shop.base}/hop`, { asOwner: true, headers: { 'user-agent': AGENT_UA } });
+    assert.equal(new URL(landed.url).hostname, 'localhost');
+    assert.equal(landed.body, DEFAULT_POLICY.userAgent);
+  } finally {
+    await shop.close();
+  }
+});
+
+test('query() posts JSON, is checked against robots.txt like a read, and needs no ownership', async () => {
+  const shop = await closedShop();
+  try {
+    await assert.rejects(shop.fetcher().query(`${shop.base}/mcp`, { method: 'tools/list' }), refusal('robots'));
+    assert.ok(!shop.seen.some((s) => s.startsWith('POST')), 'a refused query sends nothing');
+    const r = await shop.fetcher({ respectRobots: false }).query(`${shop.base}/mcp`, { method: 'tools/list' });
+    assert.equal(r.status, 200);
+    assert.deepEqual(JSON.parse(r.body), { asked: { method: 'tools/list' }, type: 'application/json' });
+    // As the owner, it skips robots.txt the way an owner read does.
+    const owner = shop.fetcher();
+    owner.authorizeWrites();
+    assert.equal((await owner.query(`${shop.base}/mcp`, { method: 'tools/list' }, { asOwner: true })).status, 200);
+  } finally {
+    await shop.close();
+  }
+});
+
+test('query() does not follow a redirect: replaying a body elsewhere is not done silently', async () => {
+  const shop = await closedShop();
+  try {
+    const r = await shop.fetcher({ respectRobots: false }).query(`${shop.base}/moved`, { q: 'mug' });
+    assert.equal(r.status, 301);
+    assert.equal(r.headers['location'], '/landing');
+    assert.deepEqual(shop.seen.filter((s) => s.includes('/landing')), []);
+  } finally {
+    await shop.close();
+  }
+});
+
+test('query() is paced with every other request to the host', async () => {
+  const f = local({ minIntervalMs: 120 });
+  const t0 = Date.now();
+  await Promise.all([f.get(`${origin}/hello`), f.query(`${origin}/cart`, { id: 1 }), f.query(`${origin}/cart`, { id: 2 })]);
+  assert.ok(Date.now() - t0 >= 230, `three requests took ${Date.now() - t0} ms`);
+  assert.equal(f.stats.requests, 3);
+});
+
+test('several Set-Cookie headers are kept one per line, because cookie dates contain commas', async () => {
+  const shop = http.createServer((_req, res) => {
+    res.setHeader('set-cookie', ['a=1; Expires=Wed, 21 Oct 2026 07:28:00 GMT', 'b=2; Path=/']);
+    res.end('ok');
+  });
+  await new Promise<void>((resolve) => shop.listen(0, '127.0.0.1', resolve));
+  try {
+    const r = await local().get(`http://127.0.0.1:${(shop.address() as AddressInfo).port}/`);
+    assert.equal(r.headers['set-cookie'], 'a=1; Expires=Wed, 21 Oct 2026 07:28:00 GMT\nb=2; Path=/');
+  } finally {
+    shop.close();
+  }
 });
