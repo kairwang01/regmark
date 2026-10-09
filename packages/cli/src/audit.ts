@@ -14,10 +14,12 @@ import type { PageOptions } from '@regmark/collect-page';
 import { collectShopifyCatalog } from '@regmark/collect-shopify';
 import { collectWooCatalog, probeWooCheckout } from '@regmark/collect-woo';
 import type { ProbeTarget } from '@regmark/collect-woo';
-import { buildGraph, createFetcher, DEFAULT_DATUM, FetchRefused, PLATE_OF, runRules, urlKey, verifyOwnership } from '@regmark/core';
+import { buildGraph, createFetcher, DEFAULT_DATUM, FetchRefused, runRules, urlKey, verifyOwnership } from '@regmark/core';
 import type { AuditResult, CollectContext, CollectIssue, FetchPolicy, Rule, Sighting, Surface } from '@regmark/core';
 import { allRules } from '@regmark/rules';
 import { detectPlatform } from './detect.ts';
+import { checkConfig, ConfigError } from './config.ts';
+export { ConfigError } from './config.ts';
 
 export type ShipTo = { country: string; postcode?: string; state?: string; city?: string };
 
@@ -41,6 +43,8 @@ export type AuditConfig = {
   page?: PageOptions;
   /** How many products to audit. Default 25. */
   sample?: number;
+  /** Fail the audit when any surface could not be collected completely. Default false. */
+  strict?: boolean;
   /**
    * Products with more variants than this are left out of the sample. Reading
    * a 200-variant product costs 200 requests on some platforms, and reading
@@ -63,61 +67,6 @@ export type AuditDeps = {
   rules?: readonly Rule[];
   version?: string;
 };
-
-export class ConfigError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ConfigError';
-  }
-}
-
-const FIELDS = ['store', 'feed', 'platform', 'checkout', 'pages', 'sitemap', 'page', 'sample', 'maxVariants', 'seed', 'datum', 'budget', 'ownershipToken', 'fetch'];
-const PLATFORMS = ['woocommerce', 'shopify', 'auto'];
-const SURFACES = Object.keys(PLATE_OF) as Surface[];
-
-/**
- * A config file is typed by hand and a flag is typed in a hurry. A mistake in
- * either must stop the run: a misspelt rule in a budget, or a platform nobody
- * has heard of, would otherwise give an audit that checks less than was asked
- * and still reports success.
- */
-function check(config: AuditConfig, rules: readonly Rule[]): void {
-  const whole = (name: string, value: unknown, min: number): void => {
-    if (value !== undefined && (!Number.isInteger(value) || (value as number) < min)) {
-      throw new ConfigError(`${name} must be a whole number, ${min} or more; got ${JSON.stringify(value)}`);
-    }
-  };
-  for (const field of Object.keys(config)) {
-    if (!FIELDS.includes(field)) throw new ConfigError(`unknown config field "${field}"; the fields are ${FIELDS.join(', ')}`);
-  }
-  const platform: unknown = config.platform;
-  if (platform !== undefined && !PLATFORMS.includes(platform as string)) {
-    throw new ConfigError(`unknown platform "${String(platform)}"; choose one of ${PLATFORMS.join(', ')}, none`);
-  }
-  whole('sample', config.sample, 1);
-  whole('maxVariants', config.maxVariants, 1);
-  whole('seed', config.seed, 0);
-  if (config.pages !== undefined && !(Array.isArray(config.pages) && config.pages.every((u) => typeof u === 'string'))) {
-    throw new ConfigError('pages must be a list of URLs');
-  }
-  if (config.datum !== undefined) {
-    if (!Array.isArray(config.datum) || config.datum.length === 0) throw new ConfigError('datum must name at least one surface');
-    for (const name of config.datum) {
-      if (!SURFACES.includes(name)) throw new ConfigError(`unknown surface "${String(name)}" in datum; the surfaces are ${SURFACES.join(', ')}`);
-    }
-  }
-  const known = new Set(rules.map((r) => r.id));
-  for (const [id, allowed] of Object.entries(config.budget ?? {})) {
-    if (!known.has(id)) throw new ConfigError(`budget names a rule that does not exist: "${id}"; regmark rules lists them`);
-    if (!Number.isInteger(allowed) || allowed < 0) throw new ConfigError(`the budget for ${id} must be a whole number; got ${JSON.stringify(allowed)}`);
-  }
-  if (config.checkout) {
-    const country: unknown = config.checkout.shipTo?.country;
-    if (typeof country !== 'string' || !/^[A-Za-z]{2}$/.test(country)) {
-      throw new ConfigError(`checkout.shipTo.country must be a two-letter country code; got ${JSON.stringify(country)}`);
-    }
-  }
-}
 
 /** A small deterministic generator, so the same seed audits the same products on every run. */
 function mulberry32(seed: number): () => number {
@@ -184,7 +133,7 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
   const log = deps.log ?? (() => {});
   const startedAt = now().toISOString();
   const rules = deps.rules ?? allRules;
-  check(config, rules);
+  checkConfig(config, rules);
 
   let store: URL;
   try {
@@ -201,7 +150,7 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
 
   const feedUrl = config.feed ? new URL(config.feed, store).href : undefined;
   const hosts = unique([store.hostname, ...(feedUrl ? [new URL(feedUrl).hostname] : [])]);
-  const fetcher = createFetcher({ hosts, ...config.fetch });
+  const fetcher = createFetcher({ ...config.fetch, hosts });
   const ctx: CollectContext = { store, fetcher, now, log };
 
   const sightings: Sighting[] = [];
@@ -222,16 +171,19 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
   let chosen: Parent[] = [];
   const pick = (all: Parent[]): Parent[] => sample(all.filter((p) => p.variants <= (config.maxVariants ?? 30)), size, config.seed ?? 1);
   if (platform === 'woocommerce') {
-    const listing = await collectWooCatalog(ctx, { select: () => false });
-    issues.push(...listing.issues);
-    parents = listing.parents.map((p) => ({ id: p.id, permalink: p.permalink, variants: Math.max(1, p.variationIds.length) }));
-    chosen = pick(parents);
-    if (chosen.length) {
-      const ids = new Set(chosen.map((p) => p.id));
-      const catalog = await collectWooCatalog(ctx, { select: (p) => ids.has(p.id) });
-      sightings.push(...catalog.sightings);
-      issues.push(...catalog.issues.filter((i) => !listing.issues.some((l) => l.code === i.code && l.locator === i.locator)));
-    }
+    let ids: Set<number> | undefined;
+    const catalog = await collectWooCatalog(ctx, {
+      select: (parent, all) => {
+        if (!ids) {
+          parents = all.map((p) => ({ id: p.id, permalink: p.permalink, variants: Math.max(1, p.variationIds.length) }));
+          chosen = pick(parents);
+          ids = new Set(chosen.map((p) => p.id));
+        }
+        return ids.has(parent.id);
+      },
+    });
+    sightings.push(...catalog.sightings);
+    issues.push(...catalog.issues);
   } else if (platform === 'shopify') {
     // One request lists products and their variants together, so the listing
     // is read once and the sample is cut from what it returned.
@@ -325,6 +277,6 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
     rules: run.rules,
     findings: run.findings,
     issues,
-    ok: run.ok,
+    ok: run.ok && graph.products.length > 0 && (!config.strict || issues.length === 0),
   };
 }

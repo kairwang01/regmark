@@ -11,6 +11,7 @@ import { extractOpenGraph } from './opengraph.ts';
 import { extractText } from './text.ts';
 import type { TextOptions } from './text.ts';
 import { extractVisible } from './visible.ts';
+import { documentOf } from './document.ts';
 import type { VisibleOptions } from './visible.ts';
 
 export { extractJsonLd } from './jsonld.ts';
@@ -25,9 +26,12 @@ export type PageOptions = VisibleOptions & TextOptions;
 
 /** Everything one page says, from HTML already in hand. Pure. */
 export function extractPage(html: string, pageUrl: string, fetchedAt: string, options: PageOptions = {}): CollectResult {
-  const jsonld = extractJsonLd(html, pageUrl, fetchedAt);
-  const microdata = extractMicrodata(html, pageUrl, fetchedAt);
-  const opengraph = extractOpenGraph(html, pageUrl, fetchedAt);
+  // All extractors only read the DOM. Parse once instead of building five
+  // independent trees for each product page.
+  const document = documentOf(html);
+  const jsonld = extractJsonLd(document, pageUrl, fetchedAt);
+  const microdata = extractMicrodata(document, pageUrl, fetchedAt);
+  const opengraph = extractOpenGraph(document, pageUrl, fetchedAt);
 
   // A bare "$" on the page means whatever the page's own structured data
   // says it means, when all of it agrees on one currency.
@@ -36,10 +40,10 @@ export function extractPage(html: string, pageUrl: string, fetchedAt: string, op
     if (s.price?.value.currency) stated.add(s.price.value.currency);
   }
   const currency = options.currency ?? (stated.size === 1 ? [...stated][0]! : null);
-  const visible = extractVisible(html, pageUrl, fetchedAt, { ...options, currency });
+  const visible = extractVisible(document, pageUrl, fetchedAt, { ...options, currency });
 
   const sightings: Sighting[] = [...visible.sightings, ...jsonld.sightings, ...microdata.sightings, ...opengraph.sightings];
-  const text = extractText(html, pageUrl, options);
+  const text = extractText(document, pageUrl, options);
   if (text.length > 0) {
     // Text belongs to the page as a whole. It rides on the visible sighting,
     // or on one made for the purpose when the page showed no price.

@@ -1,119 +1,132 @@
 <p align="center">
-  <img src="docs/assets/hero.png" alt="Regmark：四个出口印出四个不同的价格，套不准；都向结账对齐之后，印成一个清楚的数" width="100%">
+  <img src="docs/assets/hero.png" alt="Regmark：像对齐印刷色版一样，对齐商品页、结构化数据、feed 与结账信息" width="100%">
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img alt="Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-21355c"></a>
-  <img alt="Node 22 及以上" src="https://img.shields.io/badge/node-%E2%89%A5%2022-21355c">
-  <img alt="15 条规则" src="https://img.shields.io/badge/rules-15-21355c">
-  <a href="README.md"><img alt="English" src="https://img.shields.io/badge/README-English-c2256e"></a>
+  <a href="LICENSE"><img alt="Apache-2.0 许可证" src="https://img.shields.io/badge/license-Apache--2.0-21355c"></a>
+  <img alt="打包后的 CLI 需要 Node 22 或更新版本" src="https://img.shields.io/badge/node-%E2%89%A5%2022-21355c">
+  <a href="docs/rules.md"><img alt="15 条审计规则" src="https://img.shields.io/badge/rules-15-21355c"></a>
+  <a href="README.md"><img alt="English README" src="https://img.shields.io/badge/README-English-c2256e"></a>
 </p>
 
-# Regmark
+# Regmark — 可接入 CI 的电商商品数据一致性检查
 
-**检查你的店对机器说的话，和结账时实际收的钱，是不是一回事。**
+**发现商品页、JSON-LD、商品 feed 和店铺 API 之间的价格、库存与运费差异。** 验证 WooCommerce 店铺所有权后，还可以通过购物车探测核对结账金额。
 
-同一件商品的价格、库存和运费，一家店会在好几个地方各说一遍：商品页、页面里的 JSON-LD、Open Graph 标签、商品 feed、店铺后台接口。人只看得到其中一处，Google、比价网站和 AI 购物代理读的是另外几处，而没有任何东西保证它们一致。Regmark 把这些地方全读一遍，按商品的每个规格对齐，哪一处和最终决定买家付多少钱的那一处对不上，就报出来。
+Feed 写着 **22 美元**，购物车却收 **24 美元**，两边的格式都完全合法。Regmark 按同一商品规格关联各处数据，列出冲突值和来源位置，并将检查接入发布流程。
 
-不用注册，不用密钥，不用服务器。它读你的店，然后把看到的打印出来。
+默认只读。无需注册、平台 API 密钥或托管服务。支持本地和 CI，输出可独立打开的 HTML 报告，以及 JSON、SARIF、JUnit 和 Markdown。
 
-## 十秒钟看懂
+[快速上手](docs/quickstart.md) · [全部配置](docs/configuration.md) · [规则](docs/rules.md) · [CI](docs/ci.md) · [English](README.md)
+
+## 先运行演示
+
+需要 Node.js 22 或更新版本及 npm。以下命令从 GitHub 安装 CLI，检查随工具打包的模拟店铺：
 
 ```bash
 npx --allow-git=all github:kairwang01/regmark demo
 ```
 
-这条命令会检查工具自带的一家小店。店里事先埋了 19 个毛病：feed 里还是上周的价格，JSON-LD 只列了三个尺码里的一个，写着包邮但购物车照收运费。
+打开生成的 `regmark-demo.html`。模拟店铺中有 **19 个预设缺陷，对应 22 条发现**，包括过期 feed 价格、缺失规格和未披露运费。演示命令会成功退出，真实 `audit` 的退出码见下文。无需准备真实店铺或凭证。
 
-<p align="center"><img src="docs/assets/terminal.png" alt="regmark demo 的终端输出：price.mismatch 三条，每条写着该出口的值、结账的值，以及错的那个值在哪" width="880"></p>
+<p align="center"><img src="docs/assets/terminal.png" alt="终端报告显示 feed 价格 22.00 USD 与结账价格 24.00 USD 冲突，并标出来源位置" width="880"></p>
 
-它还会写出一个 `regmark-demo.html`，单个文件，可以直接打开，也可以发给同事。标题就是结论：各处对不上时，标题像套印不准的印张那样重影；对得上时，印得干干净净。
+```bash
+# 对比没有预设缺陷的同一模拟店铺
+npx --allow-git=all github:kairwang01/regmark demo --clean --html regmark-clean.html
+```
 
 <p align="center">
-  <img src="docs/assets/report-out-of-register.png" alt="标题为 Out of register 的 HTML 报告，字带着青、品红、黄三色重影" width="49%">
-  <img src="docs/assets/report-in-register.png" alt="标题为 In register 的 HTML 报告，字迹清楚" width="49%">
+  <img src="docs/assets/report-out-of-register.png" alt="有缺陷的模拟店铺 HTML 报告，标题为 Out of register，呈套印偏移效果" width="49%">
+  <img src="docs/assets/report-in-register.png" alt="干净模拟店铺 HTML 报告，标题为 In register，表示已观测信息一致" width="49%">
 </p>
 
-只需要 Node 22 或更新的版本。`--allow-git=all` 是给 npm 12 准备的：从这一版起，npm 默认不再从 git 取包，旧版 npm 不需要它。也可以完全不用 npm，整个工具就是一个文件：
+每条发现并列展示观测值与来源，便于定位负责修复的模块：
+
+<p align="center"><img src="docs/assets/report-findings.png" alt="展开的模拟店铺差异：feed 22 对结账 24 美元、JSON-LD 45 对 39 美元、Open Graph 14 对 16 美元，附有来源位置" width="880"></p>
+
+CMYK 视觉来自印刷套准：页面、feed、规划中的代理协议，以及店铺 API 或购物车，是需要对齐的几块色版。截图来自模拟店铺，不代表真实商家的故障。
+
+固定版本安装、故障排查及源码运行见[快速上手](docs/quickstart.md)。
+
+## 第一次只读检查
 
 ```bash
-curl -fsSLO https://github.com/kairwang01/regmark/releases/latest/download/regmark.mjs
-node regmark.mjs demo
+npx --allow-git=all github:kairwang01/regmark audit https://your-shop.example \
+  --feed /feeds/google.xml --html report.html --json report.json
 ```
 
-## 检查自己的店
+换成真实店铺地址与 feed 路径，没有 feed 时去掉 `--feed`。工具自动识别 WooCommerce 或 Shopify，默认抽样最多 25 件商品，读取页面并比较可用数据。默认同一主机的请求间隔为 1 秒，并遵守 `robots.txt`。
+
+没有开启购物车探测时，优先以店铺 API 为基准，再回退到页面可见信息。报告通过表示本次观测样本在预算内；采集问题与跳过的规则也要一起查看，才能了解实际覆盖范围。
+
+后文的 `regmark` 命令可这样安装：
 
 ```bash
-npx --allow-git=all github:kairwang01/regmark audit https://your-shop.example
+npm install --global --allow-git=all github:kairwang01/regmark
+regmark init https://your-shop.example
+regmark audit --html report.html
+regmark explain price.mismatch
 ```
 
-什么参数都不带时，它会自己判断店铺用的是什么平台，抽 25 件商品，读它们的页面和后台接口，然后比对。整个过程只读不写，遵守 robots.txt，每秒最多发一个请求。
+## 谁会用到它
 
-给它的东西越多，它能比的就越多。下面的 `regmark` 指你选的那种运行方式；用 `npm install -g --allow-git=all github:kairwang01/regmark` 可以把它装成一条命令。
-
-```bash
-# 加上商品 feed，这是最容易过期的一处
-regmark audit https://your-shop.example --feed /feeds/google.xml
-
-# 加上购物车的实算总价，运费和税也能查（WooCommerce）
-REGMARK_OWNERSHIP_TOKEN=… regmark audit https://your-shop.example --feed /feeds/google.xml --checkout
-
-# 留一份报告
-regmark audit https://your-shop.example --html report.html
-```
-
-`regmark explain <规则名>` 会告诉你这类问题通常是怎么来的、该去哪里改。全部参数见[配置说明](docs/configuration.md)。
-
-## 为什么要做这个
-
-这件事 Google Merchant Center 已经在替你查了。它拿 feed 里的价格去比落地页和结构化数据，要求[完全一致](https://support.google.com/merchants/answer/12159029)，对不上的商品直接拒登；结账页的价格比商品页高，[账号会被警告或封停](https://support.google.com/merchants/answer/10330822)。而你是事后才从 Google 那里知道的，一次知道一件。
-
-现在来读这些数据的不只是 Google。AI 购物代理报给用户的是结构化数据里的数，用户付的是结账页上的数。两个数不一样，这一单和这个用户的信任就都没了，而且没有任何报表会告诉你原因。
-
-Regmark 把这个比对提到前面来做：所有出口一起比，查到差异可以让构建失败。
-
-## 它能查出什么
-
-| 规则 | 级别 | 查的是什么 |
+| 你负责的工作 | 适合何时运行 | 能得到什么 |
 |---|---|---|
-| `price.mismatch` | 错误 | 某一处标的价格，结账时并不是这个数 |
-| `price.currency-ambiguous` | 错误 | 给机器读的价格没写币种，或者币种不对 |
-| `price.tax-basis` | 警告 | 两个价格正好差一个增值税或消费税税率 |
-| `price.sale-expired` | 警告 | 促销截止日期已经过了，但收的还是促销价 |
-| `availability.mismatch` | 错误 | 一处说有货，店里实际售罄，或者反过来 |
-| `variant.missing` | 错误 | 结构化数据只列了一部分规格 |
-| `variant.unpurchasable` | 错误 | 处处都说能买，购物车却加不进去 |
-| `shipping.mismatch` | 错误 | 标称的运费和结账收的不一样 |
-| `shipping.undisclosed` | 警告 | 运费要走到结账才知道 |
-| `identity.unmatched` | 警告 | feed 里还挂着店里已经不卖的东西 |
-| `identity.gtin-invalid` | 警告 | 条码校验位不对，或者两个规格共用一个条码 |
-| `policy.return-missing` | 提示 | 没有机器读得懂的退货政策 |
-| `content.hidden-text` | 警告 | 留在页面里、却存心不让人看见的文字 |
-| `content.instruction-like` | 错误 | 写给语言模型看、而不是写给顾客看的商品文字 |
-| `content.invisible-chars` | 警告 | 夹带看不见内容的零宽字符和 Unicode 标签字符 |
+| WooCommerce 开发、主题或插件维护 | 主题、定价插件、feed 导出器更新后 | 按规格给出差异与来源，帮助定位负责修复的模块 |
+| 商品 feed、技术 SEO 与投放协作 | 促销开始或结束、库存批量更新后 | 可重复运行的 feed、页面、结构化数据一致性检查 |
+| Shopify 店铺开发 | 主题或结构化数据应用更新后 | 公共商品目录、页面和 feed 的只读比较 |
+| 电商发布与质量保障 | 测试环境部署完成后 | 可保存的报告与逐规则预算，阻止已知问题回归 |
 
-每条规则什么时候报、什么时候不报，[docs/rules.md](docs/rules.md) 里有精确的定义。后者写得和前者一样仔细。
+Google 官方文档说明，Merchant Center 会核对商品数据、落地页及结构化数据中的价格，差异可能导致商品被拒。Regmark 把这些差异检查带进团队自己的工作流。[Google Merchant Center：商品价格不一致](https://support.google.com/merchants/answer/12159029)。
 
-## 它读哪些地方
+一致的机器可读商品信息，也为搜索和购物助手提供更可靠的输入。Regmark 检查可观测事实，不测量搜索排名、不预测 AI 推荐，也不保证 Merchant Center 审核通过。[定位与应用场景](docs/positioning.md)。
 
-这些出口按印刷分色的办法归成四块版。印刷时黑版是其余色版对齐的基准，所以它的代号是 K，取自 key。在这里，结账就是那块黑版。
+## 当前支持与边界
 
-| 色版 | 出口 | 支持情况 |
+| 信息来源 | 已支持 | 边界 |
 |---|---|---|
-| **C** | 商品页：可见的价格和库存、JSON-LD、microdata、Open Graph | 已支持 |
-| **M** | 商品 feed：Google 的格式，RSS、Atom 或制表符分隔 | 已支持 |
-| **Y** | 代理协议端点：UCP、ACP、MCP | 计划中 |
-| **K** | 店铺本身：后台商品接口，以及真实购物车算出的总价 | WooCommerce 完整支持；Shopify 只读商品接口 |
+| 商品页 | 可见价格/库存、JSON-LD、microdata、Open Graph、选定的商品文本 | 只读取服务器返回的 HTML，不执行 JavaScript 或浏览器交互 |
+| 商品 feed | Google 格式的 RSS、Atom、TSV | 需要显式传入 `--feed`；一次读取整个文件 |
+| WooCommerce | 公共 Store API 商品目录；可选的所有权验证后购物车探测 | 每次一件商品、每轮一个收货地区；不下单或付款 |
+| Shopify | 公共 `/products.json` 商品目录 | 仅只读，尚无 Shopify 购物车探测 |
+| 其他平台 | 显式指定页面、sitemap 发现及提供的 feed | 依赖返回 HTML 中能提取到的事实 |
+| UCP、ACP、MCP | 路线图 | 本版本尚无协议端点采集器 |
 
-以谁为准是明确规定的：先信结账，其次信后台接口，最后信人能看到的页面。JSON-LD、feed 和协议端点永远不被当作基准，它们是被检查的对象。
+默认比较优先级为 **结账 → 店铺 API → 可见页面**，按每条事实是否可用选择基准。JSON-LD、microdata、Open Graph 与 feed 默认是被检查的对象。结果受抽样、数据是否可访问与提取能力限制：目录发现最多考虑 1,000 件 WooCommerce 商品或 250 件 Shopify 商品，默认排除超过 30 个规格的商品。[抽样与配置细节](docs/configuration.md#which-products-get-audited)。
 
-## 接进 CI
+## 15 条规则检查什么
+
+| 规则 | 默认级别 | 示例 |
+|---|---|---|
+| `price.mismatch` | error | Feed 或结构化价格与所选基准不一致 |
+| `price.currency-ambiguous` | error | 机器可读价格缺少币种或币种冲突 |
+| `price.tax-basis` | warn | 价格差恰好对应支持的 VAT/GST 税率 |
+| `price.sale-expired` | warn | 价格标注的有效期已过 |
+| `availability.mismatch` | error | 一处有货，另一处售罄 |
+| `variant.missing` | error | 结构化数据漏掉目录中的规格 |
+| `variant.unpurchasable` | error | 声称可购买，但购物车拒绝添加 |
+| `shipping.mismatch` | error | 声称的运费与探测到的购物车收费不同 |
+| `shipping.undisclosed` | warn | 购物车收运费，但未观察到其他来源披露金额 |
+| `identity.unmatched` | warn | Feed 条目匹配不到店铺在售商品 |
+| `identity.gtin-invalid` | warn | GTIN 校验位错误或规格标识重复 |
+| `policy.return-missing` | info | 未观察到机器可读的退货政策 |
+| `content.hidden-text` | warn | 选定商品文本命中支持的 HTML/CSS 隐藏模式 |
+| `content.instruction-like` | error | 商品文本包含面向助手的指令式语言 |
+| `content.invisible-chars` | warn | 选定文本中存在可疑的不可见字符 |
+
+每条规则都有减少误报的静默条件。内容检查是启发式检测，不是完整的提示词注入防御。[查看全部规则的触发条件与限制](docs/rules.md)。
+
+## 接入 CI
 
 ```yaml
 # .github/workflows/regmark.yml
+name: Regmark
 on: pull_request
+permissions:
+  contents: read
 jobs:
-  regmark:
+  audit:
     runs-on: ubuntu-latest
     steps:
       - uses: kairwang01/regmark@v0.1.0
@@ -122,68 +135,72 @@ jobs:
           feed: /feeds/google.xml
 ```
 
-有规则超出预算时，这个任务会失败。发现的问题写在任务摘要里，HTML、JSON、SARIF、Markdown 四份报告作为产物保存。错误级的规则默认一条都不许有，警告不会让构建失败。店里已经有一批存量问题的话，先把每条规则的预算设成当前的数量，以后只许降不许升。GitLab 的写法和 SARIF 上传见 [CI 说明](docs/ci.md)。
+在测试环境部署就绪后运行。Action 会写入任务摘要，并在生成成功时上传 HTML、JSON、SARIF 和 Markdown 报告。固定使用审核过的发布版本或 commit；仓库中的改动需要发布新版本后才会进入对应的新发行包。
 
-报告有终端摘要，以及 `--html`、`--json`、`--sarif`、`--junit`、`--markdown` 五种文件。退出码：0 是在预算内，1 是超出预算，2 是检查没能跑起来，或者一件商品都没读到。店挂了的时候构建会失败，不会被算成通过。
+| 退出码 | 含义 |
+|---|---|
+| `0` | 读到了商品，且所有规则都在预算内 |
+| `1` | 至少一条规则超过预算 |
+| `2` | 配置错误、执行失败、没有读到商品，或严格模式遇到采集问题 |
 
-## 结账探针
+Error 规则默认预算为 0；warn/info 默认不限数量，也可以设置预算使它们阻止构建。已有问题可先用当前数量作为预算，修复后逐步调低。当前源码新增 `--strict`，可在任何采集问题出现时失败；固定的 `v0.1.0` 发行版尚不包含此参数。[GitHub Actions、GitLab、SARIF 与预算](docs/ci.md)。
 
-读公开页面不需要谁同意。结账探针不一样：它会往购物车里放一件商品，填一个收货地，读出总价，再清空购物车。这是在往店里写数据，所以必须先证明这家店是你的。
+## 可选的 WooCommerce 购物车检查
 
-1. 选一个 16 位以上的字母数字串当令牌。
-2. 在 `/.well-known/regmark.txt` 里放一行 `regmark-verify=<令牌>`，或者在 `_regmark.<你的域名>` 加一条内容相同的 TXT 记录。
-3. 运行时带上 `REGMARK_OWNERSHIP_TOKEN=<令牌>` 和 `--checkout`。
+在你控制的测试店铺上：
 
-没有任何参数可以跳过这一步。探针不会走到支付，每查完一件就清空购物车，清不掉会明确报出来。
+1. 选择一个由字母、数字、`_`、`-` 组成的 16–128 字符 token。
+2. 在 `/.well-known/regmark.txt` 提供 `regmark-verify=<token>`，或在 `_regmark.<store-host>` 发布相同内容的 TXT 记录。
+3. 将 `REGMARK_OWNERSHIP_TOKEN` 放入环境变量或 CI Secret，然后运行：
 
-## 它在别人的站上怎么行事
+```bash
+regmark audit https://staging.your-shop.example --platform woocommerce \
+  --feed /feeds/google.xml --checkout --ship-to US:94103 --html report.html
+```
 
-- 只访问你指定的主机，不跟随跳到别处的重定向和链接。
-- 遵守 robots.txt，请求之间隔一秒。
-- 拒绝访问解析到内网地址的主机。在公司内网里检查一家不怀好意的店，对方没法借这次检查去打你的内网。
-- 响应大小有上限，按解压后的字节算。
-- 从店铺读到的一切，在每一种报告格式里都当作不可信内容处理。
-- 不向任何地方上报任何数据。
+探测会向购物车添加一个单位商品、设置地址、读取总价，并在每个规格结束后尝试清空。不会下单或付款，但会写入购物车/会话状态；清理失败会报告。必须通过所有权验证，并检查采集问题以确认探测实际执行。[所有权验证与请求策略](docs/configuration.md#writes)。
 
-## 和别的工具比
+## 如何与现有工具配合
 
-| | 查什么 | 不查什么 |
+| 工具或流程 | 主要回答什么问题 | 与 Regmark 的配合 |
 |---|---|---|
-| Google Merchant Center 的诊断 | feed 和页面是否一致，限于已提交的商品 | 发布之前；其他出口；你的 CI |
-| 富媒体结果测试、schema 校验器 | 一个页面的标记格式对不对 | 里面的值是不是真的 |
-| UCP 和 feed 校验器 | 端点或文件的形状合不合规范 | 里面的值和别处对不对得上 |
-| 页面级的「AI 就绪度」打分 | 机器能从一个页面读到多少 | 读到的和 feed、和结账是否一致 |
-| **Regmark** | 每个出口、每个规格是否和结账一致 | 超出读取需要的标记合规性；排名和曝光 |
+| Merchant Center 诊断 | Google 是否发现商品数据或政策问题？ | 以其作为 Google 处理结果的依据，使用 Regmark 重复检查自己的店铺与测试环境 |
+| Rich Results Test / Schema 校验器 | 页面标记能否被读取，是否满足相应结构要求？ | 先校验标记，再将其中的值与 feed/API/购物车对照 |
+| Feed 校验器 | 文件格式和字段是否符合其要求？ | 先校验文件，再比较其内容与店铺事实 |
+| 浏览器端到端测试 | 指定条件下的购买流程是否正常？ | 保留浏览器与支付覆盖，补充 Regmark 的规格匹配和多格式报告 |
 
-## 现在的状态
+这些流程可以互补。Regmark 当前专注于可观测的商品数据一致性。[完整定位说明](docs/positioning.md)。
 
-版本 0.1.0。能用，还很新，它的规则见过的真实店铺不多。
+## 开发与贡献
 
-- 近 700 项单元测试，外加类型检查。
-- 一个基准：拿仓库里的两家样板店量工具本身。一家埋了 19 个缺陷，应当报 22 条，工具报出的正是这 22 条，没有多报；另一家没有缺陷，工具一条不报。
-- 第一次对 11 家公开的 WooCommerce 店做只读检查时，查出了工具自己的三类误报，都已修掉。[那次实测说明了什么，说明不了什么](plan/06-prototype.md)。
+项目处于 `0.1.0` 早期阶段。Fixture 基准验证 19 个预设缺陷对应 22 条发现，干净店铺对应 0 条发现；这是可复现的测试证据，不是真实商家准确率估计。
 
-如果 Regmark 在你的店上报了一条其实没问题的东西，这是你能告诉这个项目的最有用的一件事：[报告一条误报](https://github.com/kairwang01/regmark/issues/new?template=false-alarm.yml)。
+```bash
+# 源码开发：Node 22.18+，pnpm 版本见 package.json
+pnpm install --frozen-lockfile
+pnpm test
+pnpm bench
+pnpm typecheck
+```
 
-**接下来：** [把 UCP、ACP、MCP 端点接成第四块版](https://github.com/kairwang01/regmark/issues/2)；[Shopify 的结账探针](https://github.com/kairwang01/regmark/issues/3)；[更多平台](https://github.com/kairwang01/regmark/issues/7)；[feed 新鲜度](https://github.com/kairwang01/regmark/issues/4)；一个真的把店走一遍的购物代理，核对它报给用户的总价是不是购物车算出来的那个数。
+最有价值的贡献是可复现的[误报](https://github.com/kairwang01/regmark/issues/new?template=false-alarm.yml)或[漏报](https://github.com/kairwang01/regmark/issues/new?template=missed-defect.yml)。主题提取 fixture、平台实例、文档纠错都适合开始。[贡献指南](CONTRIBUTING.md)。
 
-**想帮忙：** [让工具多认一个主题的可见价格](https://github.com/kairwang01/regmark/issues/6)是一件小而独立的事；而眼下比代码更有用的，是[它在你的店上跑出了什么](https://github.com/kairwang01/regmark/issues/1)。
+后续方向包括代理协议采集、更广泛的主题适配、feed 时效性及 Shopify 购物车支持；进展见 [Issues](https://github.com/kairwang01/regmark/issues)。如果它帮助了你，欢迎 Star 让更多人发现；可复现的反馈能让项目更可靠。
 
-## 文档
+## 文档导航
 
-- [配置和全部参数](docs/configuration.md)（英文）
-- [在 CI 里运行](docs/ci.md)（英文）
-- [每条规则的定义](docs/rules.md)（英文）
-- [JSON 报告的格式](docs/report-format.md)（英文）
-- [参与贡献](CONTRIBUTING.md)：新规则从在样板店里埋一个缺陷开始
-- [设计思路、选型和路线图](https://opensource.kairwang.cloud/regmark/)（中文）
+- [快速上手与排错](docs/quickstart.md)
+- [复现截图与录制演示](docs/demo.md)
+- [全部命令、参数和配置字段](docs/configuration.md)
+- [CI 接入与渐进预算](docs/ci.md)
+- [规则参考](docs/rules.md)与 [JSON 报告格式](docs/report-format.md)
+- [产品定位](docs/positioning.md)与[曝光、SEO、演示方案](docs/discoverability.md)
+- [贡献指南](CONTRIBUTING.md)与[中文设计笔记](https://opensource.kairwang.cloud/regmark/)
 
-## 托管
+## 许可证与托管
 
-项目站点运行在腾讯云上。
+Apache-2.0。项目站点托管在腾讯云。
 
 <a href="https://www.tencentcloud.com/"><img src="docs/assets/tencent-cloud.svg" alt="Tencent Cloud" height="22"></a>
 
-## 许可证
-
-Apache-2.0。腾讯云的标志是腾讯的商标，不在本许可证的范围内，放在这里只是为了注明托管方。
+腾讯云标志属于其权利人，不属于本项目许可证授权范围，仅用于说明托管提供方。

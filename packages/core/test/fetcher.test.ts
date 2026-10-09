@@ -15,12 +15,22 @@ before(async () => {
     const url = req.url ?? '/';
     if (url === '/hello') return void res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end('héllo');
     if (url === '/gzip') return void res.writeHead(200, { 'content-encoding': 'gzip' }).end(zlib.gzipSync('zipped'));
+    if (url === '/broken-gzip') return void res.writeHead(200, { 'content-encoding': 'gzip' }).end('invalid compressed data');
+    if (url === '/truncated-gzip') {
+      res.writeHead(200, { 'content-encoding': 'gzip', 'content-length': '1000' });
+      res.write(zlib.gzipSync('partial'));
+      setTimeout(() => res.destroy(), 10);
+      return;
+    }
     if (url === '/bomb') return void res.writeHead(200, { 'content-encoding': 'gzip' }).end(zlib.gzipSync(Buffer.alloc(200_000, 97)));
     if (url === '/big') return void res.writeHead(200).end(Buffer.alloc(200_000, 97));
     if (url === '/slow') return void setTimeout(() => res.writeHead(200).end('late'), 600);
     if (url === '/hop') return void res.writeHead(302, { location: '/hello' }).end();
     if (url === '/loop') return void res.writeHead(302, { location: '/loop' }).end();
     if (url === '/away') return void res.writeHead(301, { location: 'https://elsewhere.example/x' }).end();
+    if (url === '/credentials') return void res.writeHead(302, { location: `${origin.replace('http://', 'http://user:password@')}/hello` }).end();
+    if (url === '/cross-origin') return void res.writeHead(302, { location: `${origin.replace('127.0.0.1', 'localhost')}/headers` }).end();
+    if (url === '/headers') return void res.writeHead(200).end(JSON.stringify(req.headers));
     if (url === '/latin1') return void res.writeHead(200, { 'content-type': 'text/html; charset=iso-8859-1' }).end(Buffer.from([0xe9]));
     if (url === '/ua') return void res.writeHead(200).end(String(req.headers['user-agent']));
     if (url === '/.well-known/regmark.txt') return void res.writeHead(200).end('# verification\nregmark-verify=tok_0123456789abcdef\n');
@@ -83,9 +93,69 @@ test('a same-host redirect is followed; one that leaves the allowlist is handed 
   await assert.rejects(local({ maxRedirects: 3 }).get(`${origin}/loop`), refusal('too-many-redirects'));
 });
 
+test('redirects reject URL credentials before contacting the destination', async () => {
+  const before = hits.length;
+  await assert.rejects(local().get(`${origin}/credentials`), refusal('bad-url'));
+  assert.deepEqual(hits.slice(before), ['GET /credentials']);
+});
+
+test('caller headers do not cross origins even when both hosts are allowed', async () => {
+  const headers = { authorization: 'Bearer secret', cookie: 'session=secret', 'cart-token': 'secret' };
+  const fetcher = local({ hosts: ['127.0.0.1', 'localhost'] });
+  const same = JSON.parse((await fetcher.get(`${origin}/headers`, { headers })).body);
+  assert.equal(same.authorization, headers.authorization);
+  const other = JSON.parse((await fetcher.get(`${origin}/cross-origin`, { headers })).body);
+  for (const name of Object.keys(headers)) assert.equal(other[name], undefined, name);
+});
+
+test('robots redirects apply the same URL validation as page redirects', async () => {
+  const visited: string[] = [];
+  const robotsServer = http.createServer((req, res) => {
+    visited.push(req.url ?? '');
+    const location = `http://user:password@127.0.0.1:${(robotsServer.address() as AddressInfo).port}/rules`;
+    if (req.url === '/robots.txt') res.writeHead(302, { location }).end();
+    else res.end('User-agent: *\nAllow: /');
+  });
+  await new Promise<void>((resolve) => robotsServer.listen(0, '127.0.0.1', resolve));
+  try {
+    const url = `http://127.0.0.1:${(robotsServer.address() as AddressInfo).port}/product`;
+    await assert.rejects(local({ respectRobots: true }).get(url), refusal('robots'));
+    assert.deepEqual(visited, ['/robots.txt']);
+  } finally {
+    robotsServer.close();
+  }
+});
+
+test('undefined policy overrides retain safe defaults and obey a real robots refusal', async () => {
+  const visited: string[] = [];
+  const robotsServer = http.createServer((req, res) => {
+    visited.push(req.url ?? '');
+    assert.match(req.headers['user-agent'] ?? '', /^Regmark\//);
+    res.end('User-agent: *\nDisallow: /');
+  });
+  await new Promise<void>((resolve) => robotsServer.listen(0, '127.0.0.1', resolve));
+  try {
+    const url = `http://127.0.0.1:${(robotsServer.address() as AddressInfo).port}/product`;
+    const fetcher = createFetcher({
+      hosts: ['127.0.0.1'], allowPrivateNetwork: true,
+      respectRobots: undefined, timeoutMs: undefined, minIntervalMs: undefined,
+      maxBytes: undefined, maxRedirects: undefined, userAgent: undefined, agentToken: undefined,
+    });
+    await assert.rejects(fetcher.get(url), refusal('robots'));
+    assert.deepEqual(visited, ['/robots.txt']);
+  } finally {
+    robotsServer.close();
+  }
+});
+
 test('the size limit counts decompressed bytes', async () => {
   await assert.rejects(local({ maxBytes: 50_000 }).get(`${origin}/big`), refusal('too-large'));
   await assert.rejects(local({ maxBytes: 50_000 }).get(`${origin}/bomb`), refusal('too-large'));
+});
+
+test('invalid or interrupted compressed responses fail without leaving a decoder running', async () => {
+  await assert.rejects(local().get(`${origin}/broken-gzip`), refusal('network'));
+  await assert.rejects(local().get(`${origin}/truncated-gzip`), refusal('network'));
 });
 
 test('a slow response times out', async () => {

@@ -1,8 +1,13 @@
 
-  shop.example    19 variants    0s
+  demo-shop.example    19 variants    0s
   C page jsonld opengraph    M feed    Y –    K platform checkout
 
   ✓ 15 rules passed
 
   0 errors, 0 warnings. Within budget.
+
+  That was the same shop with nothing wrong in it: every surface agrees with the checkout.
+
+  The full report is in samples/report-clean.html
+  Now a real one:  regmark audit https://your-shop.example
 

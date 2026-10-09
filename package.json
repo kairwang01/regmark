@@ -1,20 +1,23 @@
 {
   "name": "regmark",
   "version": "0.1.0",
-  "description": "Check that what a shop tells machines matches what its checkout charges: price, stock and shipping parity across product pages, JSON-LD, feeds and the cart.",
+  "description": "Catch price, stock and shipping mismatches across product pages, JSON-LD, merchant feeds and store APIs, with CI reports and optional WooCommerce cart probes.",
   "keywords": [
     "ecommerce",
-    "structured-data",
-    "json-ld",
-    "schema.org",
-    "google-merchant-center",
-    "product-feed",
     "woocommerce",
     "shopify",
+    "google-merchant-center",
+    "product-feed",
+    "json-ld",
+    "structured-data",
+    "schema.org",
+    "data-quality",
+    "price-parity",
+    "cli",
+    "github-actions",
+    "sarif",
     "agentic-commerce",
-    "audit",
-    "ci",
-    "cli"
+    "testing"
   ],
   "homepage": "https://opensource.kairwang.cloud/regmark/",
   "repository": {
@@ -35,7 +38,7 @@
     "README.md",
     "README.zh-CN.md",
     "LICENSE",
-    "docs/rules.md"
+    "docs/"
   ],
   "packageManager": "pnpm@11.23.0",
   "engines": {
@@ -47,7 +50,8 @@
     "bench": "node --test \"e2e/**/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json",
     "regmark": "node packages/cli/src/bin.ts",
-    "prepublishOnly": "pnpm typecheck && pnpm test && pnpm bench && node scripts/bundle.mjs --check"
+    "prepublishOnly": "pnpm typecheck && pnpm test && pnpm bench && node scripts/bundle.mjs --check",
+    "check": "pnpm typecheck && pnpm test && pnpm bench && node scripts/bundle.mjs --check"
   },
   "devDependencies": {
     "@types/node": "^22.18.0",

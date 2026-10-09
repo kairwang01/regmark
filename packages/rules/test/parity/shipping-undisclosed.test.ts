@@ -42,6 +42,29 @@ test('a checkout with no stated cost is silent', () => {
   assert.deepEqual(run(rule, [checkout(null)]), []);
 });
 
+test('a shipping object with neither a cost nor free shipping leaves the cost undisclosed', () => {
+  const findings = run(rule, [
+    checkout('6.20'),
+    variant('jsonld', { sku: 'TEE-M', url: URL }, { shipping: shipping('jsonld', null) }),
+  ]);
+  assert.equal(findings.length, 1);
+});
+
+test('an explicit free shipping statement with no number counts as disclosure', () => {
+  assert.deepEqual(run(rule, [
+    checkout('6.20'),
+    variant('jsonld', { sku: 'TEE-M', url: URL }, { shipping: shipping('jsonld', null, { free: true }) }),
+  ]), []);
+});
+
+test('a quote for another destination does not disclose the checkout destination cost', () => {
+  const findings = run(rule, [
+    variant('checkout', { sku: 'TEE-M', url: URL }, { shipping: shipping('checkout', '6.20', { country: 'US' }) }),
+    variant('feed', { sku: 'TEE-M', url: URL }, { shipping: shipping('feed', '6.20', { country: 'CA' }) }),
+  ]);
+  assert.equal(findings.length, 1);
+});
+
 test('the rule is skipped when checkout was not collected', () => {
   const result = runFull(rule, [
     variant('feed', { sku: 'TEE-M', url: URL }, { shipping: shipping('feed', '6.20') }),

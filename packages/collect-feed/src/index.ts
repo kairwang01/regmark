@@ -17,20 +17,26 @@ export function parseFeed(
   now: Date,
   options: FeedOptions = {},
 ): CollectResult {
-  const text = body.replace(/^\uFEFF/, '').trimStart();
+  // A leading tab is an empty TSV column, so preserve it until parsing.
+  const text = body.replace(/^\uFEFF/, '');
+  const detected = text.trimStart();
   const parseError = (message: string): CollectResult => ({
     sightings: [],
     issues: [{ surface: 'feed', code: 'parse-error', message, locator: feedUrl }],
   });
 
   let items: FeedItem[];
-  if (text === '') return parseError('feed is empty');
-  if (text.startsWith('<')) {
-    const read = readXml(text);
+  if (detected === '') return parseError('feed is empty');
+  if (detected.startsWith('<')) {
+    const read = readXml(detected);
     if ('error' in read) return parseError(read.error);
     items = read.items;
   } else {
-    items = readTsv(text);
+    try {
+      items = readTsv(text);
+    } catch (err) {
+      return parseError(err instanceof Error ? err.message : String(err));
+    }
   }
 
   const sightings: Sighting[] = [];

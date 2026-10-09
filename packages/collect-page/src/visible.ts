@@ -2,7 +2,8 @@
 // price when it is on sale, and the stock line. Only the markup of the common
 // storefront themes is recognised; anything else yields nothing rather than a guess.
 import { parseAllMoney, type Availability, type CollectResult, type Money, type Observation, type Sighting } from '@regmark/core';
-import { load, type CheerioAPI } from 'cheerio';
+import type { CheerioAPI } from 'cheerio';
+import { documentOf, type PageSource } from './document.ts';
 import { findAll, hasClass, productTitle, select, tidy, textContent, type Node } from './text.ts';
 
 export type VisibleOptions = {
@@ -24,8 +25,8 @@ type PriceRead = {
   soldOut?: Observation<Availability>;
 };
 
-export function extractVisible(html: string, pageUrl: string, fetchedAt: string, options: VisibleOptions = {}): CollectResult {
-  const $ = load(html);
+export function extractVisible(html: PageSource, pageUrl: string, fetchedAt: string, options: VisibleOptions = {}): CollectResult {
+  const $ = documentOf(html);
   const hint: Hint = { currency: options.currency };
   const obs: Obs = (value, raw, selector) => ({ value, raw, surface: 'page', locator: `${pageUrl}#css(${selector})`, fetchedAt });
 

@@ -10,8 +10,8 @@ export type WooParent = { id: number; slug: string; permalink: string; type: str
 export type CatalogOptions = {
   /** Stop after this many parent products have been listed. Default 1000. */
   maxProducts?: number;
-  /** Parents for which this returns false are skipped entirely: no requests for their variations, no sightings. */
-  select?: (parent: WooParent) => boolean;
+  /** Select from the complete listing without fetching it again. Rejected parents produce no requests or sightings. */
+  select?: (parent: WooParent, parents: readonly WooParent[]) => boolean;
 };
 
 const PER_PAGE = 100;
@@ -67,8 +67,9 @@ async function readCatalog(ctx: CollectContext, options: CatalogOptions): Promis
   }
 
   const sightings: Sighting[] = [];
+  const parents = listed.map((entry) => entry.parent);
   for (const entry of listed) {
-    if (options.select && !selects(options.select, entry.parent, ctx)) continue;
+    if (options.select && !selects(options.select, entry.parent, parents, ctx)) continue;
 
     if (entry.parent.type === 'simple' || entry.parent.variationIds.length === 0) {
       sightings.push(buildSighting(entry.parent, entry.name, entry.body, entry.pointer, entry.fetchedAt, String(entry.parent.id), undefined));
@@ -100,7 +101,7 @@ async function readCatalog(ctx: CollectContext, options: CatalogOptions): Promis
     }
   }
 
-  return { sightings, issues, parents: listed.map((entry) => entry.parent) };
+  return { sightings, issues, parents };
 }
 
 type ListRead =
@@ -122,9 +123,9 @@ async function readList(ctx: CollectContext, url: string): Promise<ListRead> {
 }
 
 /** A select that throws is a bug in the caller's filter, not a reason to lose the whole run. */
-function selects(select: (parent: WooParent) => boolean, parent: WooParent, ctx: CollectContext): boolean {
+function selects(select: NonNullable<CatalogOptions['select']>, parent: WooParent, parents: readonly WooParent[], ctx: CollectContext): boolean {
   try {
-    return Boolean(select(parent));
+    return Boolean(select(parent, parents));
   } catch (err) {
     ctx.log('warn', `select rejected parent ${parent.id}: ${errorText(err)}`);
     return false;

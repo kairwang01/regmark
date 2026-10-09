@@ -1,150 +1,132 @@
 <p align="center">
-  <img src="docs/assets/hero.png" alt="Regmark: does your shop agree with itself? Four surfaces printing four different prices, out of register; then all of them matching the checkout, in register." width="100%">
+  <img src="docs/assets/hero.png" alt="Regmark: align product pages, structured data, feeds and checkout, like the plates of a printing press" width="100%">
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img alt="Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-21355c"></a>
-  <img alt="Node 22 or later" src="https://img.shields.io/badge/node-%E2%89%A5%2022-21355c">
-  <img alt="15 rules" src="https://img.shields.io/badge/rules-15-21355c">
+  <a href="LICENSE"><img alt="Apache-2.0 license" src="https://img.shields.io/badge/license-Apache--2.0-21355c"></a>
+  <img alt="Node 22 or later for the bundled CLI" src="https://img.shields.io/badge/node-%E2%89%A5%2022-21355c">
+  <a href="docs/rules.md"><img alt="15 audit rules" src="https://img.shields.io/badge/rules-15-21355c"></a>
   <a href="README.zh-CN.md"><img alt="中文说明" src="https://img.shields.io/badge/README-%E4%B8%AD%E6%96%87-c2256e"></a>
 </p>
 
-# Regmark
+# Regmark — ecommerce data consistency checks for CI
 
-**Check that what your shop tells machines matches what its checkout charges.**
+**Catch price, stock and shipping mismatches across product pages, JSON-LD, merchant feeds and storefront APIs.** Add verified WooCommerce cart probes to compare against checkout totals.
 
-A shop states the same fact in several places: the product page, the JSON-LD
-inside it, the Open Graph tags, the merchant feed, the storefront API. A person
-sees one of them. Google, price comparison sites and AI shopping agents read
-the others, and nothing keeps them in step. Regmark reads every one of them for
-the same products, lines them up variant by variant, and reports each place
-where one disagrees with the surface that decides what the buyer pays.
+Your feed says **$22**. Your cart charges **$24**. Both files can be perfectly valid. Regmark connects observations for the same product variant, shows the conflicting values and their source locations, and can fail your build before a mismatch reaches your next release.
 
-No account, no API key, no server. It reads your shop and prints what it found.
+Read-only by default. No account, platform API key or hosted service required. Runs locally or in CI; exports a self-contained HTML report, JSON, SARIF, JUnit and Markdown.
 
-## See it in ten seconds
+[Quickstart](docs/quickstart.md) · [Configuration](docs/configuration.md) · [Rules](docs/rules.md) · [CI](docs/ci.md) · [中文](README.zh-CN.md)
+
+## Try the demo first
+
+Requires Node.js 22 or later and npm. This installs the CLI from GitHub and audits a bundled fixture shop:
 
 ```bash
 npx --allow-git=all github:kairwang01/regmark demo
 ```
 
-That audits a small shop bundled with the tool, in which 19 defects have been
-planted: a feed with last week's price, JSON-LD that lists one size out of
-three, a "free shipping" claim the cart does not honour.
+Open `regmark-demo.html`. The fixture contains **19 deliberately planted defects producing 22 findings**: stale feed prices, missing variants, hidden shipping charges and more. The demo exits successfully so you can explore it; a real `audit` uses the exit codes below. No live shop or credentials are needed.
 
-<p align="center"><img src="docs/assets/terminal.png" alt="Terminal output of regmark demo: price.mismatch with three findings, each showing the surface's value, the checkout's value and where the wrong value lives" width="880"></p>
+<p align="center"><img src="docs/assets/terminal.png" alt="Terminal report: a feed price of 22.00 USD disagrees with checkout at 24.00 USD, with a source locator for the finding" width="880"></p>
 
-It also writes `regmark-demo.html`, one self-contained file you can open or
-send to someone. The headline is the verdict: when the surfaces disagree it
-prints out of register, the way a misaligned press sheet does.
+```bash
+# Compare with the same fixture without the planted defects
+npx --allow-git=all github:kairwang01/regmark demo --clean --html regmark-clean.html
+```
 
 <p align="center">
-  <img src="docs/assets/report-out-of-register.png" alt="HTML report headed Out of register, the words doubled in cyan, magenta and yellow" width="49%">
-  <img src="docs/assets/report-in-register.png" alt="HTML report headed In register, printed clean" width="49%">
+  <img src="docs/assets/report-out-of-register.png" alt="Demo HTML report with conflicting product data, labelled Out of register" width="49%">
+  <img src="docs/assets/report-in-register.png" alt="Clean fixture HTML report with consistent observed product data, labelled In register" width="49%">
 </p>
 
-It needs Node 22 or later and nothing else. `--allow-git=all` is there for
-npm 12, which no longer fetches a package from git unless asked; older npm does
-not need it. Or leave npm out: the whole tool is one file.
+A finding keeps both observed values next to their source locations:
+
+<p align="center"><img src="docs/assets/report-findings.png" alt="Expanded fixture findings show feed 22 versus checkout 24 USD, JSON-LD 45 versus 39 USD, and Open Graph 14 versus 16 USD, with source locations" width="880"></p>
+
+The CMYK report is a printing metaphor: misaligned plates produce a blurred result. Here the plates are the product page, feed, future agent endpoints and the shop's own API or cart. Screenshots show bundled fixtures, not evidence of real merchant failures.
+
+For a pinned release download, installation troubleshooting and source development, see the [quickstart](docs/quickstart.md).
+
+## Run your first read-only audit
 
 ```bash
-curl -fsSLO https://github.com/kairwang01/regmark/releases/latest/download/regmark.mjs
-node regmark.mjs demo
+npx --allow-git=all github:kairwang01/regmark audit https://your-shop.example \
+  --feed /feeds/google.xml --html report.html --json report.json
 ```
 
-## Audit your own shop
+Use your actual store URL and feed path; omit `--feed` if you do not have one. Regmark detects WooCommerce or Shopify, samples up to 25 products, reads their pages, and compares the available observations. Requests are paced at one per second per host by default and respect `robots.txt`.
+
+Without a checkout probe, the baseline is the storefront API where available, then the visible page. A passing report means the observed sample is within budget; check collection issues and skipped rules to understand coverage.
+
+From here on, `regmark` means the command installed with:
 
 ```bash
-npx --allow-git=all github:kairwang01/regmark audit https://your-shop.example
+npm install --global --allow-git=all github:kairwang01/regmark
+regmark init https://your-shop.example
+regmark audit --html report.html
+regmark explain price.mismatch
 ```
 
-With no flags it works out what the shop runs on, samples 25 products, reads
-their pages and the storefront API, and compares. It only reads, it obeys
-robots.txt, and it makes one request a second.
+## Where it helps
 
-Give it more to compare and it finds more. From here on `regmark` stands for
-whichever way you run it; `npm install -g --allow-git=all github:kairwang01/regmark`
-makes it a command.
+| You maintain… | Run Regmark when… | What you get |
+|---|---|---|
+| A WooCommerce shop or agency portfolio | A theme, price plugin or feed exporter changes | Variant-level differences with source locations for the team that owns the fix |
+| Shopping feeds and technical SEO | Promotions begin or end, or stock updates drift | Repeatable checks between the feed, page and structured data |
+| A Shopify storefront | A theme or structured-data app changes | Read-only public catalogue, page and feed comparisons |
+| An ecommerce release pipeline | A staging deployment is ready | Reports and per-rule budgets that turn known mismatches into regression checks |
 
-```bash
-# the merchant feed, the surface that goes stale most often
-regmark audit https://your-shop.example --feed /feeds/google.xml
+Google documents price comparisons between submitted product data, landing pages and structured data; a mismatch can result in disapproval. Regmark lets you inspect those disagreements in your own workflow. [Google Merchant Center: mismatched product price](https://support.google.com/merchants/answer/12159029).
 
-# real cart totals, so shipping and tax are checked too (WooCommerce)
-REGMARK_OWNERSHIP_TOKEN=… regmark audit https://your-shop.example --feed /feeds/google.xml --checkout
+Consistent machine-readable product facts are also useful inputs for search and shopping assistants. Regmark checks the facts it can observe; it does not measure rankings, predict AI recommendations or guarantee Merchant Center approval. [Positioning and use cases](docs/positioning.md).
 
-# keep a report
-regmark audit https://your-shop.example --html report.html
-```
+## Supported surfaces and limits
 
-`regmark explain <rule>` tells you what usually causes a finding and where to
-fix it. [Every flag and config field](docs/configuration.md).
+| Surface | Current support | Boundary |
+|---|---|---|
+| Product page | Visible price/stock, JSON-LD, microdata, Open Graph and selected product text | Server-returned HTML only; no JavaScript execution or browser interaction |
+| Merchant feed | Google-format RSS, Atom and TSV | Explicit `--feed` URL; a feed is read as one file |
+| WooCommerce | Public Store API catalogue; optional verified cart probe | One-item cart and one destination per run; no order or payment |
+| Shopify | Public `/products.json` catalogue | Read-only; no Shopify checkout probe |
+| Other storefronts | Explicit pages, sitemap discovery and a supplied feed | Comparisons depend on usable facts in the returned HTML |
+| UCP, ACP, MCP | Roadmap | No protocol endpoint collectors in this release |
 
-## Why
-
-Google Merchant Center already runs this comparison on you. It checks the price
-in your feed against your landing page and its structured data, requires them
-to [match exactly](https://support.google.com/merchants/answer/12159029), and
-disapproves the products that do not. It [warns or suspends
-accounts](https://support.google.com/merchants/answer/10330822) whose checkout
-shows a higher price than the product page. You find out from Google, after the
-fact, one product at a time.
-
-Now more readers are arriving. An AI shopping agent quotes whatever your
-structured data says, and its user pays whatever your checkout says. If those
-are two numbers, that sale and that shopper's trust are gone, and no dashboard
-will tell you why.
-
-Regmark runs the comparison first, across every surface at once, and can fail
-a build when it finds a difference.
+Default comparison priority is **checkout → platform API → visible page**, per available fact. JSON-LD, microdata, Open Graph and feeds are checked against that baseline by default. All observations are bounded by the sample, source accessibility and supported extraction patterns. Catalogue discovery currently considers up to 1,000 WooCommerce or 250 Shopify products; products with more than 30 variants are excluded by default. [Exact sampling and configuration behavior](docs/configuration.md#which-products-get-audited).
 
 ## What it catches
 
-| Rule | | Catches |
+| Rule | Default severity | Example |
 |---|---|---|
-| `price.mismatch` | error | A surface states a price the checkout does not charge |
-| `price.currency-ambiguous` | error | A machine-readable price with no currency, or the wrong one |
-| `price.tax-basis` | warn | Two prices exactly one VAT or GST rate apart |
-| `price.sale-expired` | warn | A sale end date in the past on a price still being charged |
-| `availability.mismatch` | error | In stock on one surface, sold out on the shop, or the reverse |
-| `variant.missing` | error | Structured data that lists some variants and omits others |
-| `variant.unpurchasable` | error | Everything says it can be bought; the cart refuses |
-| `shipping.mismatch` | error | A stated shipping cost the checkout does not charge |
-| `shipping.undisclosed` | warn | Shipping cost that only appears at checkout |
-| `identity.unmatched` | warn | A feed entry for something the shop no longer sells |
-| `identity.gtin-invalid` | warn | A GTIN with a bad check digit, or shared by two variants |
-| `policy.return-missing` | info | No machine-readable return policy |
-| `content.hidden-text` | warn | Text kept in the page but deliberately kept from the eye |
-| `content.instruction-like` | error | Product text written to a language model, not to a shopper |
-| `content.invisible-chars` | warn | Zero-width and Unicode tag characters carrying unseen text |
+| `price.mismatch` | error | Feed or structured-data price differs from the chosen baseline |
+| `price.currency-ambiguous` | error | Missing or conflicting machine-readable currency |
+| `price.tax-basis` | warn | Prices differ by a supported VAT/GST rate |
+| `price.sale-expired` | warn | A price's stated validity period has ended |
+| `availability.mismatch` | error | One surface says in stock, another says sold out |
+| `variant.missing` | error | Structured data omits variants present in the catalogue |
+| `variant.unpurchasable` | error | Cart refuses a variant presented as purchasable |
+| `shipping.mismatch` | error | Advertised shipping conflicts with a probed cart charge |
+| `shipping.undisclosed` | warn | Cart charges shipping with no observed disclosure |
+| `identity.unmatched` | warn | Feed entry cannot be matched to a product the shop sells |
+| `identity.gtin-invalid` | warn | Invalid GTIN checksum or duplicate variant identifier |
+| `policy.return-missing` | info | No observed machine-readable return policy |
+| `content.hidden-text` | warn | Selected product text is hidden by supported HTML/CSS patterns |
+| `content.instruction-like` | error | Product text contains instruction-like language aimed at an assistant |
+| `content.invisible-chars` | warn | Selected text contains suspicious invisible characters |
 
-[docs/rules.md](docs/rules.md) says exactly when each one fires and, with as
-much care, when it stays silent.
+Rules have deliberate silent cases to reduce false alarms. Content checks are heuristics, not a complete prompt-injection defense. [Read the conditions and limitations of all 15 rules](docs/rules.md).
 
-## What it reads
-
-Surfaces are grouped the way a press sheet is separated into plates. The black
-plate is the one the others are aligned to, which is why printers call it K,
-for key. Here the checkout is the key plate.
-
-| Plate | Surface | Supported |
-|---|---|---|
-| **C** | The product page: visible price and stock, JSON-LD, microdata, Open Graph | yes |
-| **M** | The merchant feed, in Google's format: RSS, Atom or tab-separated | yes |
-| **Y** | Agent protocol endpoints: UCP, ACP, MCP | planned |
-| **K** | The shop itself: the storefront API, and totals from a real cart | WooCommerce in full; Shopify catalogue, read-only |
-
-Which surface is believed is explicit: the checkout first, then the storefront
-API, then the visible page. JSON-LD, feeds and protocol endpoints are never
-believed. They are what gets checked.
-
-## In CI
+## Add it to CI
 
 ```yaml
 # .github/workflows/regmark.yml
+name: Regmark
 on: pull_request
+permissions:
+  contents: read
 jobs:
-  regmark:
+  audit:
     runs-on: ubuntu-latest
     steps:
       - uses: kairwang01/regmark@v0.1.0
@@ -153,93 +135,72 @@ jobs:
           feed: /feeds/google.xml
 ```
 
-The job fails when a rule goes over its budget. The findings appear in the job
-summary, and the HTML, JSON, SARIF and Markdown reports are kept as an artifact. An error
-rule fails on its first finding; warnings never fail a build. For a shop that
-already has findings, set each rule's budget to today's count and lower it from
-there. [CI guide](docs/ci.md), including GitLab and SARIF upload.
+Run this after the staging deployment is ready. The action writes a job summary and uploads HTML, JSON, SARIF and Markdown reports when generated. Pin a release or commit you have reviewed; repository changes become available to release users when a new release is published.
 
-Reports come as a terminal summary and any of `--html`, `--json`, `--sarif`,
-`--junit` and `--markdown`. Exit code 0 within budget, 1 over, 2 if the audit
-could not run or read no product: a shop that is down fails the build, it does
-not pass it.
+| Exit | Meaning |
+|---|---|
+| `0` | Products were read and all rules are within their budgets |
+| `1` | At least one rule exceeds its budget |
+| `2` | Invalid configuration, execution failure, no readable products, or a collection issue in strict mode |
 
-## The checkout probe
+Error rules have a zero-finding budget by default. Warnings and informational rules are unlimited unless you set a budget. Existing findings can be adopted gradually by recording the current count per rule and reducing it as fixes land. Current source adds `--strict` to fail on any collection issue; it is not part of the pinned `v0.1.0` release. [GitHub Actions, GitLab, SARIF and budgets](docs/ci.md).
 
-Reading public pages needs nobody's permission. The checkout probe is
-different: it puts one unit in a cart, sets a destination, reads the total and
-empties the cart. That writes to the shop, so it runs only after you show the
-shop is yours.
+## Optional WooCommerce cart checks
 
-1. Choose a token of 16 or more letters and digits.
-2. Serve the line `regmark-verify=<token>` at `/.well-known/regmark.txt`, or
-   publish it as a TXT record at `_regmark.<your-domain>`.
-3. Run with `REGMARK_OWNERSHIP_TOKEN=<token>` and `--checkout`.
+On a staging shop you control:
 
-There is no flag that skips this. The probe never reaches a payment step,
-empties the cart after every item, and says so loudly if it could not.
+1. Choose a token of 16–128 letters, digits, `_` or `-`.
+2. Serve `regmark-verify=<token>` at `/.well-known/regmark.txt`, or publish it as a TXT record at `_regmark.<store-host>`.
+3. Set `REGMARK_OWNERSHIP_TOKEN` in your environment or CI secret, then run:
 
-## How it behaves on a site
+```bash
+regmark audit https://staging.your-shop.example --platform woocommerce \
+  --feed /feeds/google.xml --checkout --ship-to US:94103 --html report.html
+```
 
-- It contacts only the hosts you name. A redirect or a link elsewhere is not followed.
-- It obeys robots.txt and spaces its requests a second apart.
-- It refuses any host that resolves to a private address, so a hostile shop
-  cannot turn an audit run inside your network into requests against it.
-- It caps response size, counted after decompression.
-- It treats everything it reads as untrusted in every report format.
-- It sends nothing anywhere. There is no telemetry.
+The probe adds one unit to a cart, sets a destination, reads totals and attempts cleanup after each variant. It never places an order or pays. These operations write cart/session state, and cleanup failures are reported. Ownership verification is required; inspect collection issues to confirm the probe actually ran. [Ownership and request policy](docs/configuration.md#writes).
 
-## How it compares
+## How it fits with other tools
 
-| | Checks | Does not check |
+| Tool or workflow | Main question it answers | How to use it with Regmark |
 |---|---|---|
-| Google Merchant Center diagnostics | Your feed against your page, for products in your feed | Before you publish; other surfaces; your CI |
-| Rich Results Test, schema validators | That one page's markup is well formed | Whether its values are true |
-| UCP and feed validators | That an endpoint or a file has the right shape | Whether its values match anything else |
-| Page-level "AI readiness" scores | What a machine can read from one page | Whether that agrees with your feed or your checkout |
-| **Regmark** | That every surface agrees with the checkout, per variant | Markup validity beyond what it needs to read; ranking or visibility |
+| Merchant Center diagnostics | Does Google report a product-data or policy issue? | Keep it as the authority on Google's processing; use Regmark for repeatable checks on your store and staging |
+| Rich Results Test / schema validators | Can the page's markup be read and does it meet the tested schema requirements? | Validate markup, then compare its observed values with feed/API/cart facts |
+| Feed validators | Does a feed satisfy the validator's required format and fields? | Validate feed structure, then check consistency against the store |
+| Browser end-to-end tests | Does the customer journey work under scripted conditions? | Keep browser/payment coverage; add Regmark's variant matching and report formats |
 
-## Status
+These are complementary workflows. Regmark's current scope is observable product-data consistency, not complete ecommerce QA. [Why these boundaries matter](docs/positioning.md).
 
-Version 0.1.0. It works, it is young, and its rules have met few real shops.
+## Development and contributions
 
-- Close to 700 unit tests and a type check.
-- A benchmark that runs the tool against the two shops in this repository. One
-  has 19 seeded defects that should give 22 findings; the tool reports those 22
-  and nothing else. The other has none; the tool reports nothing.
-- A first read-only run against 11 public WooCommerce shops found three classes
-  of false alarm in the tool itself. All three are fixed.
-  [What that run showed, and what it could not](plan/06-prototype.md).
+Regmark is an early `0.1.0` project. Its fixture benchmark checks 19 planted defects against 22 expected findings and a clean shop against zero findings. This is reproducible test evidence, not a real-world accuracy estimate.
 
-If Regmark reports something on your shop that is not wrong, that is the most
-useful thing you can tell this project:
-[report a false alarm](https://github.com/kairwang01/regmark/issues/new?template=false-alarm.yml).
+```bash
+# Source development: Node 22.18+ and the pnpm version in package.json
+pnpm install --frozen-lockfile
+pnpm test
+pnpm bench
+pnpm typecheck
+```
 
-**Next:** [UCP, ACP and MCP endpoints as the fourth plate](https://github.com/kairwang01/regmark/issues/2) ·
-[a Shopify checkout probe](https://github.com/kairwang01/regmark/issues/3) · [more platforms](https://github.com/kairwang01/regmark/issues/7) ·
-[feed freshness](https://github.com/kairwang01/regmark/issues/4) · a shopping agent that walks the shop and checks that
-the total it quotes is the total the cart charges.
+The most valuable contribution is a small, reproducible [false alarm](https://github.com/kairwang01/regmark/issues/new?template=false-alarm.yml) or [missed defect](https://github.com/kairwang01/regmark/issues/new?template=missed-defect.yml). Theme extraction fixtures, new platform examples and documentation corrections are good entry points. [Contributing guide](CONTRIBUTING.md).
 
-**Want to help?** [Recognising the visible price on one more theme](https://github.com/kairwang01/regmark/issues/6) is a
-small, separate piece of work, and [what the tool did on your shop](https://github.com/kairwang01/regmark/issues/1) is
-worth more than code right now.
+The roadmap includes protocol endpoint collectors, broader theme coverage, feed freshness and Shopify checkout support. See [project issues](https://github.com/kairwang01/regmark/issues) for current discussion. If Regmark helps your team, a star helps others discover it; a reproducible report helps make it better.
 
 ## Documentation
 
-- [Configuration and every flag](docs/configuration.md)
-- [Running it in CI](docs/ci.md)
-- [What each rule means](docs/rules.md)
-- [The JSON report](docs/report-format.md)
-- [Contributing](CONTRIBUTING.md): a new rule starts as a defect planted in the fixture shop
-- [Design notes and roadmap](https://opensource.kairwang.cloud/regmark/), in Chinese
+- [Quickstart and troubleshooting](docs/quickstart.md)
+- [Reproduce screenshots and record a demo](docs/demo.md)
+- [Every command, flag and config field](docs/configuration.md)
+- [CI integration and adoption budgets](docs/ci.md)
+- [Rule reference](docs/rules.md) and [JSON report format](docs/report-format.md)
+- [Product positioning](docs/positioning.md) and [discovery, SEO and demo plan](docs/discoverability.md)
+- [Contributing](CONTRIBUTING.md) and [design notes in Chinese](https://opensource.kairwang.cloud/regmark/)
 
-## Hosting
+## License and hosting
 
-The project site runs on Tencent Cloud.
+Apache-2.0. The project site runs on Tencent Cloud.
 
 <a href="https://www.tencentcloud.com/"><img src="docs/assets/tencent-cloud.svg" alt="Tencent Cloud" height="22"></a>
 
-## Licence
-
-Apache-2.0. The Tencent Cloud logo is a trademark of Tencent and is not covered
-by this licence; it appears here only to credit the hosting provider.
+The Tencent Cloud logo is its owner's trademark and is not covered by the project license; it credits the hosting provider.

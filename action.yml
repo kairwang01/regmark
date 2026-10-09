@@ -1,5 +1,5 @@
 name: Regmark audit
-description: Check that what a shop tells machines matches what its checkout charges. Fails the job when a rule goes over its budget.
+description: Catch ecommerce product-data mismatches across pages, structured data, feeds and storefront APIs, with optional verified WooCommerce cart probes.
 author: Kair Wang
 branding:
   icon: crosshair
@@ -34,6 +34,10 @@ inputs:
   config:
     description: Path to a regmark config file in the repository.
     required: false
+  strict:
+    description: Set to true to fail on any collection issue, including a missing feed or unverified checkout.
+    required: false
+    default: 'false'
   report-name:
     description: Name of the uploaded artifact that holds the HTML, JSON, SARIF and Markdown reports.
     required: false
@@ -44,7 +48,7 @@ inputs:
 
 outputs:
   ok:
-    description: true when every rule is within its budget.
+    description: true when products were read, every rule is within budget and the requested collection policy passes.
     value: ${{ steps.audit.outputs.ok }}
   sarif:
     description: Path of the SARIF report, for github/codeql-action/upload-sarif.
@@ -71,6 +75,7 @@ runs:
         INPUT_SAMPLE: ${{ inputs.sample }}
         INPUT_BUDGET: ${{ inputs.budget }}
         INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_STRICT: ${{ inputs.strict }}
         INPUT_ARGS: ${{ inputs.args }}
       run: |
         mkdir -p regmark-report
@@ -84,14 +89,15 @@ runs:
         [ -n "$INPUT_SAMPLE" ] && args+=(--sample "$INPUT_SAMPLE")
         [ -n "$INPUT_FEED" ] && args+=(--feed "$INPUT_FEED")
         [ -n "$INPUT_CONFIG" ] && args+=(--config "$INPUT_CONFIG")
+        [ "$INPUT_STRICT" = "true" ] && args+=(--strict)
         [ "$INPUT_CHECKOUT" = "true" ] && args+=(--checkout)
         [ -n "$INPUT_SHIP_TO" ] && args+=(--ship-to "$INPUT_SHIP_TO")
         while IFS= read -r line; do
           line="${line//[[:space:]]/}"
           [ -n "$line" ] && args+=(--budget "$line")
         done <<< "$INPUT_BUDGET"
-        # shellcheck disable=SC2206
-        extra=($INPUT_ARGS)
+        # Split on whitespace without expanding wildcard patterns from inputs.
+        read -r -a extra <<< "${INPUT_ARGS//$'\n'/ }"
         set +e
         node "$GITHUB_ACTION_PATH/dist/regmark.mjs" "${args[@]}" "${extra[@]}"
         code=$?

@@ -24,7 +24,7 @@ export default defineRule({
         if (!isChecked(o.surface, d.surface) || reported.has(o.surface)) continue;
         // A different currency is price.currency-ambiguous's finding; comparing
         // the amounts across currencies would only be noise.
-        if (o.value.currency !== null && o.value.currency !== d.value.currency) continue;
+        if (o.value.currency !== null && d.value.currency !== null && o.value.currency !== d.value.currency) continue;
         if (sameMoney(o.value, d.value)) continue;
         // Exactly one tax rate apart is price.tax-basis's finding, not a wrong price.
         if (taxRateBetween(o.value, d.value) !== null) continue;

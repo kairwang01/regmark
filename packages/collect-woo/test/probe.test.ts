@@ -190,6 +190,36 @@ test('a cart that will not empty is reported after the target and again at the e
   assert.equal(shop.cartSize('cart-1'), 1);
 });
 
+test('cleanup failure stops later targets from inheriting an earlier cart', async () => {
+  const shop = createFakeShop({ cartWontEmpty: true });
+  const result = await probeWooCheckout(makeContext(shop), [TEE_M, { variantId: '500' }], { shipTo: SHIP_TO });
+
+  assert.deepEqual(result.sightings.map((s) => s.ids.variantId), ['102']);
+  assert.equal(shop.calls.filter((c) => c.path === '/cart/add-item').length, 1);
+  assert.equal(shop.cartSize('cart-1'), 1);
+  assert.deepEqual(result.issues.map((i) => i.code), ['cart-not-emptied', 'cart-not-emptied']);
+});
+
+test('a successful add response for a different variant cannot become evidence for the target', async () => {
+  const shop = createFakeShop();
+  const send = shop.send.bind(shop);
+  shop.send = async (method, url, options) => {
+    const response = await send(method, url, options);
+    if (url.endsWith('/cart/add-item')) {
+      const body = JSON.parse(response.body);
+      body.items[0].id = 500;
+      response.body = JSON.stringify(body);
+    }
+    return response;
+  };
+  const result = await probeWooCheckout(makeContext(shop), [TEE_M], { shipTo: SHIP_TO });
+
+  assert.deepEqual(result.sightings, []);
+  assert.deepEqual(result.issues.map((i) => i.code), ['probe-failed']);
+  assert.equal(shop.calls.some((c) => c.path === '/cart/update-customer'), false);
+  assert.equal(shop.cartSize('cart-1'), 0);
+});
+
 test('a nonce from GET /cart is echoed on every later request', async () => {
   const shop = createFakeShop({ nonce: 'n-123' });
   const result = await probeWooCheckout(makeContext(shop), [TEE_M], { shipTo: SHIP_TO });

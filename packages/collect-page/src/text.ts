@@ -1,7 +1,8 @@
 // Product text for the content hygiene rules. This module only extracts and
 // labels; deciding whether a sample is a problem belongs to the rules.
 import type { TextSample } from '@regmark/core';
-import { load, type CheerioAPI } from 'cheerio';
+import type { CheerioAPI } from 'cheerio';
+import { documentOf, type PageSource } from './document.ts';
 
 export type TextOptions = { descriptionSelectors?: string[]; reviewSelectors?: string[] };
 
@@ -308,8 +309,8 @@ function containersFor($: CheerioAPI, field: Container['field'], selectors: stri
   return out;
 }
 
-export function extractText(html: string, pageUrl: string, options: TextOptions = {}): TextSample[] {
-  const $ = load(html);
+export function extractText(html: PageSource, pageUrl: string, options: TextOptions = {}): TextSample[] {
+  const $ = documentOf(html);
   const out: TextSample[] = [];
 
   const heading = productTitle($);

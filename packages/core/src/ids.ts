@@ -32,8 +32,9 @@ export function skuKey(raw: string): string {
 
 /**
  * One product page, one key: host without "www.", path without a trailing
- * slash, no query and no fragment. Returns null for anything that is not an
- * http(s) URL.
+ * slash, no variant/tracking query and no fragment. Product identity query
+ * parameters survive, including WooCommerce's plain permalinks (?p=123).
+ * Returns null for anything that is not an http(s) URL.
  */
 export function urlKey(raw: string | null | undefined, base?: URL): string | null {
   if (!raw) return null;
@@ -53,7 +54,13 @@ export function urlKey(raw: string | null | undefined, base?: URL): string | nul
     path = u.pathname;
   }
   path = path.replace(/\/+$/, '');
-  return `${host}${port}${path}`;
+  const identity = new URLSearchParams();
+  for (const [name, value] of u.searchParams) {
+    if (['p', 'product_id', 'product'].includes(name) && value !== '') identity.append(name, value);
+  }
+  identity.sort();
+  const query = identity.size ? `?${identity}` : '';
+  return `${host}${port}${path}${query}`;
 }
 
 const OPTION_NAME_ALIASES: Readonly<Record<string, string>> = { colour: 'color', couleur: 'color', taille: 'size', grösse: 'size' };

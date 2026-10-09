@@ -11,7 +11,7 @@
 
 import { PLATE_OF } from '@regmark/core';
 import type { AuditResult, Evidence, Finding, Plate, RuleSummary, Surface } from '@regmark/core';
-import { durationMs, nothingRead, subjectOf } from './shared.ts';
+import { collectionFailure, durationMs, nothingRead, subjectOf } from './shared.ts';
 
 const esc = (s: unknown): string =>
   String(s)
@@ -111,20 +111,22 @@ const CSS = `
 --c:#3fc3e3;--m:#f2679f;--y:#f0cb45;--y-line:#f0cb45;--k:#dee9f0;--on:#091420;--blend:screen;--bad:#f08a7c;--ok:#5fc9a3}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--paper);color:var(--text);font:400 16px/1.6 var(--sans);-webkit-font-smoothing:antialiased}
-.sheet{max-width:62rem;margin:0 auto;padding:0 clamp(1rem,4vw,2.5rem) 4rem}
+.sheet{max-width:62rem;margin:0 auto;padding:0 clamp(1rem,4vw,2.5rem) 4rem;overflow-wrap:anywhere}
 a{color:var(--ink);text-underline-offset:.18em;text-decoration-thickness:1px}
 h1,h2,h3{font-family:var(--cond);font-weight:600;line-height:1.2;margin:0}
 .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 .label{font:500 .72rem/1.4 var(--mono);color:var(--muted);margin:0}
 .head{display:flex;justify-content:space-between;align-items:flex-end;gap:2rem;flex-wrap:wrap;padding:1.1rem 0;border-bottom:1px solid var(--rule-2)}
+.head>*{min-width:0;max-width:100%}
 .brand{display:flex;align-items:center;gap:.6rem;font:600 1.05rem/1 var(--cond)}
 .brand svg{width:1.5rem;height:1.5rem;color:var(--ink)}
 .brand span{font:500 .72rem/1 var(--mono);color:var(--muted);margin-left:.4rem}
 .meta{display:flex;gap:2rem;flex-wrap:wrap;margin:0}
+.meta>div{min-width:0;max-width:100%}
 .meta dt{font:500 .68rem/1.4 var(--mono);color:var(--muted)}
 .meta dd{margin:0;font-size:.9rem;overflow-wrap:anywhere}
 .verdict{padding:3rem 0 2.2rem;border-bottom:2px solid var(--text)}
-.press{position:relative;display:inline-block;isolation:isolate;font:600 clamp(2.6rem,9vw,5.2rem)/1 var(--cond);letter-spacing:.005em}
+.press{position:relative;display:inline-block;max-width:100%;isolation:isolate;font:600 clamp(2.6rem,9vw,5.2rem)/1 var(--cond);letter-spacing:.005em}
 .press span{display:block;mix-blend-mode:var(--blend)}
 .press .pc,.press .pm,.press .py{position:absolute;inset:0}
 .press .pc{color:var(--c)}.press .pm{color:var(--m)}.press .py{color:var(--y)}.press .pk{color:var(--k);position:relative}
@@ -149,10 +151,10 @@ table{width:100%;border-collapse:collapse;font-size:.92rem}
 th,td{text-align:left;vertical-align:top;padding:.5rem 1rem .5rem 0;border-bottom:1px solid var(--rule)}
 th{font:500 .72rem/1.4 var(--mono);color:var(--muted);border-bottom:1.5px solid var(--text)}
 td.mark{width:1.8rem;font:600 1rem/1.5 var(--mono)}
-td.id{font:500 .84rem/1.7 var(--mono);white-space:nowrap}
+td.id{font:500 .84rem/1.7 var(--mono)}
 td.what{color:var(--text-2)}
 td.num,th.num{text-align:right;font-family:var(--mono);width:4.5rem}
-td.budget{font:400 .78rem/1.9 var(--mono);color:var(--muted);white-space:nowrap}
+td.budget{font:400 .78rem/1.9 var(--mono);color:var(--muted)}
 .is-fail .mark,.is-fail .num{color:var(--bad)}.is-fail .num{font-weight:600}
 .is-flag .mark{color:var(--y-line)}.is-pass .mark{color:var(--ok)}.is-skip{color:var(--muted)}.is-skip td.what{color:var(--muted)}
 .group{margin-top:2rem}
@@ -176,7 +178,17 @@ ol.proofs{list-style:none;margin:.7rem 0 0;padding:0;border-top:1px solid var(--
 .issues li{margin:.3rem 0;overflow-wrap:anywhere}.issues code{font:500 .82rem var(--mono)}
 footer{margin-top:3.5rem;padding-top:1rem;border-top:1px solid var(--rule-2);color:var(--muted);font:400 .76rem/1.7 var(--mono)}
 @media (max-width:46rem){.plates{grid-template-columns:repeat(2,minmax(0,1fr))}.plate{border-bottom:1px solid var(--rule)}.plate:nth-child(2n){border-right:0}.plate:nth-child(odd){padding-left:0}
-.proof{grid-template-columns:minmax(0,1fr);gap:.4rem}.pair{grid-template-columns:minmax(0,1fr)}.neq{margin:0}td.what,th.what{display:none}}
+.proof{grid-template-columns:minmax(0,1fr);gap:.4rem}.pair{grid-template-columns:minmax(0,1fr)}.neq{margin:0}
+table,thead,tbody{display:block}
+tr{display:grid;grid-template-columns:1.2rem minmax(0,1fr) 3.25rem minmax(4.2rem,.5fr);gap:.35rem .5rem;padding:.7rem 0;border-bottom:1px solid var(--rule)}
+thead tr{border-bottom:1.5px solid var(--text)}
+th,td{min-width:0;padding:0;border:0}
+th.what{display:none}
+td.what{grid-column:2/-1;grid-row:2}
+td.mark{width:auto;grid-column:1;grid-row:1}
+td.id{grid-column:2;grid-row:1;white-space:normal}
+td.num,th.num{width:auto;grid-column:3;grid-row:1}
+td.budget{grid-column:4;grid-row:1;white-space:normal}}
 @media print{body{background:#fff}.sheet{max-width:none;padding:0}.proof,.group>h3,tr{break-inside:avoid}a{color:inherit}}
 `;
 
@@ -202,7 +214,9 @@ export function renderHtml(result: AuditResult, options: HtmlOptions = {}): stri
     ? `<b>No product could be read from this shop</b>, so no rule had anything to compare.${result.issues.length ? ' What got in the way is listed under Collection issues.' : ''}`
     : result.ok
       ? `<b>${counts.join(', ')}</b> across ${where}. Every rule is within its budget.`
-      : `<b>${counts.join(', ')}</b> across ${where}. Over budget: ${over.map((r) => `<a href="#rule-${esc(r.id)}">${esc(r.id)}</a>`).join(', ')}.`;
+      : `<b>${counts.join(', ')}</b> across ${where}. ${over.length
+        ? `Over budget: ${over.map((r) => `<a href="#rule-${esc(r.id)}">${esc(r.id)}</a>`).join(', ')}.`
+        : esc(collectionFailure(result) ?? 'The audit did not pass.')}`;
 
   const collected = new Set(result.surfaces);
   const plates = PLATES.map((plate) => {

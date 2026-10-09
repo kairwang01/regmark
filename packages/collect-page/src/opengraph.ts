@@ -1,7 +1,7 @@
 // Open Graph and product meta tags. These describe the product as a whole, so
 // they yield at most one product-scope sighting.
 
-import { load } from 'cheerio';
+import { documentOf, type PageSource } from './document.ts';
 import { parseAllMoney, parseMoney } from '@regmark/core';
 import type { Availability, CollectResult, Money, Observation, Sighting, Surface } from '@regmark/core';
 
@@ -25,15 +25,15 @@ const AVAILABILITY = new Map<string, Availability>([
   ['discontinued', 'discontinued'],
 ]);
 
-export function extractOpenGraph(html: string, pageUrl: string, fetchedAt: string): CollectResult {
+export function extractOpenGraph(html: PageSource, pageUrl: string, fetchedAt: string): CollectResult {
   const tags = readTags(html);
   const sighting = buildSighting(tags, pageUrl, fetchedAt);
   return { sightings: sighting ? [sighting] : [], issues: [] };
 }
 
 /** First tag per key, in document order. Empty content is ignored. */
-function readTags(html: string): Map<string, Tag> {
-  const $ = load(html);
+function readTags(html: PageSource): Map<string, Tag> {
+  const $ = documentOf(html);
   const found = new Map<string, Tag>();
   for (const el of $('meta').toArray()) {
     const meta = $(el);

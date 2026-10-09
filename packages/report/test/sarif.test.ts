@@ -111,6 +111,13 @@ test('SARIF fingerprints are stable across runs and ignore values', () => {
   assert.equal(first[3], 'shipping.undisclosed|enamel-mug||');
 });
 
+test('SARIF fingerprints distinguish separators inside product and variant identifiers', () => {
+  const fingerprint = (product: string, variant: string) =>
+    parse(singleFinding({ product, variant })).results[0]!.partialFingerprints['regmark/v1'];
+  assert.notEqual(fingerprint('tee|blue', 'M'), fingerprint('tee', 'blue|M'));
+  assert.notEqual(fingerprint('tee|blue', 'M'), fingerprint('tee%7Cblue', 'M'));
+});
+
 test('SARIF message text uses the comparison form when both sides exist', () => {
   const { results } = parse(richResult());
   assert.equal(results[0]!.message.text, 'TEE-BLU-M: jsonld says 35.00 USD, checkout says 39.00 USD');

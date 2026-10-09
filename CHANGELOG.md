@@ -3,6 +3,46 @@
 Rule ids and the JSON report schema are the two things other people build on.
 A change to either is called out here under **Breaking**.
 
+## Unreleased
+
+### Added
+
+- Optional `--strict`, `strict: true` configuration and Action input: any
+  collection issue makes the audit fail with exit code 2. Reports retain the
+  diagnostics; partial collection is still allowed by default.
+- CI for Node 22 and 24: types, tests, seeded defect benchmark, bundle freshness
+  and standalone demos. Scheduled dependency update configuration.
+- English/Chinese quickstart improvements, positioning and discovery guides,
+  reproducible screenshots and a short recording storyboard.
+
+### Fixed
+
+- Validate nested configuration before requests; preserve fetch defaults when
+  optional JavaScript properties are explicitly `undefined`.
+- Reject unsafe IPv6 translation destinations and redirect URL credentials;
+  drop caller headers across origins and close aborted/decompressed responses.
+- Stop checkout probing after failed cart cleanup and reject responses for the
+  wrong variant. Keep query-based WooCommerce product identities distinct.
+- Fix currency and shipping disclosure blind spots, oversized hidden-text
+  crashes, malformed TSV handling and delimiter collisions in SARIF identities.
+
+### Performance
+
+- Parse each product page's DOM once for all five readers.
+- Reuse the WooCommerce catalogue listing when selecting sampled variants.
+
+### Compatibility notes
+
+- **Breaking behavior correction:** an empty audit now has JSON `ok: false`;
+  the schema identifier remains `regmark.audit/v0`. JUnit and SARIF now expose
+  collection failures instead of presenting an empty run as successful.
+- **Identity correction:** product keys retain `p`, `product_id` and `product`
+  query parameters. Affected alert identities can change once after upgrading.
+- Invalid nested configuration now fails before network access. TypeScript
+  optional values remain supported, but strings cannot stand in for booleans.
+- These changes are in the source and bundle; no new release tag or
+  package has been published as part of this revision.
+
 ## 0.1.0 (2026-10-09)
 
 The first release.

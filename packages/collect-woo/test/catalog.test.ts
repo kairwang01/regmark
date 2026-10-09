@@ -32,6 +32,20 @@ test('simple and variable products yield sightings in list order, one request pe
   );
 });
 
+test('selection can use the full listing without a second catalogue fetch', async () => {
+  const shop = createFakeShop();
+  const result = await collectWooCatalog(makeContext(shop), {
+    select(parent, parents) {
+      assert.deepEqual(parents.map((p) => p.id), [100, 200, 300, 400, 500]);
+      return parent.id === parents.find((p) => p.variationIds.length === 1)?.id;
+    },
+  });
+
+  assert.deepEqual(result.issues, []);
+  assert.deepEqual(result.sightings.map((s) => s.ids.variantId), ['401']);
+  assert.deepEqual(shop.calls.map((c) => c.url), [LIST, `${API_BASE}/products/401`]);
+});
+
 test('a variation sighting has exact ids, the parent url, options and listPrice only when on sale', async () => {
   const result = await collectWooCatalog(makeContext(createFakeShop()));
   const tee = at(result.sightings, '101');

@@ -80,6 +80,15 @@ test('a price with no currency that gives a different amount is reported', () =>
   assert.deepEqual(brief(findings), [{ variant: 'TEE-M', surface: 'jsonld' }]);
 });
 
+test('an unknown datum currency does not hide a different numeric price', () => {
+  const findings = run(rule, [
+    variant('page', { sku: 'TEE-M', url: URL }, { price: price('page', '39.00', null) }),
+    variant('jsonld', { sku: 'TEE-M', url: URL }, { price: price('jsonld', '35.00', 'USD') }),
+  ]);
+  assert.deepEqual(brief(findings), [{ variant: 'TEE-M', surface: 'jsonld' }]);
+  assert.equal(findings[0]!.expected!.value, '39.00');
+});
+
 test('one finding per surface, even when that surface states two wrong prices', () => {
   const findings = run(rule, [
     variant('checkout', { variantId: '101', sku: 'TEE-M', url: URL }, { price: price('checkout', '39.00') }),

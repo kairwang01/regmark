@@ -70,8 +70,9 @@ async function runProbe(run: Run, targets: readonly ProbeTarget[]): Promise<void
       if (isOwnershipRefusal(err)) throw err;
       run.issues.push(makeIssue('checkout', 'probe-failed', `${target.variantId}: ${errorText(err)}`));
     }
-    // Runs whether or not the target succeeded, so no item is left for the next target to inherit.
-    await emptyCart(run, target.variantId);
+    // A failed cleanup must stop the sample: another target would inherit
+    // these items and its totals and shipping threshold would be wrong.
+    if (!(await emptyCart(run, target.variantId))) break;
   }
 
   await confirmEmpty(run);
@@ -118,6 +119,8 @@ async function probeTarget(run: Run, target: ProbeTarget): Promise<void> {
 
 async function addedToCart(run: Run, target: ProbeTarget, added: Fetched, addBody: unknown): Promise<void> {
   const addUrl = `${run.base}/cart/add-item`;
+  const fromAdd = pickItem(addBody, target.variantId);
+  if (!fromAdd) throw new Error('add-item response does not contain the requested variant');
   const sighting: Sighting = {
     surface: 'checkout',
     scope: 'variant',
@@ -126,9 +129,8 @@ async function addedToCart(run: Run, target: ProbeTarget, added: Fetched, addBod
   };
 
   // The price from add-item is the fallback: it is still a real reading if update-customer fails.
-  const fromAdd = pickItem(addBody, target.variantId);
-  const addPrice = fromAdd ? readMinor(fromAdd.item.prices, 'price') : undefined;
-  if (fromAdd && addPrice) {
+  const addPrice = readMinor(fromAdd.item.prices, 'price');
+  if (addPrice) {
     sighting.price = observe(addPrice.value, addPrice.raw, 'checkout', `${addUrl}#/items/${fromAdd.index}/prices/price`, added.fetchedAt);
   }
 
@@ -152,8 +154,9 @@ async function updateCustomer(run: Run, target: ProbeTarget, sighting: Sighting)
   if (!isRecord(cart)) throw new Error('unreadable cart');
 
   const picked = pickItem(cart, target.variantId);
-  const price = picked ? readMinor(picked.item.prices, 'price') : undefined;
-  if (picked && price) {
+  if (!picked) throw new Error('cart response does not contain the requested variant');
+  const price = readMinor(picked.item.prices, 'price');
+  if (price) {
     sighting.price = observe(price.value, price.raw, 'checkout', `${url}#/items/${picked.index}/prices/price`, res.fetchedAt);
   }
 
@@ -179,11 +182,11 @@ async function updateCustomer(run: Run, target: ProbeTarget, sighting: Sighting)
   }
 }
 
-async function emptyCart(run: Run, variantId: string): Promise<void> {
+async function emptyCart(run: Run, variantId: string): Promise<boolean> {
   let reason: string;
   try {
     const res = await run.ctx.fetcher.send('DELETE', `${run.base}/cart/items`, { headers: run.headers });
-    if (isOk(res.status)) return;
+    if (isOk(res.status)) return true;
     reason = `HTTP ${res.status}`;
   } catch (err) {
     if (isOwnershipRefusal(err)) throw err;
@@ -192,6 +195,7 @@ async function emptyCart(run: Run, variantId: string): Promise<void> {
   run.issues.push(
     makeIssue('checkout', 'cart-not-emptied', `could not empty the probe cart after ${variantId} (${reason}); remove its items from the shop admin`),
   );
+  return false;
 }
 
 /** Leaving a cart behind on someone's shop is the failure this tool must never hide. */
@@ -217,8 +221,7 @@ async function confirmEmpty(run: Run): Promise<void> {
 function pickItem(cart: unknown, variantId: string): { item: Record<string, unknown>; index: number } | undefined {
   if (!isRecord(cart) || !Array.isArray(cart.items)) return undefined;
   const items: unknown[] = cart.items;
-  const match = items.findIndex((item) => isRecord(item) && String(item.id) === variantId);
-  const index = match >= 0 ? match : 0;
+  const index = items.findIndex((item) => isRecord(item) && String(item.id) === variantId);
   const item = items[index];
   return isRecord(item) ? { item, index } : undefined;
 }

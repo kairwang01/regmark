@@ -1,5 +1,5 @@
 import type { AuditResult, RuleSummary } from '@regmark/core';
-import { durationMs, findingSentence } from './shared.ts';
+import { collectionFailure, durationMs, findingSentence } from './shared.ts';
 
 // XML 1.0 forbids most control characters even as escaped text, so they are
 // dropped before escaping rather than replaced. DEL and the C1 range (0x7F-0x9F)
@@ -67,10 +67,23 @@ export function renderJUnit(result: AuditResult): string {
     }
   }
 
+  const collection = collectionFailure(result);
+  const diagnostics = result.issues.map((issue) =>
+    `${issue.surface} ${issue.code}: ${issue.message}${issue.locator ? ` (${issue.locator})` : ''}`,
+  ).join('\n');
+  if (collection) {
+    cases.push(
+      '  <testcase classname="regmark" name="collection">',
+      `    <error message="${xml(collection)}">${xml(diagnostics || collection)}</error>`,
+      '  </testcase>',
+    );
+  }
+  if (diagnostics) cases.push(`  <system-err>${xml(diagnostics)}</system-err>`);
+
   const seconds = (durationMs(result) / 1000).toFixed(3);
   const head = [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    `<testsuite name="regmark" tests="${result.rules.length}" failures="${failures}" skipped="${skipped}" time="${seconds}">`,
+    `<testsuite name="regmark" tests="${result.rules.length + (collection ? 1 : 0)}" failures="${failures}" skipped="${skipped}" time="${seconds}"${collection ? ' errors="1"' : ''}>`,
   ];
   return `${[...head, ...cases, '</testsuite>'].join('\n')}\n`;
 }

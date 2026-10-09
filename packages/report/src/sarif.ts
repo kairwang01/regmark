@@ -1,9 +1,16 @@
 import type { AuditResult } from '@regmark/core';
-import { artifactUri, findingSentence, primaryEvidence, sarifLevel } from './shared.ts';
+import { artifactUri, collectionFailure, findingSentence, nothingRead, primaryEvidence, sarifLevel } from './shared.ts';
 
 const INFORMATION_URI = 'https://opensource.kairwang.cloud/regmark/';
 
 export function renderSarif(result: AuditResult): string {
+  const collection = collectionFailure(result);
+  const notifications = result.issues.map((issue) => ({
+    descriptor: { id: issue.code },
+    level: collection ? 'error' : 'warning',
+    message: { text: `${issue.surface}: ${issue.message}` },
+    properties: { surface: issue.surface, ...(issue.locator ? { locator: issue.locator } : {}) },
+  }));
   const rules = result.rules.map((rule) => ({
     id: rule.id,
     shortDescription: { text: rule.summary },
@@ -34,7 +41,11 @@ export function renderSarif(result: AuditResult): string {
       ],
       // Deliberately leaves out the values: a price change should not look like a new finding.
       partialFingerprints: {
-        'regmark/v1': `${finding.rule}|${finding.product}|${finding.variant ?? ''}|${finding.surface ?? ''}`,
+        // Escape delimiters within identities so "a|b", "c" and "a", "b|c"
+        // cannot collapse two unrelated alerts into one fingerprint.
+        'regmark/v1': [finding.rule, finding.product, finding.variant ?? '', finding.surface ?? '']
+          .map((part) => part.replace(/%/g, '%25').replace(/\|/g, '%7C'))
+          .join('|'),
       },
       properties,
     };
@@ -54,6 +65,13 @@ export function renderSarif(result: AuditResult): string {
           },
         },
         results,
+        invocations: [{
+          executionSuccessful: collection === undefined,
+          toolExecutionNotifications: [
+            ...notifications,
+            ...(nothingRead(result) ? [{ descriptor: { id: 'nothing-read' }, level: 'error', message: { text: collection! } }] : []),
+          ],
+        }],
       },
     ],
   };

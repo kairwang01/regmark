@@ -4,6 +4,7 @@
 import { defineRule, formatMoney, moneyEvidence } from '@regmark/core';
 import type { Finding } from '@regmark/core';
 import { datumVerb, isChecked, MACHINE_SURFACES } from './checked.ts';
+import { pageDatum, statedBySurface } from './page-datum.ts';
 
 const ID = 'price.currency-ambiguous';
 
@@ -47,7 +48,7 @@ export default defineRule({
       if (!sp || !MACHINE_SURFACES.has(s.surface)) continue;
       const known = product.variants.flatMap((v) => {
         const d = ctx.pick(v.price);
-        return d && d.value.currency !== null ? [d] : [];
+        return d && isChecked(s.surface, d.surface) && d.value.currency !== null ? [d] : [];
       });
       const first = known[0];
       if (!first || first.value.currency === null) continue;
@@ -66,6 +67,29 @@ export default defineRule({
         expected: moneyEvidence(first),
         actual: moneyEvidence(sp),
       });
+    }
+
+    // With no variant datum, the page's headline currency is the only
+    // reference. Like the price fallback, accept any matching offer from a
+    // surface: the page may describe only one of several variants.
+    const page = pageDatum(product, ctx, 'price');
+    if (page && page.value.currency !== null) {
+      for (const [surface, stated] of statedBySurface(product, 'price')) {
+        if (stated.some((o) => o.value.currency === page.value.currency)) continue;
+        const first = stated[0];
+        if (!first) continue;
+        findings.push({
+          rule: ID,
+          severity: 'error',
+          message: first.value.currency === null
+            ? `${surface} gives ${formatMoney(first.value)} with no currency`
+            : `${surface} says ${formatMoney(first.value)}, the page shows prices in ${page.value.currency}`,
+          product: product.key,
+          surface,
+          expected: moneyEvidence(page),
+          actual: moneyEvidence(first),
+        });
+      }
     }
 
     return findings;

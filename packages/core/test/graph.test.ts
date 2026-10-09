@@ -67,6 +67,16 @@ test('the same SKU under two product URLs does not weld the products together', 
   assert.equal(g.products.length, 2);
 });
 
+test('plain product permalinks remain separate while variant query parameters still join', () => {
+  const g = buildGraph([
+    sighting('platform', { sku: 'TEE', productId: '100', variantId: '101', url: 'https://shop.example/?p=100' }),
+    sighting('platform', { sku: 'MUG', productId: '200', variantId: '200', url: 'https://shop.example/?p=200' }),
+    sighting('feed', { aliases: ['TEE'], url: 'https://shop.example/?p=100&attribute_size=M&utm_source=feed' }),
+  ]);
+  assert.deepEqual(g.products.map((p) => p.key), ['shop.example?p=100', 'shop.example?p=200']);
+  assert.deepEqual(g.products[0]?.variants[0]?.surfaces, ['platform', 'feed']);
+});
+
 test('variants join on options when that is all a surface gives', () => {
   const g = buildGraph([
     sighting('platform', { sku: 'SOCK-S', variantId: '301', productId: '300', url: 'https://shop.example/product/sock/', options: { attribute_pa_size: 'S' } }),

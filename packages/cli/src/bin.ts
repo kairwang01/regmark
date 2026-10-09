@@ -13,13 +13,14 @@ import { allRules } from '@regmark/rules';
 import type { AuditResult, Surface } from '@regmark/core';
 import { ConfigError, runAudit } from './audit.ts';
 import type { AuditConfig } from './audit.ts';
+import { checkConfig, configObject } from './config.ts';
 
 // Set by the bundler. When the sources are run directly it is read from package.json.
 declare const __REGMARK_VERSION__: string | undefined;
 
 const DOCS = 'https://github.com/kairwang01/regmark/blob/main/docs';
 
-const USAGE = `regmark: check that what a shop tells machines matches what its checkout charges
+const USAGE = `regmark: catch ecommerce product-data mismatches across pages, feeds and store APIs
 
 Usage
   regmark demo                      audit a bundled shop that has 19 defects planted in it
@@ -41,6 +42,7 @@ Scope
   --seed <n>                changes which products are sampled, default 1
   --datum <a,b,c>           which surface to believe, most trusted first
   --budget <rule=n>         allow up to n findings for a rule; repeatable
+  --strict                  exit 2 if any surface has a collection issue
 
 Output
   --html <file>   --json <file>   --sarif <file>   --junit <file>   --markdown <file>
@@ -69,15 +71,20 @@ async function version(): Promise<string> {
 
 async function loadConfig(file: string): Promise<Partial<AuditConfig>> {
   const abs = path.resolve(file);
-  if (abs.endsWith('.json')) return JSON.parse(await readFile(abs, 'utf8')) as Partial<AuditConfig>;
-  const mod = (await import(pathToFileURL(abs).href)) as { default?: Partial<AuditConfig> };
-  if (!mod.default || typeof mod.default !== 'object') throw new ConfigError(`${file} has no default export`);
-  return mod.default;
+  let value: unknown;
+  if (abs.endsWith('.json')) value = JSON.parse(await readFile(abs, 'utf8'));
+  else value = ((await import(pathToFileURL(abs).href)) as { default?: unknown }).default;
+  configObject(value, file);
+  // Validate before merging flags: spreading a string or normalizing checkout
+  // used to hide malformed safety options from the final validator.
+  checkConfig({ ...value, store: value.store ?? 'https://config.example', platform: value.platform === 'none' ? undefined : value.platform } as AuditConfig, allRules);
+  return value as Partial<AuditConfig>;
 }
 
 function parseShipTo(text: string): { country: string; postcode?: string } {
-  const [country = '', postcode] = text.split(':');
+  const [country = '', postcode, extra] = text.split(':');
   if (!/^[A-Za-z]{2}$/.test(country)) throw new ConfigError(`--ship-to wants a two-letter country code, got "${text}"`);
+  if (extra !== undefined || postcode === '') throw new ConfigError('--ship-to wants CC or CC:postcode');
   return postcode ? { country: country.toUpperCase(), postcode } : { country: country.toUpperCase() };
 }
 
@@ -134,6 +141,7 @@ function wrap(text: string, width: number): string[] {
 async function init(target: string | undefined): Promise<number> {
   if (!target) throw new ConfigError('which shop? regmark init <store-url>');
   const store = new URL(target).origin;
+  checkConfig({ store: target }, allRules);
   const file = 'regmark.config.json';
   if (existsSync(file)) throw new ConfigError(`${file} already exists; edit it, or delete it and run init again`);
   const config = { store, platform: 'auto', sample: 25, budget: {} };
@@ -225,6 +233,7 @@ async function main(argv: string[]): Promise<number> {
       seed: { type: 'string' },
       datum: { type: 'string' },
       budget: { type: 'string', multiple: true },
+      strict: { type: 'boolean' },
       json: { type: 'string' },
       sarif: { type: 'string' },
       junit: { type: 'string' },
@@ -292,6 +301,7 @@ async function main(argv: string[]): Promise<number> {
     ...(values.page?.length ? { pages: values.page } : {}),
     ...(values.sample ? { sample: wholeNumber('--sample', values.sample) } : {}),
     ...(values.seed ? { seed: wholeNumber('--seed', values.seed) } : {}),
+    ...(values.strict ? { strict: true } : {}),
     ...(values.datum ? { datum: values.datum.split(',').map((s) => s.trim()) as Surface[] } : {}),
     ...(values.budget?.length ? { budget: { ...fromFile.budget, ...parseBudget(values.budget) } } : {}),
     // An empty variable is what a CI job passes when the secret is not set; it must not blank out the file's token.
@@ -313,6 +323,11 @@ async function main(argv: string[]): Promise<number> {
   });
 
   await writeReports(result, values);
+  if (config.strict && result.issues.length > 0) {
+    if (!values.quiet) out(renderTerminal(result, { color }));
+    note(`regmark: strict audit incomplete: ${result.issues.length} collection issue(s); inspect the report before trusting this run\n`);
+    return 2;
+  }
   if (result.counts.products === 0) {
     // Every rule is within budget when there is nothing to check. Calling that a pass would be a lie.
     if (!values.quiet) out(renderTerminal(result, { color }));

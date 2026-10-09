@@ -77,6 +77,12 @@ once, without `variant`, when its currency is null or differs from the currency
 of every variant's price datum. If no variant has a price datum with a known
 currency, say nothing.
 
+**When no backend was read.** If no variant has a price datum and the page is
+in the datum order, use the page's headline currency when it is known. Report
+once per machine-readable surface when none of its prices states that
+currency. A surface that lists any matching currency is compatible with the
+product-level page datum, just as with the price fallback.
+
 ### `price.tax-basis` (warn)
 *Two surfaces state prices exactly one tax rate apart: one includes tax and the
 other does not.*
@@ -178,8 +184,12 @@ One finding per `(variant, surface)`. Needs `checkout`.
 *A buyer cannot learn the shipping cost before checkout.*
 
 For each variant with a `shipping` observation from `checkout` whose cost is
-greater than zero: fire once (no `surface`) when the variant has no shipping
-observation from any other surface. `actual` is the checkout observation.
+greater than zero: fire once (no `surface`) when no other surface states a
+numeric cost or explicitly free shipping for the checkout destination. A quote
+for a different country does not count as disclosure; an unspecified country
+is compatible, and country codes are compared without regard to case. An
+empty shipping object with neither a cost nor free shipping is not a disclosed
+cost. `actual` is the checkout observation.
 Needs `checkout`.
 
 ### `identity.unmatched` (warn)

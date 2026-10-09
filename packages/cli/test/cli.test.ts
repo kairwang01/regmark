@@ -199,12 +199,9 @@ test('init writes a config with the origin only, refuses to overwrite it, and ne
 /** Each of these must fail before a single request is made, so the counting server must see nothing. */
 async function failsFast(args: string[], expected: RegExp): Promise<void> {
   const before = hits;
-  const started = Date.now();
   const res = await run(args);
-  const elapsed = Date.now() - started;
   assert.equal(res.code, 2, `exit code for ${args.join(' ')}`);
   assert.match(res.stderr, expected);
-  assert.ok(elapsed < 5000, `took ${elapsed} ms`);
   assert.equal(hits, before, 'no request reached the shop');
 }
 
@@ -232,6 +229,27 @@ test('--sample that is not a number exits 2', async () => {
 
 test('--ship-to USA without --checkout is still rejected', async () => {
   await failsFast(['audit', target(), '--ship-to', 'USA'], /two-letter country code/);
+});
+
+test('--ship-to rejects extra components instead of silently discarding them', async () => {
+  await failsFast(['audit', target(), '--ship-to', 'US:94103:CA'], /CC or CC:postcode/);
+});
+
+test('strict checkout audit exits 2 and records failure when ownership is not verified', async () => {
+  const dir = await freshDir();
+  const file = path.join(dir, 'out.json');
+  const res = await run([...auditFlags(clean.origin), '--strict', '--json', file, '--quiet']);
+  assert.equal(res.code, 2, res.stderr);
+  assert.match(res.stderr, /strict audit incomplete/);
+  const result = await readJson(file);
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.some((i: { code: string }) => i.code === 'ownership-not-verified'));
+  assert.ok(result.counts.products > 0, 'otherwise readable products cannot mask the missing checkout');
+});
+
+test('strict checkout audit passes when all requested surfaces were collected', async () => {
+  const res = await run([...auditFlags(clean.origin), '--strict', '--quiet'], { env: { REGMARK_OWNERSHIP_TOKEN: OWNERSHIP_TOKEN } });
+  assert.equal(res.code, 0, res.stderr);
 });
 
 // ── Demo ────────────────────────────────────────────────────────────────

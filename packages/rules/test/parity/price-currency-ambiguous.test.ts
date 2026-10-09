@@ -72,3 +72,30 @@ test('no datum at all is silent', () => {
     [],
   );
 });
+
+test('read-only audits compare machine currency with the page headline currency', () => {
+  const findings = run(rule, [
+    whole('page', URL, { price: price('page', '39.00', 'USD') }),
+    variant('jsonld', { sku: 'TEE-M', url: URL }, { price: price('jsonld', '39.00', 'CAD') }),
+    whole('opengraph', URL, { price: price('opengraph', '39.00', null) }),
+  ]);
+  assert.deepEqual(brief(findings), [
+    { variant: undefined, surface: 'jsonld' },
+    { variant: undefined, surface: 'opengraph' },
+  ]);
+  assert.equal(findings[0]!.expected!.surface, 'page');
+});
+
+test('page currency fallback needs a known currency and respects the datum order', () => {
+  const machine = variant('jsonld', { sku: 'TEE-M', url: URL }, { price: price('jsonld', '39.00', 'CAD') });
+  assert.deepEqual(run(rule, [whole('page', URL, { price: price('page', '39.00', null) }), machine]), []);
+  assert.deepEqual(run(rule, [whole('page', URL, { price: price('page', '39.00', 'USD') }), machine], { datum: ['checkout', 'platform'] }), []);
+});
+
+test('a surface listing the page currency is compatible with a product-level page datum', () => {
+  assert.deepEqual(run(rule, [
+    whole('page', URL, { price: price('page', '39.00', 'USD') }),
+    variant('jsonld', { sku: 'TEE-M', url: URL }, { price: price('jsonld', '39.00', 'CAD') }),
+    variant('jsonld', { sku: 'TEE-L', url: URL }, { price: price('jsonld', '39.00', 'USD') }),
+  ]), []);
+});

@@ -93,4 +93,20 @@ describe('tab-separated feed', () => {
     assert.deepStrictEqual(result.sightings, []);
     assert.equal(result.issues[0]?.code, 'feed-item-incomplete');
   });
+
+  it('preserves a leading empty header column without shifting item fields', () => {
+    const body = '\tid\tlink\tprice\n\tA-1\thttps://shop.example/p/a\t3.00 USD';
+    const result = parseFeed(body, FEED_URL, FETCHED_AT, NOW);
+    assert.deepEqual(result.issues, []);
+    assert.equal(result.sightings[0]?.ids.aliases?.[0], 'A-1');
+    assert.equal(result.sightings[0]?.price?.value.units, 30000);
+  });
+
+  it('reports plain error text and malformed quotes instead of an empty success', () => {
+    for (const body of ['Service unavailable', 'id\tlink\ttitle\nA-1\thttps://shop.example/p/a\t"unclosed']) {
+      const result = parseFeed(body, FEED_URL, FETCHED_AT, NOW);
+      assert.deepEqual(result.sightings, []);
+      assert.equal(result.issues[0]?.code, 'parse-error');
+    }
+  });
 });

@@ -12406,7 +12406,7 @@ var require_client_h2 = __commonJS({
   "node_modules/.pnpm/undici@7.30.0/node_modules/undici/lib/dispatcher/client-h2.js"(exports2, module) {
     "use strict";
     var assert = __require("node:assert");
-    var { pipeline } = __require("node:stream");
+    var { pipeline: pipeline2 } = __require("node:stream");
     var util = require_util();
     var {
       RequestContentLengthMismatchError,
@@ -13080,7 +13080,7 @@ var require_client_h2 = __commonJS({
     }
     function writeStream(abort, socket, expectsPayload, h2stream, body, client, request, contentLength) {
       assert(contentLength !== 0 || client[kRunning] === 0, "stream body cannot be pipelined");
-      const pipe = pipeline(
+      const pipe = pipeline2(
         body,
         h2stream,
         (err) => {
@@ -16990,7 +16990,7 @@ var require_api_pipeline = __commonJS({
         util.destroy(ret, err);
       }
     };
-    function pipeline(opts, handler) {
+    function pipeline2(opts, handler) {
       try {
         const pipelineHandler = new PipelineHandler(opts, handler);
         this.dispatch({ ...opts, body: pipelineHandler.req }, pipelineHandler);
@@ -16999,7 +16999,7 @@ var require_api_pipeline = __commonJS({
         return new PassThrough().destroy(err);
       }
     }
-    module.exports = pipeline;
+    module.exports = pipeline2;
   }
 });
 
@@ -21526,7 +21526,7 @@ var require_cache_handler = __commonJS({
 var require_memory_cache_store = __commonJS({
   "node_modules/.pnpm/undici@7.30.0/node_modules/undici/lib/cache/memory-cache-store.js"(exports2, module) {
     "use strict";
-    var { Writable } = __require("node:stream");
+    var { Writable: Writable2 } = __require("node:stream");
     var { EventEmitter } = __require("node:events");
     var { assertCacheKey, assertCacheValue } = require_cache();
     var MemoryCacheStore = class extends EventEmitter {
@@ -21616,7 +21616,7 @@ var require_memory_cache_store = __commonJS({
         const topLevelKey = `${key.origin}:${key.path}`;
         const store = this;
         const entry = { ...key, ...val2, body: [], size: 0 };
-        return new Writable({
+        return new Writable2({
           write(chunk, encoding, callback) {
             if (typeof chunk === "string") {
               chunk = Buffer.from(chunk, encoding);
@@ -22240,7 +22240,7 @@ var require_decompress = __commonJS({
   "node_modules/.pnpm/undici@7.30.0/node_modules/undici/lib/interceptor/decompress.js"(exports2, module) {
     "use strict";
     var { createInflate, createGunzip, createBrotliDecompress, createZstdDecompress } = __require("node:zlib");
-    var { pipeline, Transform: TransformStream2 } = __require("node:stream");
+    var { pipeline: pipeline2, Transform: TransformStream2 } = __require("node:stream");
     var { InvalidArgumentError, ResponseExceededMaxSizeError } = require_errors();
     var DecoratorHandler = require_decorator_handler();
     var { runtimeFeatures } = require_runtime_features();
@@ -22547,7 +22547,7 @@ var require_decompress = __commonJS({
       #setupMultipleDecompressors() {
         const lastDecompressor = this.#decompressors[this.#decompressors.length - 1];
         this.#setupDecompressorEvents(lastDecompressor);
-        pipeline(this.#decompressors, (err) => {
+        pipeline2(this.#decompressors, (err) => {
           if (this.#terminated) {
             return;
           }
@@ -23149,7 +23149,7 @@ var require_deduplicate = __commonJS({
 var require_sqlite_cache_store = __commonJS({
   "node_modules/.pnpm/undici@7.30.0/node_modules/undici/lib/cache/sqlite-cache-store.js"(exports2, module) {
     "use strict";
-    var { Writable } = __require("node:stream");
+    var { Writable: Writable2 } = __require("node:stream");
     var { assertCacheKey, assertCacheValue } = require_cache();
     var DatabaseSync;
     var VERSION = 3;
@@ -23393,7 +23393,7 @@ var require_sqlite_cache_store = __commonJS({
         let size = 0;
         const body = [];
         const store = this;
-        return new Writable({
+        return new Writable2({
           decodeStrings: true,
           write(chunk, encoding, callback) {
             size += chunk.byteLength;
@@ -25346,7 +25346,7 @@ var require_fetch = __commonJS({
       subresourceSet
     } = require_constants3();
     var EE = __require("node:events");
-    var { Readable, pipeline, finished, isErrored, isReadable } = __require("node:stream");
+    var { Readable, pipeline: pipeline2, finished, isErrored, isReadable } = __require("node:stream");
     var { addAbortListener, bufferToLowerCasedHeaderName } = require_util();
     var { dataURLProcessor, serializeAMimeType, minimizeSupportedMimeType } = require_data_url();
     var { getGlobalDispatcher } = require_global2();
@@ -26337,7 +26337,7 @@ var require_fetch = __commonJS({
                 status,
                 statusText,
                 headersList,
-                body: decoders.length ? pipeline(this.body, ...decoders, (err) => {
+                body: decoders.length ? pipeline2(this.body, ...decoders, (err) => {
                   if (err) {
                     this.onError(err);
                   }
@@ -28466,7 +28466,7 @@ var require_permessage_deflate = __commonJS({
 var require_receiver = __commonJS({
   "node_modules/.pnpm/undici@7.30.0/node_modules/undici/lib/web/websocket/receiver.js"(exports2, module) {
     "use strict";
-    var { Writable } = __require("node:stream");
+    var { Writable: Writable2 } = __require("node:stream");
     var assert = __require("node:assert");
     var { parserStates, opcodes, states: states2, emptyBuffer, sentCloseFrameState } = require_constants5();
     var {
@@ -28482,7 +28482,7 @@ var require_receiver = __commonJS({
     var { WebsocketFrameSend } = require_frame();
     var { PerMessageDeflate } = require_permessage_deflate();
     var { MessageSizeExceededError } = require_errors();
-    var ByteParser = class extends Writable {
+    var ByteParser = class extends Writable2 {
       #buffers = [];
       #fragmentsBytes = 0;
       #byteOffset = 0;
@@ -30155,7 +30155,7 @@ ${value}`;
 var require_eventsource = __commonJS({
   "node_modules/.pnpm/undici@7.30.0/node_modules/undici/lib/web/eventsource/eventsource.js"(exports2, module) {
     "use strict";
-    var { pipeline } = __require("node:stream");
+    var { pipeline: pipeline2 } = __require("node:stream");
     var { fetching } = require_fetch();
     var { makeRequest } = require_request2();
     var { webidl } = require_webidl();
@@ -30313,7 +30313,7 @@ var require_eventsource = __commonJS({
               ));
             }
           });
-          pipeline(
+          pipeline2(
             response.body.stream,
             eventSourceStream,
             (error) => {
@@ -31569,7 +31569,7 @@ function renderProductPage(shop, slug, origin) {
   const ld = embedJson(jsonLd(shop, p, origin));
   const inStock = p.page.stock === "in_stock";
   const reviews = p.page.reviews.map(
-    (text5) => `<li class="review"><div class="comment-text"><div class="description"><p>${esc2(text5)}</p></div></div></li>`
+    (text6) => `<li class="review"><div class="comment-text"><div class="description"><p>${esc2(text6)}</p></div></div></li>`
   );
   return [
     "<!doctype html>",
@@ -31660,9 +31660,9 @@ var init_render_page = __esm({
 // fixtures/shop/src/store-api.ts
 import { createHash, randomBytes } from "node:crypto";
 function minor(decimal) {
-  const [whole = "0", fraction = ""] = decimal.split(".");
+  const [whole2 = "0", fraction = ""] = decimal.split(".");
   if (fraction.length > 2) throw new Error(`minor: more than two decimals in ${decimal}`);
-  return String(Number(whole) * 100 + Number(fraction.padEnd(2, "0")));
+  return String(Number(whole2) * 100 + Number(fraction.padEnd(2, "0")));
 }
 function currencyBlock(code2) {
   return {
@@ -32038,7 +32038,7 @@ async function route(req, res, env) {
   return notFound(res);
 }
 async function storeRoute(req, res, url, env) {
-  const { tooLarge, text: text5 } = await readBody(req);
+  const { tooLarge, text: text6 } = await readBody(req);
   if (tooLarge) {
     return sendJson(res, 413, {
       code: "rest_payload_too_large",
@@ -32047,9 +32047,9 @@ async function storeRoute(req, res, url, env) {
     });
   }
   let body;
-  if (text5.length > 0) {
+  if (text6.length > 0) {
     try {
-      body = JSON.parse(text5);
+      body = JSON.parse(text6);
     } catch {
       return sendJson(res, 400, { code: "rest_invalid_json", message: "Invalid JSON body passed.", data: { status: 400 } });
     }
@@ -32223,17 +32223,17 @@ function decimalToUnits(dec) {
   return Number.isSafeInteger(units) ? units : null;
 }
 function fromMinor(minor2, minorUnit, currency) {
-  const text5 = String(minor2).trim();
-  if (!/^\d+$/.test(text5) || !Number.isInteger(minorUnit) || minorUnit < 0 || minorUnit > 4) return null;
-  const units = Number(text5) * 10 ** (4 - minorUnit);
+  const text6 = String(minor2).trim();
+  if (!/^\d+$/.test(text6) || !Number.isInteger(minorUnit) || minorUnit < 0 || minorUnit > 4) return null;
+  const units = Number(text6) * 10 ** (4 - minorUnit);
   return Number.isSafeInteger(units) ? { units, currency: normCurrency(currency) } : null;
 }
-function detectCurrency(text5) {
-  for (const m of text5.matchAll(/(?<![A-Za-z])([A-Z]{3})(?![A-Za-z])/g)) {
+function detectCurrency(text6) {
+  for (const m of text6.matchAll(/(?<![A-Za-z])([A-Z]{3})(?![A-Za-z])/g)) {
     if (ISO_CODES.has(m[1])) return m[1];
   }
   for (const [symbol, code2] of SYMBOLS) {
-    if (text5.includes(symbol)) return code2;
+    if (text6.includes(symbol)) return code2;
   }
   return null;
 }
@@ -32262,10 +32262,10 @@ function normalizeNumber(token, minorUnit) {
 }
 var NUMBER_TOKEN = /\d(?:[\d.,'   ]*\d)?/g;
 function parseAllMoney(raw, hint = {}) {
-  const text5 = raw.normalize("NFKC");
-  const currency = detectCurrency(text5) ?? normCurrency(hint.currency);
+  const text6 = raw.normalize("NFKC");
+  const currency = detectCurrency(text6) ?? normCurrency(hint.currency);
   const out2 = [];
-  for (const m of text5.matchAll(NUMBER_TOKEN)) {
+  for (const m of text6.matchAll(NUMBER_TOKEN)) {
     const dec = normalizeNumber(m[0], minorUnitOf(currency));
     const units = dec === null ? null : decimalToUnits(dec);
     if (units !== null) out2.push({ units, currency });
@@ -32280,9 +32280,9 @@ function sameMoney(a, b, tolerance = 0) {
   return Math.abs(a.units - b.units) <= tolerance;
 }
 function formatMoney(m) {
-  const whole = Math.trunc(m.units / SCALE);
+  const whole2 = Math.trunc(m.units / SCALE);
   const frac = String(Math.abs(m.units % SCALE)).padStart(4, "0").replace(/0{1,2}$/, "");
-  return `${whole}.${frac}${m.currency ? ` ${m.currency}` : ""}`;
+  return `${whole2}.${frac}${m.currency ? ` ${m.currency}` : ""}`;
 }
 
 // packages/core/src/ids.ts
@@ -32323,7 +32323,13 @@ function urlKey(raw, base) {
     path2 = u.pathname;
   }
   path2 = path2.replace(/\/+$/, "");
-  return `${host2}${port}${path2}`;
+  const identity2 = new URLSearchParams();
+  for (const [name, value] of u.searchParams) {
+    if (["p", "product_id", "product"].includes(name) && value !== "") identity2.append(name, value);
+  }
+  identity2.sort();
+  const query = identity2.size ? `?${identity2}` : "";
+  return `${host2}${port}${path2}${query}`;
 }
 var OPTION_NAME_ALIASES = { colour: "color", couleur: "color", taille: "size", gr\u00F6sse: "size" };
 function optionName(raw) {
@@ -32486,7 +32492,7 @@ function toProduct(sightings, amb, index2) {
   const variants = [...clusters.values()].map((c, i) => toOffer(c, `variant-${i + 1}`)).sort((a, b) => a.key.localeCompare(b.key));
   const named = [...sightings].sort(byNamingOrder);
   const url = named.find((s) => s.ids.url)?.ids.url;
-  const text5 = sightings.flatMap((s) => s.text ?? []);
+  const text6 = sightings.flatMap((s) => s.text ?? []);
   return {
     key: urlKey(url) ?? variants[0]?.key ?? `product-${index2 + 1}`,
     url,
@@ -32494,7 +32500,7 @@ function toProduct(sightings, amb, index2) {
     surfaces: uniqueSurfaces(sightings),
     variants,
     productLevel,
-    text: text5
+    text: text6
   };
 }
 function buildGraph(sightings) {
@@ -32630,8 +32636,8 @@ for (const [prefix, bits] of [
   blocked.addSubnet(prefix, bits, "ipv4");
 }
 for (const [prefix, bits] of [
-  ["::", 127],
-  // unspecified and loopback
+  ["::", 96],
+  // unspecified, loopback and deprecated IPv4-compatible addresses
   ["64:ff9b:1::", 48],
   // local-use NAT64
   ["100::", 64],
@@ -32661,9 +32667,15 @@ function isPublicAddress(address) {
   const family = net.isIP(address);
   if (family === 4) return !blocked.check(address, "ipv4");
   if (family !== 6) return false;
-  const v4 = embeddedIPv4(address);
+  let canonical;
+  try {
+    canonical = new URL(`http://[${address}]/`).hostname.slice(1, -1);
+  } catch {
+    return false;
+  }
+  const v4 = embeddedIPv4(canonical);
   if (v4) return isPublicAddress(v4);
-  return !blocked.check(address, "ipv6");
+  return !blocked.check(canonical, "ipv6");
 }
 var PrivateAddressError = class extends Error {
   code = "private-address";
@@ -32693,8 +32705,8 @@ function ipLiteral(hostname) {
 // packages/core/src/net/robots.ts
 var MAX_BYTES = 512 * 1024;
 var KNOWN_KEYS = /* @__PURE__ */ new Set(["user-agent", "allow", "disallow", "sitemap"]);
-function parseRobots(text5) {
-  const body = text5.charCodeAt(0) === 65279 ? text5.slice(1) : text5;
+function parseRobots(text6) {
+  const body = text6.charCodeAt(0) === 65279 ? text6.slice(1) : text6;
   const source = capUtf8(body, MAX_BYTES);
   const groups = [];
   const sitemaps = [];
@@ -32745,24 +32757,24 @@ function isAllowed(robots, agent, pathAndQuery) {
   }
   return best === null ? true : best.allow;
 }
-function capUtf8(text5, limit) {
+function capUtf8(text6, limit) {
   let used = 0;
-  for (let i = 0; i < text5.length; i++) {
-    const code2 = text5.charCodeAt(i);
+  for (let i = 0; i < text6.length; i++) {
+    const code2 = text6.charCodeAt(i);
     let size = code2 < 128 ? 1 : code2 < 2048 ? 2 : 3;
     let step = 1;
-    if (code2 >= 55296 && code2 <= 56319 && i + 1 < text5.length) {
-      const next2 = text5.charCodeAt(i + 1);
+    if (code2 >= 55296 && code2 <= 56319 && i + 1 < text6.length) {
+      const next2 = text6.charCodeAt(i + 1);
       if (next2 >= 56320 && next2 <= 57343) {
         size = 4;
         step = 2;
       }
     }
-    if (used + size > limit) return text5.slice(0, i);
+    if (used + size > limit) return text6.slice(0, i);
     used += size;
     i += step - 1;
   }
-  return text5;
+  return text6;
 }
 function agentToken(value) {
   const lower = value.toLowerCase();
@@ -32802,6 +32814,7 @@ function matches(pattern, path2) {
 // packages/core/src/net/fetcher.ts
 import http from "node:http";
 import https from "node:https";
+import { pipeline, Writable } from "node:stream";
 import { TextDecoder as TextDecoder2 } from "node:util";
 import zlib from "node:zlib";
 var DEFAULT_POLICY = {
@@ -32838,7 +32851,8 @@ function decoderFor(contentType) {
   return new TextDecoder2("utf-8");
 }
 function createFetcher(options) {
-  const policy = { ...DEFAULT_POLICY, ...options };
+  const overrides = Object.fromEntries(Object.entries(options).filter(([, value]) => value !== void 0));
+  const policy = { ...DEFAULT_POLICY, ...overrides, hosts: options.hosts };
   const allowed = new Set(policy.hosts.map(hostKey));
   const nextSlot = /* @__PURE__ */ new Map();
   const robotsCache = /* @__PURE__ */ new Map();
@@ -32856,6 +32870,8 @@ function createFetcher(options) {
     return u;
   }
   function assertAllowedHost(u) {
+    if (u.protocol !== "http:" && u.protocol !== "https:") throw new FetchRefused("bad-url", u.href, "only http and https");
+    if (u.username || u.password) throw new FetchRefused("bad-url", u.href, "credentials in URL");
     if (!allowed.has(hostKey(u.hostname))) throw new FetchRefused("foreign-host", u.href);
     const literal = ipLiteral(u.hostname);
     if (literal && !policy.allowPrivateNetwork && !isPublicAddress(literal)) {
@@ -32870,6 +32886,7 @@ function createFetcher(options) {
     if (at > now) await sleep(at - now);
   }
   function request(method, u, headers, body) {
+    assertAllowedHost(u);
     stats.requests += 1;
     return new Promise((resolve2, reject) => {
       const lib = u.protocol === "https:" ? https : http;
@@ -32890,20 +32907,25 @@ function createFetcher(options) {
         },
         (res) => {
           const encoding = String(res.headers["content-encoding"] ?? "").toLowerCase();
-          const stream = encoding === "gzip" || encoding === "x-gzip" ? res.pipe(zlib.createGunzip()) : encoding === "br" ? res.pipe(zlib.createBrotliDecompress()) : encoding === "deflate" ? res.pipe(zlib.createInflate()) : res;
+          const decoder = encoding === "gzip" || encoding === "x-gzip" ? zlib.createGunzip() : encoding === "br" ? zlib.createBrotliDecompress() : encoding === "deflate" ? zlib.createInflate() : void 0;
           const chunks = [];
           let size = 0;
-          stream.on("data", (chunk) => {
-            size += chunk.length;
-            if (size > policy.maxBytes) {
-              req.destroy();
-              reject(new FetchRefused("too-large", u.href, `over ${policy.maxBytes} bytes`));
+          const sink = new Writable({
+            write(chunk, _encoding, done) {
+              size += chunk.length;
+              if (size > policy.maxBytes) {
+                done(new FetchRefused("too-large", u.href, `over ${policy.maxBytes} bytes`));
+                return;
+              }
+              chunks.push(chunk);
+              done();
+            }
+          });
+          pipeline(decoder ? [res, decoder, sink] : [res, sink], (err) => {
+            if (err) {
+              reject(err instanceof FetchRefused ? err : new FetchRefused("network", u.href, err.message));
               return;
             }
-            chunks.push(chunk);
-          });
-          stream.on("error", (err) => reject(new FetchRefused("network", u.href, err.message)));
-          stream.on("end", () => {
             const out2 = {};
             for (const [k, v] of Object.entries(res.headers)) {
               if (v !== void 0) out2[k.toLowerCase()] = Array.isArray(v) ? v.join(", ") : v;
@@ -32971,11 +32993,12 @@ function createFetcher(options) {
     },
     async get(url, init2 = {}) {
       let u = parse8(url);
+      let headers = init2.headers ?? {};
       for (let hop = 0; ; hop++) {
         assertAllowedHost(u);
         await assertRobots(u);
         await pace(u);
-        const raw = await request("GET", u, init2.headers ?? {});
+        const raw = await request("GET", u, headers);
         const location = raw.headers["location"];
         if (!REDIRECTS.has(raw.status) || !location) return finish(u, raw);
         let next2;
@@ -32986,6 +33009,7 @@ function createFetcher(options) {
         }
         if (next2.protocol !== "http:" && next2.protocol !== "https:" || !allowed.has(hostKey(next2.hostname))) return finish(u, raw);
         if (hop >= policy.maxRedirects) throw new FetchRefused("too-many-redirects", url);
+        if (next2.origin !== u.origin) headers = {};
         u = next2;
       }
     },
@@ -33033,6 +33057,13 @@ function artifactUri(locator2) {
 function nothingRead(result) {
   return result.counts.products === 0;
 }
+function collectionFailure(result) {
+  if (nothingRead(result)) return "No product was read, so nothing was checked.";
+  if (!result.ok && result.issues.length > 0 && result.rules.every((rule) => rule.passed)) {
+    return "Collection issues prevent a passing audit.";
+  }
+  return void 0;
+}
 
 // packages/report/src/terminal.ts
 var PLATES = ["C", "M", "Y", "K"];
@@ -33046,11 +33077,11 @@ var MARK_STYLE = {
 };
 var CONTROL = /[\u0000-\u001f\u007f-\u009f]/g;
 var MAX_LEN = 200;
-function clean(text5) {
-  return text5.replace(CONTROL, " ");
+function clean(text6) {
+  return text6.replace(CONTROL, " ");
 }
-function untrusted(text5) {
-  const cleaned = clean(text5);
+function untrusted(text6) {
+  const cleaned = clean(text6);
   const chars = Array.from(cleaned);
   return chars.length > MAX_LEN ? `${chars.slice(0, MAX_LEN - 1).join("")}\u2026` : cleaned;
 }
@@ -33078,7 +33109,7 @@ var LABEL_INDENT = "  ";
 function renderTerminal(result, options = {}) {
   const color = options.color ?? false;
   const max = Math.max(0, Math.floor(options.maxExamples ?? 5));
-  const paint = (style, text5) => color ? styleText(style, text5, { validateStream: false }) : text5;
+  const paint = (style, text6) => color ? styleText(style, text6, { validateStream: false }) : text6;
   const tag = (surface) => `${paint(PLATE_STYLE[plateOf(surface)], plateOf(surface))} ${untrusted(surface)}`;
   const header = `${LABEL_INDENT}${hostOf(result.store)}    ${plural(result.counts.variants, "variant")}    ${formatDuration(durationMs(result))}`;
   const plates = LABEL_INDENT + PLATES.map((plate) => {
@@ -33143,7 +33174,7 @@ function renderTerminal(result, options = {}) {
     summary += ". Within budget.";
   } else {
     const over = result.rules.filter((r) => !r.passed).length;
-    summary += `. ${plural(over, "rule")} over budget.`;
+    summary += over > 0 ? `. ${plural(over, "rule")} over budget.` : `. ${collectionFailure(result) ?? "The audit did not pass."}`;
   }
   const lines = [header, plates];
   if (body.length > 0) lines.push("", ...body);
@@ -33164,6 +33195,13 @@ function renderJson(result) {
 // packages/report/src/sarif.ts
 var INFORMATION_URI = "https://opensource.kairwang.cloud/regmark/";
 function renderSarif(result) {
+  const collection = collectionFailure(result);
+  const notifications = result.issues.map((issue2) => ({
+    descriptor: { id: issue2.code },
+    level: collection ? "error" : "warning",
+    message: { text: `${issue2.surface}: ${issue2.message}` },
+    properties: { surface: issue2.surface, ...issue2.locator ? { locator: issue2.locator } : {} }
+  }));
   const rules = result.rules.map((rule) => ({
     id: rule.id,
     shortDescription: { text: rule.summary },
@@ -33192,7 +33230,9 @@ function renderSarif(result) {
       ],
       // Deliberately leaves out the values: a price change should not look like a new finding.
       partialFingerprints: {
-        "regmark/v1": `${finding2.rule}|${finding2.product}|${finding2.variant ?? ""}|${finding2.surface ?? ""}`
+        // Escape delimiters within identities so "a|b", "c" and "a", "b|c"
+        // cannot collapse two unrelated alerts into one fingerprint.
+        "regmark/v1": [finding2.rule, finding2.product, finding2.variant ?? "", finding2.surface ?? ""].map((part) => part.replace(/%/g, "%25").replace(/\|/g, "%7C")).join("|")
       },
       properties
     };
@@ -33210,7 +33250,14 @@ function renderSarif(result) {
             rules
           }
         },
-        results
+        results,
+        invocations: [{
+          executionSuccessful: collection === void 0,
+          toolExecutionNotifications: [
+            ...notifications,
+            ...nothingRead(result) ? [{ descriptor: { id: "nothing-read" }, level: "error", message: { text: collection } }] : []
+          ]
+        }]
       }
     ]
   };
@@ -33220,8 +33267,8 @@ function renderSarif(result) {
 
 // packages/report/src/junit.ts
 var ILLEGAL_XML = /[^\t\n\r\x20-\x7E\xA0-퟿-�\u{10000}-\u{10FFFF}]/gu;
-function xml(text5) {
-  return text5.replace(ILLEGAL_XML, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+function xml(text6) {
+  return text6.replace(ILLEGAL_XML, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
 function kindOf(rule, lines) {
   if (rule.skipped !== void 0) return "skipped";
@@ -33243,7 +33290,7 @@ function renderJUnit(result) {
     const lines = linesByRule.get(rule.id) ?? [];
     const kind = kindOf(rule, lines);
     const name = `classname="regmark" name="${xml(rule.id)}"`;
-    const text5 = lines.map(xml).join("\n");
+    const text6 = lines.map(xml).join("\n");
     if (kind === "skipped") {
       skipped += 1;
       cases.push(
@@ -33257,20 +33304,32 @@ function renderJUnit(result) {
       cases.push(
         `  <testcase ${name}>`,
         `    <failure message="${xml(`${rule.findings} findings, budget ${budget}`)}">`,
-        text5,
+        text6,
         "    </failure>",
         "  </testcase>"
       );
     } else if (kind === "output") {
-      cases.push(`  <testcase ${name}>`, "    <system-out>", text5, "    </system-out>", "  </testcase>");
+      cases.push(`  <testcase ${name}>`, "    <system-out>", text6, "    </system-out>", "  </testcase>");
     } else {
       cases.push(`  <testcase ${name}/>`);
     }
   }
+  const collection = collectionFailure(result);
+  const diagnostics = result.issues.map(
+    (issue2) => `${issue2.surface} ${issue2.code}: ${issue2.message}${issue2.locator ? ` (${issue2.locator})` : ""}`
+  ).join("\n");
+  if (collection) {
+    cases.push(
+      '  <testcase classname="regmark" name="collection">',
+      `    <error message="${xml(collection)}">${xml(diagnostics || collection)}</error>`,
+      "  </testcase>"
+    );
+  }
+  if (diagnostics) cases.push(`  <system-err>${xml(diagnostics)}</system-err>`);
   const seconds = (durationMs(result) / 1e3).toFixed(3);
   const head = [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    `<testsuite name="regmark" tests="${result.rules.length}" failures="${failures}" skipped="${skipped}" time="${seconds}">`
+    `<testsuite name="regmark" tests="${result.rules.length + (collection ? 1 : 0)}" failures="${failures}" skipped="${skipped}" time="${seconds}"${collection ? ' errors="1"' : ""}>`
   ];
   return `${[...head, ...cases, "</testsuite>"].join("\n")}
 `;
@@ -33306,10 +33365,10 @@ var PLATE_NOTE = {
 };
 var chip = (plate) => `<span class="chip chip-${plate.toLowerCase()}">${plate}</span>`;
 var plateOf2 = (surface) => PLATE_OF[surface] ?? "C";
-function locator(text5) {
-  const shown = esc(clip(text5, 240));
-  const hash = text5.indexOf("#");
-  const url = hash === -1 ? text5 : text5.slice(0, hash);
+function locator(text6) {
+  const shown = esc(clip(text6, 240));
+  const hash = text6.indexOf("#");
+  const url = hash === -1 ? text6 : text6.slice(0, hash);
   if (!/^https?:\/\/[^\s"'<>]+$/i.test(url)) return `<span class="loc">${shown}</span>`;
   return `<a class="loc" href="${esc(url)}" rel="noopener noreferrer nofollow">${shown}</a>`;
 }
@@ -33355,20 +33414,22 @@ var CSS = `
 --c:#3fc3e3;--m:#f2679f;--y:#f0cb45;--y-line:#f0cb45;--k:#dee9f0;--on:#091420;--blend:screen;--bad:#f08a7c;--ok:#5fc9a3}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--paper);color:var(--text);font:400 16px/1.6 var(--sans);-webkit-font-smoothing:antialiased}
-.sheet{max-width:62rem;margin:0 auto;padding:0 clamp(1rem,4vw,2.5rem) 4rem}
+.sheet{max-width:62rem;margin:0 auto;padding:0 clamp(1rem,4vw,2.5rem) 4rem;overflow-wrap:anywhere}
 a{color:var(--ink);text-underline-offset:.18em;text-decoration-thickness:1px}
 h1,h2,h3{font-family:var(--cond);font-weight:600;line-height:1.2;margin:0}
 .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 .label{font:500 .72rem/1.4 var(--mono);color:var(--muted);margin:0}
 .head{display:flex;justify-content:space-between;align-items:flex-end;gap:2rem;flex-wrap:wrap;padding:1.1rem 0;border-bottom:1px solid var(--rule-2)}
+.head>*{min-width:0;max-width:100%}
 .brand{display:flex;align-items:center;gap:.6rem;font:600 1.05rem/1 var(--cond)}
 .brand svg{width:1.5rem;height:1.5rem;color:var(--ink)}
 .brand span{font:500 .72rem/1 var(--mono);color:var(--muted);margin-left:.4rem}
 .meta{display:flex;gap:2rem;flex-wrap:wrap;margin:0}
+.meta>div{min-width:0;max-width:100%}
 .meta dt{font:500 .68rem/1.4 var(--mono);color:var(--muted)}
 .meta dd{margin:0;font-size:.9rem;overflow-wrap:anywhere}
 .verdict{padding:3rem 0 2.2rem;border-bottom:2px solid var(--text)}
-.press{position:relative;display:inline-block;isolation:isolate;font:600 clamp(2.6rem,9vw,5.2rem)/1 var(--cond);letter-spacing:.005em}
+.press{position:relative;display:inline-block;max-width:100%;isolation:isolate;font:600 clamp(2.6rem,9vw,5.2rem)/1 var(--cond);letter-spacing:.005em}
 .press span{display:block;mix-blend-mode:var(--blend)}
 .press .pc,.press .pm,.press .py{position:absolute;inset:0}
 .press .pc{color:var(--c)}.press .pm{color:var(--m)}.press .py{color:var(--y)}.press .pk{color:var(--k);position:relative}
@@ -33393,10 +33454,10 @@ table{width:100%;border-collapse:collapse;font-size:.92rem}
 th,td{text-align:left;vertical-align:top;padding:.5rem 1rem .5rem 0;border-bottom:1px solid var(--rule)}
 th{font:500 .72rem/1.4 var(--mono);color:var(--muted);border-bottom:1.5px solid var(--text)}
 td.mark{width:1.8rem;font:600 1rem/1.5 var(--mono)}
-td.id{font:500 .84rem/1.7 var(--mono);white-space:nowrap}
+td.id{font:500 .84rem/1.7 var(--mono)}
 td.what{color:var(--text-2)}
 td.num,th.num{text-align:right;font-family:var(--mono);width:4.5rem}
-td.budget{font:400 .78rem/1.9 var(--mono);color:var(--muted);white-space:nowrap}
+td.budget{font:400 .78rem/1.9 var(--mono);color:var(--muted)}
 .is-fail .mark,.is-fail .num{color:var(--bad)}.is-fail .num{font-weight:600}
 .is-flag .mark{color:var(--y-line)}.is-pass .mark{color:var(--ok)}.is-skip{color:var(--muted)}.is-skip td.what{color:var(--muted)}
 .group{margin-top:2rem}
@@ -33420,7 +33481,17 @@ ol.proofs{list-style:none;margin:.7rem 0 0;padding:0;border-top:1px solid var(--
 .issues li{margin:.3rem 0;overflow-wrap:anywhere}.issues code{font:500 .82rem var(--mono)}
 footer{margin-top:3.5rem;padding-top:1rem;border-top:1px solid var(--rule-2);color:var(--muted);font:400 .76rem/1.7 var(--mono)}
 @media (max-width:46rem){.plates{grid-template-columns:repeat(2,minmax(0,1fr))}.plate{border-bottom:1px solid var(--rule)}.plate:nth-child(2n){border-right:0}.plate:nth-child(odd){padding-left:0}
-.proof{grid-template-columns:minmax(0,1fr);gap:.4rem}.pair{grid-template-columns:minmax(0,1fr)}.neq{margin:0}td.what,th.what{display:none}}
+.proof{grid-template-columns:minmax(0,1fr);gap:.4rem}.pair{grid-template-columns:minmax(0,1fr)}.neq{margin:0}
+table,thead,tbody{display:block}
+tr{display:grid;grid-template-columns:1.2rem minmax(0,1fr) 3.25rem minmax(4.2rem,.5fr);gap:.35rem .5rem;padding:.7rem 0;border-bottom:1px solid var(--rule)}
+thead tr{border-bottom:1.5px solid var(--text)}
+th,td{min-width:0;padding:0;border:0}
+th.what{display:none}
+td.what{grid-column:2/-1;grid-row:2}
+td.mark{width:auto;grid-column:1;grid-row:1}
+td.id{grid-column:2;grid-row:1;white-space:normal}
+td.num,th.num{width:auto;grid-column:3;grid-row:1}
+td.budget{grid-column:4;grid-row:1;white-space:normal}}
 @media print{body{background:#fff}.sheet{max-width:none;padding:0}.proof,.group>h3,tr{break-inside:avoid}a{color:inherit}}
 `;
 var MARK_SVG = `<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="8.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M16 1v30M1 16h30" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`;
@@ -33434,7 +33505,7 @@ function renderHtml(result, options = {}) {
   const word = empty2 ? "Nothing read" : result.ok ? "In register" : "Out of register";
   const counts = [plural2(errors2, "error"), plural2(warns, "warning"), ...notes ? [plural2(notes, "note")] : []];
   const where = `${plural2(result.counts.variants, "variant")} of ${plural2(result.counts.products, "product")}`;
-  const sentence = empty2 ? `<b>No product could be read from this shop</b>, so no rule had anything to compare.${result.issues.length ? " What got in the way is listed under Collection issues." : ""}` : result.ok ? `<b>${counts.join(", ")}</b> across ${where}. Every rule is within its budget.` : `<b>${counts.join(", ")}</b> across ${where}. Over budget: ${over.map((r) => `<a href="#rule-${esc(r.id)}">${esc(r.id)}</a>`).join(", ")}.`;
+  const sentence = empty2 ? `<b>No product could be read from this shop</b>, so no rule had anything to compare.${result.issues.length ? " What got in the way is listed under Collection issues." : ""}` : result.ok ? `<b>${counts.join(", ")}</b> across ${where}. Every rule is within its budget.` : `<b>${counts.join(", ")}</b> across ${where}. ${over.length ? `Over budget: ${over.map((r) => `<a href="#rule-${esc(r.id)}">${esc(r.id)}</a>`).join(", ")}.` : esc(collectionFailure(result) ?? "The audit did not pass.")}`;
   const collected = new Set(result.surfaces);
   const plates = PLATES2.map((plate) => {
     const mine = Object.keys(PLATE_OF).filter((s) => PLATE_OF[s] === plate && collected.has(s));
@@ -33500,8 +33571,8 @@ var MAX_ISSUES = 20;
 var CODE_MAX = 160;
 var PLATES3 = ["C", "M", "Y", "K"];
 var CONTROL_OR_SEPARATOR = /[\u0000-\u001f\u007f\u2028\u2029]/g;
-function code(text5, max = CODE_MAX) {
-  const flat = text5.replace(CONTROL_OR_SEPARATOR, " ").replace(/\s+/g, " ").trim();
+function code(text6, max = CODE_MAX) {
+  const flat = text6.replace(CONTROL_OR_SEPARATOR, " ").replace(/\s+/g, " ").trim();
   const chars = Array.from(flat);
   const cut = chars.length > max ? `${chars.slice(0, max).join("")}\u2026` : flat;
   if (cut === "") return "`\u2013`";
@@ -33572,7 +33643,7 @@ function renderMarkdown(result, options = {}) {
   const counts = [plural3(errors2, "error"), plural3(warnings, "warning")];
   if (notes > 0) counts.push(plural3(notes, "note"));
   const overBudget = result.rules.filter((r) => r.skipped === void 0 && !r.passed).length;
-  const verdict = result.ok ? "Every rule is within its budget." : `${plural3(overBudget, "rule")} over budget.`;
+  const verdict = result.ok ? "Every rule is within its budget." : overBudget > 0 ? `${plural3(overBudget, "rule")} over budget.` : collectionFailure(result) ?? "The audit did not pass.";
   sections.push(
     empty2 ? `No product could be read from ${code(hostOf2(result.store))}, so nothing was checked.` : `**${counts.join(", ")}** across ${plural3(result.counts.variants, "variant")} of ${plural3(result.counts.products, "product")} on ${code(hostOf2(result.store))}. ${verdict}`
   );
@@ -33622,19 +33693,19 @@ function renderMarkdown(result, options = {}) {
 var EVIDENCE_MAX = 120;
 var INSPECT_MAX = 2e4;
 var CONTROL2 = /[\u0000-\u001f\u007f]/g;
-function printable(text5) {
-  return text5.replace(CONTROL2, " ");
+function printable(text6) {
+  return text6.replace(CONTROL2, " ");
 }
-function clip2(text5) {
-  const head = Array.from(text5.slice(0, EVIDENCE_MAX * 2 + 2));
+function clip2(text6) {
+  const head = Array.from(text6.slice(0, EVIDENCE_MAX * 2 + 2));
   if (head.length > EVIDENCE_MAX) return printable(head.slice(0, EVIDENCE_MAX).join("")) + "\u2026";
-  return printable(text5);
+  return printable(text6);
 }
-function windowAround(text5, start, end2) {
+function windowAround(text6, start, end2) {
   const from = Math.max(0, Math.max(start - 30, end2 - EVIDENCE_MAX));
-  const to = Math.min(text5.length, from + EVIDENCE_MAX);
-  const body = printable(text5.slice(from, to));
-  return (from > 0 ? "\u2026" : "") + body + (to < text5.length ? "\u2026" : "");
+  const to = Math.min(text6.length, from + EVIDENCE_MAX);
+  const body = printable(text6.slice(from, to));
+  return (from > 0 ? "\u2026" : "") + body + (to < text6.length ? "\u2026" : "");
 }
 function sampleFinding(product3, sample2, severity, message, value) {
   return {
@@ -33651,20 +33722,25 @@ function sampleFinding(product3, sample2, severity, message, value) {
 var HONEST = /* @__PURE__ */ new Set(["a11y-class", "alt-attribute", "html-comment"]);
 var CLOAKING = /* @__PURE__ */ new Set(["font-size:0", "color:transparent", "color-matches-background", "offscreen", "zero-size", "clipped"]);
 var MIN_LENGTH = 20;
-function looksStuffed(text5, title) {
-  const words = text5.toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? [];
-  if (words.length < 8) return false;
+function looksStuffed(text6, title) {
   const counts = /* @__PURE__ */ new Map();
-  for (const w of words) counts.set(w, (counts.get(w) ?? 0) + 1);
+  let words = 0;
+  let top = 0;
+  for (const [word] of text6.toLowerCase().matchAll(/[\p{L}\p{N}]{4,}/gu)) {
+    const n = (counts.get(word) ?? 0) + 1;
+    counts.set(word, n);
+    words++;
+    if (n > top) top = n;
+  }
+  if (words < 8) return false;
   const named = new Set((title ?? "").toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? []);
   if (named.size > 0) {
     return [...named].some((w) => {
       const n = counts.get(w) ?? 0;
-      return n >= 4 && n / words.length >= 0.2;
+      return n >= 4 && n / words >= 0.2;
     });
   }
-  const top = Math.max(...counts.values());
-  return top >= 6 && top / words.length >= 0.3;
+  return top >= 6 && top / words >= 0.3;
 }
 var hidden_text_default = defineRule({
   id: "content.hidden-text",
@@ -33751,9 +33827,9 @@ var CANCEL_TAG = 917631;
 var ZERO_WIDTH = /* @__PURE__ */ new Set([8203, 8288, 65279]);
 var ZERO_WIDTH_LIMIT = 3;
 var isTag = (cp) => cp >= 917536 && cp <= 917630;
-function count(text5) {
+function count(text6) {
   const cps = [];
-  for (const ch of text5) cps.push(ch.codePointAt(0));
+  for (const ch of text6) cps.push(ch.codePointAt(0));
   let tags = 0;
   let zeroWidth = 0;
   for (let i = 0; i < cps.length; i++) {
@@ -34073,7 +34149,7 @@ var price_currency_ambiguous_default = defineRule({
       if (!sp || !MACHINE_SURFACES.has(s.surface)) continue;
       const known = product3.variants.flatMap((v) => {
         const d = ctx.pick(v.price);
-        return d && d.value.currency !== null ? [d] : [];
+        return d && isChecked(s.surface, d.surface) && d.value.currency !== null ? [d] : [];
       });
       const first2 = known[0];
       if (!first2 || first2.value.currency === null) continue;
@@ -34089,6 +34165,23 @@ var price_currency_ambiguous_default = defineRule({
         expected: moneyEvidence(first2),
         actual: moneyEvidence(sp)
       });
+    }
+    const page = pageDatum(product3, ctx, "price");
+    if (page && page.value.currency !== null) {
+      for (const [surface, stated] of statedBySurface(product3, "price")) {
+        if (stated.some((o) => o.value.currency === page.value.currency)) continue;
+        const first2 = stated[0];
+        if (!first2) continue;
+        findings.push({
+          rule: ID2,
+          severity: "error",
+          message: first2.value.currency === null ? `${surface} gives ${formatMoney(first2.value)} with no currency` : `${surface} says ${formatMoney(first2.value)}, the page shows prices in ${page.value.currency}`,
+          product: product3.key,
+          surface,
+          expected: moneyEvidence(page),
+          actual: moneyEvidence(first2)
+        });
+      }
     }
     return findings;
   }
@@ -34125,7 +34218,7 @@ var price_mismatch_default = defineRule({
       const reported = /* @__PURE__ */ new Set();
       for (const o of offer2.price) {
         if (!isChecked(o.surface, d.surface) || reported.has(o.surface)) continue;
-        if (o.value.currency !== null && o.value.currency !== d.value.currency) continue;
+        if (o.value.currency !== null && d.value.currency !== null && o.value.currency !== d.value.currency) continue;
         if (sameMoney(o.value, d.value)) continue;
         if (taxRateBetween(o.value, d.value) !== null) continue;
         reported.add(o.surface);
@@ -34189,8 +34282,8 @@ var DAY_MS = 864e5;
 var BARE_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 var ZONELESS_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
 function endInstant(raw) {
-  const text5 = raw.trim();
-  const bare = BARE_DATE.exec(text5);
+  const text6 = raw.trim();
+  const bare = BARE_DATE.exec(text6);
   if (bare) {
     const y = Number(bare[1]);
     const m = Number(bare[2]);
@@ -34200,7 +34293,7 @@ function endInstant(raw) {
     if (back.getUTCFullYear() !== y || back.getUTCMonth() !== m - 1 || back.getUTCDate() !== d) return null;
     return start + DAY_MS - 1;
   }
-  const ms = ZONELESS_DATETIME.test(text5) ? Date.parse(`${text5}Z`) : Date.parse(text5);
+  const ms = ZONELESS_DATETIME.test(text6) ? Date.parse(`${text6}Z`) : Date.parse(text6);
   return Number.isNaN(ms) ? null : ms;
 }
 var price_sale_expired_default = defineRule({
@@ -34357,7 +34450,9 @@ var shipping_undisclosed_default = defineRule({
       const d = offer2.shipping.find((o) => o.surface === "checkout" && o.value.cost !== null);
       const cost = d?.value.cost;
       if (!d || !cost || cost.units <= 0) continue;
-      if (offer2.shipping.some((o) => o.surface !== "checkout")) continue;
+      if (offer2.shipping.some(
+        (o) => o.surface !== "checkout" && (o.value.cost !== null || o.value.free) && (!o.value.country || !d.value.country || o.value.country.toUpperCase() === d.value.country.toUpperCase())
+      )) continue;
       findings.push({
         rule: ID6,
         severity: "warn",
@@ -34478,13 +34573,13 @@ function resolveUrl(link, feedUrl) {
     return void 0;
   }
 }
-function parseDate(text5) {
-  const time = new Date(text5).getTime();
+function parseDate(text6) {
+  const time = new Date(text6).getTime();
   return Number.isNaN(time) ? void 0 : time;
 }
-function saleWindow(text5, now) {
-  if (!text5) return { active: true };
-  const parts = text5.split("/");
+function saleWindow(text6, now) {
+  if (!text6) return { active: true };
+  const parts = text6.split("/");
   if (parts.length !== 2) return { active: true };
   const start = parseDate((parts[0] ?? "").trim());
   const endText = (parts[1] ?? "").trim();
@@ -34519,13 +34614,13 @@ function mapItem(item, position, ctx) {
     locator: `${at}/${field}`,
     fetchedAt: ctx.fetchedAt
   });
-  const readMoney4 = (field, text5) => {
-    const money3 = parseMoney(text5, { currency: ctx.defaultCurrency });
+  const readMoney4 = (field, text6) => {
+    const money3 = parseMoney(text6, { currency: ctx.defaultCurrency });
     if (!money3) {
       issues.push({
         surface: "feed",
         code: "feed-field-unreadable",
-        message: `${field} "${text5}" is not an amount`,
+        message: `${field} "${text6}" is not an amount`,
         locator: `${at}/${field}`
       });
     }
@@ -34591,17 +34686,17 @@ function mapItem(item, position, ctx) {
 function headerName(cell2) {
   return cell2.trim().toLowerCase().replace(/^g:/, "").replace(/\s+/g, "_");
 }
-function splitRows(text5) {
+function splitRows(text6) {
   const rows = [];
   let row = [];
   let cell2 = "";
   let quoted = false;
   let i = 0;
-  while (i < text5.length) {
-    const ch = text5[i];
+  while (i < text6.length) {
+    const ch = text6[i];
     if (quoted) {
       if (ch === '"') {
-        if (text5[i + 1] === '"') {
+        if (text6[i + 1] === '"') {
           cell2 += '"';
           i += 2;
         } else {
@@ -34624,29 +34719,33 @@ function splitRows(text5) {
       rows.push(row);
       row = [];
       cell2 = "";
-      if (ch === "\r" && text5[i + 1] === "\n") i += 1;
+      if (ch === "\r" && text6[i + 1] === "\n") i += 1;
     } else {
       cell2 += ch;
     }
     i += 1;
   }
+  if (quoted) throw new Error("tab-separated feed has an unterminated quoted cell");
   if (cell2 !== "" || row.length > 0) {
     row.push(cell2);
     rows.push(row);
   }
   return rows.filter((r) => r.some((c) => c.trim() !== ""));
 }
-function readTsv(text5) {
-  const [header, ...body] = splitRows(text5);
+function readTsv(text6) {
+  const [header, ...body] = splitRows(text6);
   if (!header) return [];
   const names = header.map(headerName);
+  if (!names.includes("id") || !names.includes("link")) {
+    throw new Error("tab-separated feed must have id and link column headers");
+  }
   return body.map((cells) => {
-    const fields = /* @__PURE__ */ Object.create(null);
+    const fields2 = /* @__PURE__ */ Object.create(null);
     names.forEach((name, column) => {
       const value = (cells[column] ?? "").trim();
-      if (name && value && !(name in fields)) fields[name] = value;
+      if (name && value && !(name in fields2)) fields2[name] = value;
     });
-    return { fields, shipping: parseShippingCell(fields.shipping ?? "") };
+    return { fields: fields2, shipping: parseShippingCell(fields2.shipping ?? "") };
   });
 }
 
@@ -38613,7 +38712,7 @@ function prettify(node, options, matcher, readonlyMatcher) {
   return compress(node, options, matcher, readonlyMatcher);
 }
 function compress(arr, options, matcher, readonlyMatcher) {
-  let text5;
+  let text6;
   const compressedObj = {};
   for (let i = 0; i < arr.length; i++) {
     const tagObj = arr[i];
@@ -38626,8 +38725,8 @@ function compress(arr, options, matcher, readonlyMatcher) {
       matcher.push(property, rawAttrs);
     }
     if (property === options.textNodeName) {
-      if (text5 === void 0) text5 = tagObj[property];
-      else text5 += "" + tagObj[property];
+      if (text6 === void 0) text6 = tagObj[property];
+      else text6 += "" + tagObj[property];
     } else if (property === void 0) {
       continue;
     } else if (tagObj[property]) {
@@ -38665,9 +38764,9 @@ function compress(arr, options, matcher, readonlyMatcher) {
       }
     }
   }
-  if (typeof text5 === "string") {
-    if (text5.length > 0) compressedObj[options.textNodeName] = text5;
-  } else if (text5 !== void 0) compressedObj[options.textNodeName] = text5;
+  if (typeof text6 === "string") {
+    if (text6.length > 0) compressedObj[options.textNodeName] = text6;
+  } else if (text6 !== void 0) compressedObj[options.textNodeName] = text6;
   return compressedObj;
 }
 function propName(obj) {
@@ -38789,8 +38888,8 @@ function scalar(v) {
   if (typeof v === "string") return v.trim() || void 0;
   if (typeof v === "number" || typeof v === "boolean") return String(v);
   if (isObject(v)) {
-    const text5 = v["#text"];
-    if (typeof text5 === "string" || typeof text5 === "number") return scalar(String(text5));
+    const text6 = v["#text"];
+    if (typeof text6 === "string" || typeof text6 === "number") return scalar(String(text6));
     const href = v["@_href"];
     if (typeof href === "string") return href.trim() || void 0;
   }
@@ -38798,8 +38897,8 @@ function scalar(v) {
 }
 function firstText(v) {
   for (const candidate of asList(v)) {
-    const text5 = scalar(candidate);
-    if (text5) return text5;
+    const text6 = scalar(candidate);
+    if (text6) return text6;
   }
   return void 0;
 }
@@ -38817,9 +38916,9 @@ function shippingEntry(v) {
   return { ...country ? { country } : {}, price, raw: price };
 }
 function itemFromXml(v) {
-  const fields = /* @__PURE__ */ Object.create(null);
+  const fields2 = /* @__PURE__ */ Object.create(null);
   const shipping = [];
-  if (!isObject(v)) return { fields, shipping };
+  if (!isObject(v)) return { fields: fields2, shipping };
   for (const [key, value] of Object.entries(v)) {
     if (key.startsWith("@_") || key === "#text") continue;
     if (key === "shipping") {
@@ -38829,17 +38928,17 @@ function itemFromXml(v) {
       }
       continue;
     }
-    const text5 = key === "link" ? linkText(value) : firstText(value);
-    if (text5) fields[key] = text5;
+    const text6 = key === "link" ? linkText(value) : firstText(value);
+    if (text6) fields2[key] = text6;
   }
-  return { fields, shipping };
+  return { fields: fields2, shipping };
 }
-function readXml(text5) {
-  const valid = XMLValidator.validate(text5);
+function readXml(text6) {
+  const valid = XMLValidator.validate(text6);
   if (valid !== true) return { error: `not well-formed XML: ${valid.err.msg} (line ${valid.err.line})` };
   let root2;
   try {
-    root2 = parser.parse(text5);
+    root2 = parser.parse(text6);
   } catch (err) {
     return { error: `XML could not be parsed: ${err.message}` };
   }
@@ -38857,19 +38956,24 @@ function readXml(text5) {
 
 // packages/collect-feed/src/index.ts
 function parseFeed(body, feedUrl, fetchedAt, now, options = {}) {
-  const text5 = body.replace(/^\uFEFF/, "").trimStart();
+  const text6 = body.replace(/^\uFEFF/, "");
+  const detected = text6.trimStart();
   const parseError = (message) => ({
     sightings: [],
     issues: [{ surface: "feed", code: "parse-error", message, locator: feedUrl }]
   });
   let items;
-  if (text5 === "") return parseError("feed is empty");
-  if (text5.startsWith("<")) {
-    const read = readXml(text5);
+  if (detected === "") return parseError("feed is empty");
+  if (detected.startsWith("<")) {
+    const read = readXml(detected);
     if ("error" in read) return parseError(read.error);
     items = read.items;
   } else {
-    items = readTsv(text5);
+    try {
+      items = readTsv(text6);
+    } catch (err) {
+      return parseError(err instanceof Error ? err.message : String(err));
+    }
   }
   const sightings = [];
   const issues = [];
@@ -39383,11 +39487,11 @@ var DomHandler = class {
     this.lastNode = null;
   }
   oncdatastart() {
-    const text5 = new Text2("");
-    const node = new CDATA2([text5]);
+    const text6 = new Text2("");
+    const node = new CDATA2([text6]);
     this.addNode(node);
-    text5.parent = node;
-    this.lastNode = text5;
+    text6.parent = node;
+    this.lastNode = text6;
   }
   oncdataend() {
     this.lastNode = null;
@@ -43232,13 +43336,13 @@ function getChildFunc(next2, adapter2) {
   };
 }
 var filters = {
-  contains(next2, text5, { adapter: adapter2 }) {
+  contains(next2, text6, { adapter: adapter2 }) {
     return function contains2(elem) {
-      return next2(elem) && adapter2.getText(elem).includes(text5);
+      return next2(elem) && adapter2.getText(elem).includes(text6);
     };
   },
-  icontains(next2, text5, { adapter: adapter2 }) {
-    const itext = text5.toLowerCase();
+  icontains(next2, text6, { adapter: adapter2 }) {
+    const itext = text6.toLowerCase();
     return function icontains(elem) {
       return next2(elem) && adapter2.getText(elem).toLowerCase().includes(itext);
     };
@@ -49386,22 +49490,22 @@ var defaultTreeAdapter = {
       node.parentNode = null;
     }
   },
-  insertText(parentNode, text5) {
+  insertText(parentNode, text6) {
     if (parentNode.childNodes.length > 0) {
       const prevNode = parentNode.childNodes[parentNode.childNodes.length - 1];
       if (defaultTreeAdapter.isTextNode(prevNode)) {
-        prevNode.value += text5;
+        prevNode.value += text6;
         return;
       }
     }
-    defaultTreeAdapter.appendChild(parentNode, defaultTreeAdapter.createTextNode(text5));
+    defaultTreeAdapter.appendChild(parentNode, defaultTreeAdapter.createTextNode(text6));
   },
-  insertTextBefore(parentNode, text5, referenceNode) {
+  insertTextBefore(parentNode, text6, referenceNode) {
     const prevNode = parentNode.childNodes[parentNode.childNodes.indexOf(referenceNode) - 1];
     if (prevNode && defaultTreeAdapter.isTextNode(prevNode)) {
-      prevNode.value += text5;
+      prevNode.value += text6;
     } else {
-      defaultTreeAdapter.insertBefore(parentNode, defaultTreeAdapter.createTextNode(text5), referenceNode);
+      defaultTreeAdapter.insertBefore(parentNode, defaultTreeAdapter.createTextNode(text6), referenceNode);
     }
   },
   adoptAttributes(recipient, attrs) {
@@ -53100,20 +53204,20 @@ var adapter = {
       node.parent = null;
     }
   },
-  insertText(parentNode, text5) {
+  insertText(parentNode, text6) {
     const lastChild = parentNode.children[parentNode.children.length - 1];
     if (lastChild && isText(lastChild)) {
-      lastChild.data += text5;
+      lastChild.data += text6;
     } else {
-      adapter.appendChild(parentNode, adapter.createTextNode(text5));
+      adapter.appendChild(parentNode, adapter.createTextNode(text6));
     }
   },
-  insertTextBefore(parentNode, text5, referenceNode) {
+  insertTextBefore(parentNode, text6, referenceNode) {
     const prevNode = parentNode.children[parentNode.children.indexOf(referenceNode) - 1];
     if (prevNode && isText(prevNode)) {
-      prevNode.data += text5;
+      prevNode.data += text6;
     } else {
-      adapter.insertBefore(parentNode, adapter.createTextNode(text5), referenceNode);
+      adapter.insertBefore(parentNode, adapter.createTextNode(text6), referenceNode);
     }
   },
   adoptAttributes(recipient, attrs) {
@@ -53342,6 +53446,11 @@ var STRINGS = {
 var undici = __toESM(require_undici(), 1);
 var import_whatwg_mimetype = __toESM(require_mime_type(), 1);
 
+// packages/collect-page/src/document.ts
+function documentOf(source) {
+  return typeof source === "string" ? load(source) : source;
+}
+
 // packages/collect-page/src/jsonld.ts
 var SURFACE = "jsonld";
 var AVAILABILITY2 = /* @__PURE__ */ new Map([
@@ -53365,7 +53474,7 @@ function extractJsonLd(html3, pageUrl, fetchedAt) {
   const out2 = [];
   const issues = [];
   try {
-    const $2 = load(html3);
+    const $2 = documentOf(html3);
     const scripts = $2("script").toArray().filter((el) => ($2(el).attr("type") ?? "").trim().toLowerCase() === "application/ld+json");
     scripts.forEach((el, scriptIndex) => {
       const locator2 = `${pageUrl}#jsonld[${scriptIndex}]`;
@@ -53387,9 +53496,9 @@ function extractJsonLd(html3, pageUrl, fetchedAt) {
   }
   return { sightings: out2, issues };
 }
-function readMoney(text5, currency) {
-  if (parseAllMoney(text5, { currency }).length !== 1) return null;
-  return parseMoney(text5, { currency });
+function readMoney(text6, currency) {
+  if (parseAllMoney(text6, { currency }).length !== 1) return null;
+  return parseMoney(text6, { currency });
 }
 function schemaAvailability(value) {
   if (typeof value !== "string") return void 0;
@@ -53442,14 +53551,14 @@ function emitOffer(product3, offer2, fallbackCurrency, group, ctx, inherit) {
   const title = titleOf(product3.node, group?.node);
   if (title) sighting.title = title;
   const offerCurrency = strOnly(o.priceCurrency);
-  const fields = priceFields(o, offer2.ptr);
+  const fields2 = priceFields(o, offer2.ptr);
   const currencyFor = (f) => offerCurrency ?? f.currency ?? fallbackCurrency ?? null;
-  if (fields.price) {
-    const price = moneyObs(ctx, fields.price, currencyFor(fields.price));
+  if (fields2.price) {
+    const price = moneyObs(ctx, fields2.price, currencyFor(fields2.price));
     if (price) sighting.price = price;
   }
-  if (fields.list) {
-    const list = moneyObs(ctx, fields.list, currencyFor(fields.list));
+  if (fields2.list) {
+    const list = moneyObs(ctx, fields2.list, currencyFor(fields2.list));
     if (list) sighting.listPrice = list;
   }
   const validUntil = o.priceValidUntil;
@@ -53713,7 +53822,7 @@ function extractMicrodata(html3, pageUrl, fetchedAt) {
   const sightings = [];
   const issues = [];
   try {
-    const $2 = load(html3);
+    const $2 = documentOf(html3);
     const products = $2("[itemscope]").toArray().filter((el) => isProduct($2, el));
     products.forEach((product3, productIndex) => {
       emitProduct2($2, product3, productIndex, { pageUrl, fetchedAt, out: sightings });
@@ -53792,8 +53901,8 @@ function readValue($2, el, attrs) {
     const raw = $2(el).attr(attr2);
     if (raw !== void 0 && raw.trim() !== "") return { value: raw.trim() };
   }
-  const text5 = $2(el).text().trim();
-  return text5 === "" ? void 0 : { value: text5 };
+  const text6 = $2(el).text().trim();
+  return text6 === "" ? void 0 : { value: text6 };
 }
 function hasToken($2, el, attr2, token) {
   return tokens($2(el).attr(attr2)).includes(token);
@@ -53820,9 +53929,9 @@ function hasQuery2(rawUrl, base) {
     return false;
   }
 }
-function readMoney2(text5, currency) {
-  if (parseAllMoney(text5, { currency }).length !== 1) return null;
-  return parseMoney(text5, { currency });
+function readMoney2(text6, currency) {
+  if (parseAllMoney(text6, { currency }).length !== 1) return null;
+  return parseMoney(text6, { currency });
 }
 function messageOf2(err) {
   return err instanceof Error ? err.message : String(err);
@@ -53849,7 +53958,7 @@ function extractOpenGraph(html3, pageUrl, fetchedAt) {
   return { sightings: sighting ? [sighting] : [], issues: [] };
 }
 function readTags(html3) {
-  const $2 = load(html3);
+  const $2 = documentOf(html3);
   const found = /* @__PURE__ */ new Map();
   for (const el of $2("meta").toArray()) {
     const meta = $2(el);
@@ -53922,9 +54031,9 @@ function resolve(raw, pageUrl) {
     return pageUrl;
   }
 }
-function readMoney3(text5, currency) {
-  if (parseAllMoney(text5, { currency }).length !== 1) return null;
-  return parseMoney(text5, { currency });
+function readMoney3(text6, currency) {
+  if (parseAllMoney(text6, { currency }).length !== 1) return null;
+  return parseMoney(text6, { currency });
 }
 
 // packages/collect-page/src/text.ts
@@ -53991,8 +54100,8 @@ function productTitle($2, preferred) {
   for (const selector of candidates) {
     if (!selector) continue;
     for (const el of select2($2, selector)) {
-      const text5 = tidy(textContent2(el));
-      if (text5) return { text: text5, selector };
+      const text6 = tidy(textContent2(el));
+      if (text6) return { text: text6, selector };
     }
   }
   return void 0;
@@ -54128,7 +54237,7 @@ function containersFor($2, field, selectors) {
   return out2;
 }
 function extractText(html3, pageUrl, options = {}) {
-  const $2 = load(html3);
+  const $2 = documentOf(html3);
   const out2 = [];
   const heading = productTitle($2);
   if (heading) out2.push({ field: "title", text: heading.text, hidden: false, locator: `${pageUrl}#css(${heading.selector})` });
@@ -54146,11 +54255,11 @@ function extractText(html3, pageUrl, options = {}) {
     a.hidden.forEach((h, n) => {
       out2.push({ field, text: h.text, hidden: true, hiddenReason: h.reason, locator: `${at} hidden[${n}]` });
     });
-    a.comments.forEach((text5, n) => {
-      out2.push({ field, text: text5, hidden: true, hiddenReason: "html-comment", locator: `${at} comment[${n}]` });
+    a.comments.forEach((text6, n) => {
+      out2.push({ field, text: text6, hidden: true, hiddenReason: "html-comment", locator: `${at} comment[${n}]` });
     });
-    a.alts.forEach((text5, n) => {
-      out2.push({ field: "other", text: text5, hidden: true, hiddenReason: "alt-attribute", locator: `${at} img[${n}]@alt` });
+    a.alts.forEach((text6, n) => {
+      out2.push({ field: "other", text: text6, hidden: true, hiddenReason: "alt-attribute", locator: `${at} img[${n}]@alt` });
     });
   }
   return out2;
@@ -54158,7 +54267,7 @@ function extractText(html3, pageUrl, options = {}) {
 
 // packages/collect-page/src/visible.ts
 function extractVisible(html3, pageUrl, fetchedAt, options = {}) {
-  const $2 = load(html3);
+  const $2 = documentOf(html3);
   const hint = { currency: options.currency };
   const obs3 = (value, raw, selector) => ({ value, raw, surface: "page", locator: `${pageUrl}#css(${selector})`, fetchedAt });
   const heading = productTitle($2, options.titleSelector);
@@ -54172,8 +54281,8 @@ function extractVisible(html3, pageUrl, fetchedAt, options = {}) {
   if (availability) sighting.availability = availability;
   return { sightings: [sighting], issues: [] };
 }
-function single(text5, hint) {
-  const all = parseAllMoney(text5, hint);
+function single(text6, hint) {
+  const all = parseAllMoney(text6, hint);
   return all.length === 1 ? all[0] : void 0;
 }
 var isScreenReader = (n) => hasClass2(n, "screen-reader-text");
@@ -54181,9 +54290,9 @@ function readPrice($2, options, hint, obs3) {
   if (options.priceSelector) {
     const el = select2($2, options.priceSelector)[0];
     if (!el) return {};
-    const text5 = tidy(textContent2(el));
-    const money3 = single(text5, hint);
-    return money3 ? { price: obs3(money3, text5, options.priceSelector) } : {};
+    const text6 = tidy(textContent2(el));
+    const money3 = single(text6, hint);
+    return money3 ? { price: obs3(money3, text6, options.priceSelector) } : {};
   }
   const woo = wooContainer($2);
   if (woo) return readWoo(woo.el, woo.selector, hint, obs3);
@@ -54211,9 +54320,9 @@ function readWoo(el, selector, hint, obs3) {
       ...listPrice ? { listPrice: obs3(listPrice, delText, `${selector} del`) } : {}
     };
   }
-  const text5 = tidy(textContent2(el, isScreenReader));
-  const money3 = single(text5, hint);
-  return money3 ? { price: obs3(money3, text5, selector) } : {};
+  const text6 = tidy(textContent2(el, isScreenReader));
+  const money3 = single(text6, hint);
+  return money3 ? { price: obs3(money3, text6, selector) } : {};
 }
 function dawnContainer($2) {
   return select2($2, ".price").find((el) => findAll2(el, (n) => hasClass2(n, "price__regular")).length > 0);
@@ -54229,9 +54338,9 @@ function readDawn(el, hint, obs3) {
   const pick = (outer, inner) => {
     const node = inside(el, outer, inner);
     if (!node) return void 0;
-    const text5 = tidy(textContent2(node));
-    const money3 = single(text5, hint);
-    return money3 ? obs3(money3, text5, `.${outer} .${inner}`) : void 0;
+    const text6 = tidy(textContent2(node));
+    const money3 = single(text6, hint);
+    return money3 ? obs3(money3, text6, `.${outer} .${inner}`) : void 0;
   };
   const out2 = {};
   if (hasClass2(el, "price--on-sale")) {
@@ -54277,21 +54386,22 @@ function availabilityFromText(raw) {
 
 // packages/collect-page/src/index.ts
 function extractPage(html3, pageUrl, fetchedAt, options = {}) {
-  const jsonld = extractJsonLd(html3, pageUrl, fetchedAt);
-  const microdata = extractMicrodata(html3, pageUrl, fetchedAt);
-  const opengraph = extractOpenGraph(html3, pageUrl, fetchedAt);
+  const document = documentOf(html3);
+  const jsonld = extractJsonLd(document, pageUrl, fetchedAt);
+  const microdata = extractMicrodata(document, pageUrl, fetchedAt);
+  const opengraph = extractOpenGraph(document, pageUrl, fetchedAt);
   const stated = /* @__PURE__ */ new Set();
   for (const s of [...jsonld.sightings, ...microdata.sightings, ...opengraph.sightings]) {
     if (s.price?.value.currency) stated.add(s.price.value.currency);
   }
   const currency = options.currency ?? (stated.size === 1 ? [...stated][0] : null);
-  const visible = extractVisible(html3, pageUrl, fetchedAt, { ...options, currency });
+  const visible = extractVisible(document, pageUrl, fetchedAt, { ...options, currency });
   const sightings = [...visible.sightings, ...jsonld.sightings, ...microdata.sightings, ...opengraph.sightings];
-  const text5 = extractText(html3, pageUrl, options);
-  if (text5.length > 0) {
+  const text6 = extractText(document, pageUrl, options);
+  if (text6.length > 0) {
     const carrier = visible.sightings[0];
-    if (carrier) carrier.text = text5;
-    else sightings.unshift({ surface: "page", scope: "product", ids: { url: pageUrl }, text: text5 });
+    if (carrier) carrier.text = text6;
+    else sightings.unshift({ surface: "page", scope: "product", ids: { url: pageUrl }, text: text6 });
   }
   return { sightings, issues: [...visible.issues, ...jsonld.issues, ...microdata.issues, ...opengraph.issues] };
 }
@@ -54473,9 +54583,9 @@ function isId(value) {
 function nonEmptyString(value) {
   return typeof value === "string" && value.trim() !== "";
 }
-function parseJson(text5) {
+function parseJson(text6) {
   try {
-    return { value: JSON.parse(text5) };
+    return { value: JSON.parse(text6) };
   } catch {
     return void 0;
   }
@@ -54498,9 +54608,9 @@ function isRecord2(value) {
 function nonEmptyString2(value) {
   return typeof value === "string" && value.trim() !== "";
 }
-function parseJson2(text5) {
+function parseJson2(text6) {
   try {
-    return { value: JSON.parse(text5) };
+    return { value: JSON.parse(text6) };
   } catch {
     return void 0;
   }
@@ -54583,8 +54693,9 @@ async function readCatalog2(ctx, options) {
     if (read.totalPages !== void 0 && page >= read.totalPages) break;
   }
   const sightings = [];
+  const parents2 = listed.map((entry) => entry.parent);
   for (const entry of listed) {
-    if (options.select && !selects2(options.select, entry.parent, ctx)) continue;
+    if (options.select && !selects2(options.select, entry.parent, parents2, ctx)) continue;
     if (entry.parent.type === "simple" || entry.parent.variationIds.length === 0) {
       sightings.push(buildSighting3(entry.parent, entry.name, entry.body, entry.pointer, entry.fetchedAt, String(entry.parent.id), void 0));
       continue;
@@ -54613,7 +54724,7 @@ async function readCatalog2(ctx, options) {
       );
     }
   }
-  return { sightings, issues, parents: listed.map((entry) => entry.parent) };
+  return { sightings, issues, parents: parents2 };
 }
 async function readList(ctx, url) {
   const read = await getJson(ctx, url, "platform");
@@ -54628,9 +54739,9 @@ async function readList(ctx, url) {
     totalPages: wholeNumber(read.res.headers["x-wp-totalpages"])
   };
 }
-function selects2(select3, parent2, ctx) {
+function selects2(select3, parent2, parents2, ctx) {
   try {
-    return Boolean(select3(parent2));
+    return Boolean(select3(parent2, parents2));
   } catch (err) {
     ctx.log("warn", `select rejected parent ${parent2.id}: ${errorText2(err)}`);
     return false;
@@ -54715,9 +54826,9 @@ function isId2(value) {
 function stringOr(value) {
   return typeof value === "string" ? value : "";
 }
-function wholeNumber(text5) {
-  if (text5 === void 0 || !/^\d+$/.test(text5.trim())) return void 0;
-  return Number(text5.trim());
+function wholeNumber(text6) {
+  if (text6 === void 0 || !/^\d+$/.test(text6.trim())) return void 0;
+  return Number(text6.trim());
 }
 
 // packages/collect-woo/src/probe.ts
@@ -54751,7 +54862,7 @@ async function runProbe(run, targets) {
       if (isOwnershipRefusal(err)) throw err;
       run.issues.push(makeIssue("checkout", "probe-failed", `${target.variantId}: ${errorText2(err)}`));
     }
-    await emptyCart(run, target.variantId);
+    if (!await emptyCart(run, target.variantId)) break;
   }
   await confirmEmpty(run);
 }
@@ -54791,15 +54902,16 @@ async function probeTarget(run, target) {
 }
 async function addedToCart(run, target, added, addBody) {
   const addUrl = `${run.base}/cart/add-item`;
+  const fromAdd = pickItem(addBody, target.variantId);
+  if (!fromAdd) throw new Error("add-item response does not contain the requested variant");
   const sighting = {
     surface: "checkout",
     scope: "variant",
     ids: idsOf2(target),
     purchasable: observe2(true, "added", "checkout", addUrl, added.fetchedAt)
   };
-  const fromAdd = pickItem(addBody, target.variantId);
-  const addPrice = fromAdd ? readMinor(fromAdd.item.prices, "price") : void 0;
-  if (fromAdd && addPrice) {
+  const addPrice = readMinor(fromAdd.item.prices, "price");
+  if (addPrice) {
     sighting.price = observe2(addPrice.value, addPrice.raw, "checkout", `${addUrl}#/items/${fromAdd.index}/prices/price`, added.fetchedAt);
   }
   try {
@@ -54820,8 +54932,9 @@ async function updateCustomer(run, target, sighting) {
   const cart = parseJson2(res.body)?.value;
   if (!isRecord2(cart)) throw new Error("unreadable cart");
   const picked = pickItem(cart, target.variantId);
-  const price = picked ? readMinor(picked.item.prices, "price") : void 0;
-  if (picked && price) {
+  if (!picked) throw new Error("cart response does not contain the requested variant");
+  const price = readMinor(picked.item.prices, "price");
+  if (price) {
     sighting.price = observe2(price.value, price.raw, "checkout", `${url}#/items/${picked.index}/prices/price`, res.fetchedAt);
   }
   const country = run.shipTo.country.toUpperCase();
@@ -54848,7 +54961,7 @@ async function emptyCart(run, variantId) {
   let reason;
   try {
     const res = await run.ctx.fetcher.send("DELETE", `${run.base}/cart/items`, { headers: run.headers });
-    if (isOk2(res.status)) return;
+    if (isOk2(res.status)) return true;
     reason = `HTTP ${res.status}`;
   } catch (err) {
     if (isOwnershipRefusal(err)) throw err;
@@ -54857,6 +54970,7 @@ async function emptyCart(run, variantId) {
   run.issues.push(
     makeIssue("checkout", "cart-not-emptied", `could not empty the probe cart after ${variantId} (${reason}); remove its items from the shop admin`)
   );
+  return false;
 }
 async function confirmEmpty(run) {
   let cart;
@@ -54879,8 +54993,7 @@ async function confirmEmpty(run) {
 function pickItem(cart, variantId) {
   if (!isRecord2(cart) || !Array.isArray(cart.items)) return void 0;
   const items = cart.items;
-  const match = items.findIndex((item2) => isRecord2(item2) && String(item2.id) === variantId);
-  const index2 = match >= 0 ? match : 0;
+  const index2 = items.findIndex((item2) => isRecord2(item2) && String(item2.id) === variantId);
   const item = items[index2];
   return isRecord2(item) ? { item, index: index2 } : void 0;
 }
@@ -54928,53 +55041,115 @@ async function detectPlatform(ctx) {
   return null;
 }
 
-// packages/cli/src/audit.ts
+// packages/cli/src/config.ts
 var ConfigError = class extends Error {
   constructor(message) {
     super(message);
     this.name = "ConfigError";
   }
 };
-var FIELDS = ["store", "feed", "platform", "checkout", "pages", "sitemap", "page", "sample", "maxVariants", "seed", "datum", "budget", "ownershipToken", "fetch"];
-var PLATFORMS = ["woocommerce", "shopify", "auto"];
-var SURFACES = Object.keys(PLATE_OF);
-function check(config, rules) {
-  const whole = (name, value, min) => {
-    if (value !== void 0 && (!Number.isInteger(value) || value < min)) {
-      throw new ConfigError(`${name} must be a whole number, ${min} or more; got ${JSON.stringify(value)}`);
-    }
-  };
-  for (const field of Object.keys(config)) {
-    if (!FIELDS.includes(field)) throw new ConfigError(`unknown config field "${field}"; the fields are ${FIELDS.join(", ")}`);
-  }
-  const platform = config.platform;
-  if (platform !== void 0 && !PLATFORMS.includes(platform)) {
-    throw new ConfigError(`unknown platform "${String(platform)}"; choose one of ${PLATFORMS.join(", ")}, none`);
-  }
-  whole("sample", config.sample, 1);
-  whole("maxVariants", config.maxVariants, 1);
-  whole("seed", config.seed, 0);
-  if (config.pages !== void 0 && !(Array.isArray(config.pages) && config.pages.every((u) => typeof u === "string"))) {
-    throw new ConfigError("pages must be a list of URLs");
-  }
-  if (config.datum !== void 0) {
-    if (!Array.isArray(config.datum) || config.datum.length === 0) throw new ConfigError("datum must name at least one surface");
-    for (const name of config.datum) {
-      if (!SURFACES.includes(name)) throw new ConfigError(`unknown surface "${String(name)}" in datum; the surfaces are ${SURFACES.join(", ")}`);
-    }
-  }
-  const known = new Set(rules.map((r) => r.id));
-  for (const [id, allowed] of Object.entries(config.budget ?? {})) {
-    if (!known.has(id)) throw new ConfigError(`budget names a rule that does not exist: "${id}"; regmark rules lists them`);
-    if (!Number.isInteger(allowed) || allowed < 0) throw new ConfigError(`the budget for ${id} must be a whole number; got ${JSON.stringify(allowed)}`);
-  }
-  if (config.checkout) {
-    const country = config.checkout.shipTo?.country;
-    if (typeof country !== "string" || !/^[A-Za-z]{2}$/.test(country)) {
-      throw new ConfigError(`checkout.shipTo.country must be a two-letter country code; got ${JSON.stringify(country)}`);
-    }
+function configObject(value, name) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new ConfigError(`${name} must be an object`);
   }
 }
+function fields(value, name, allowed) {
+  configObject(value, name);
+  for (const key of Object.keys(value)) {
+    if (!allowed.includes(key)) throw new ConfigError(`unknown ${name} field "${key}"; the fields are ${allowed.join(", ")}`);
+  }
+}
+function text5(value, name) {
+  if (value !== void 0 && (typeof value !== "string" || value.trim() === "")) throw new ConfigError(`${name} must be a non-empty string`);
+}
+function whole(value, name, min, max = Number.MAX_SAFE_INTEGER) {
+  if (value !== void 0 && (!Number.isSafeInteger(value) || value < min || value > max)) {
+    throw new ConfigError(`${name} must be a whole number from ${min} to ${max}; got ${JSON.stringify(value)}`);
+  }
+}
+function boolean(value, name) {
+  if (value !== void 0 && typeof value !== "boolean") throw new ConfigError(`${name} must be a boolean`);
+}
+function strings(value, name) {
+  if (!Array.isArray(value) || !value.every((s) => typeof s === "string" && s.trim() !== "")) {
+    throw new ConfigError(`${name} must be a list of non-empty strings`);
+  }
+}
+function httpUrl(value, name, base) {
+  text5(value, name);
+  let url;
+  try {
+    url = new URL(value, base);
+  } catch {
+    throw new ConfigError(`${name} is not a URL`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") throw new ConfigError(`${name} must be an http or https URL`);
+  if (url.username || url.password) throw new ConfigError(`${name} must not contain URL credentials`);
+  return url;
+}
+function checkConfig(config, rules) {
+  fields(config, "config", ["store", "feed", "platform", "checkout", "pages", "sitemap", "page", "sample", "maxVariants", "seed", "strict", "datum", "budget", "ownershipToken", "fetch"]);
+  const store = httpUrl(config.store, "store");
+  const platforms = ["woocommerce", "shopify", "auto"];
+  if (config.platform !== void 0 && !platforms.includes(config.platform)) {
+    throw new ConfigError(`unknown platform "${String(config.platform)}"; choose one of ${platforms.join(", ")}, none`);
+  }
+  whole(config.sample, "sample", 1);
+  whole(config.maxVariants, "maxVariants", 1);
+  whole(config.seed, "seed", 0);
+  boolean(config.strict, "strict");
+  text5(config.ownershipToken, "ownershipToken");
+  for (const key of ["feed", "sitemap"]) {
+    if (config[key] !== void 0) httpUrl(config[key], key, store);
+  }
+  if (config.pages !== void 0) {
+    strings(config.pages, "pages");
+    config.pages.forEach((url, i) => httpUrl(url, `pages[${i}]`, store));
+  }
+  if (config.datum !== void 0) {
+    strings(config.datum, "datum");
+    if (config.datum.length === 0) throw new ConfigError("datum must name at least one surface");
+    for (const surface of config.datum) {
+      if (!Object.hasOwn(PLATE_OF, surface)) throw new ConfigError(`unknown surface "${String(surface)}" in datum`);
+    }
+  }
+  if (config.budget !== void 0) {
+    configObject(config.budget, "budget");
+    const known = new Set(rules.map((r) => r.id));
+    for (const [id, allowed] of Object.entries(config.budget)) {
+      if (!known.has(id)) throw new ConfigError(`budget names a rule that does not exist: "${id}"; regmark rules lists them`);
+      whole(allowed, `the budget for ${id}`, 0);
+    }
+  }
+  if (config.fetch !== void 0) {
+    fields(config.fetch, "fetch", ["minIntervalMs", "timeoutMs", "allowPrivateNetwork", "respectRobots", "userAgent"]);
+    whole(config.fetch.minIntervalMs, "fetch.minIntervalMs", 0, 2147483647);
+    whole(config.fetch.timeoutMs, "fetch.timeoutMs", 1, 2147483647);
+    boolean(config.fetch.allowPrivateNetwork, "fetch.allowPrivateNetwork");
+    boolean(config.fetch.respectRobots, "fetch.respectRobots");
+    text5(config.fetch.userAgent, "fetch.userAgent");
+    if (config.fetch.userAgent && /[^\x20-\x7e]/.test(config.fetch.userAgent)) throw new ConfigError("fetch.userAgent must contain printable ASCII only");
+  }
+  if (config.page !== void 0) {
+    fields(config.page, "page", ["priceSelector", "availabilitySelector", "titleSelector", "currency", "descriptionSelectors", "reviewSelectors"]);
+    for (const key of ["priceSelector", "availabilitySelector", "titleSelector"]) text5(config.page[key], `page.${key}`);
+    for (const key of ["descriptionSelectors", "reviewSelectors"]) {
+      if (config.page[key] !== void 0) strings(config.page[key], `page.${key}`);
+    }
+    if (config.page.currency !== void 0 && config.page.currency !== null && (typeof config.page.currency !== "string" || !/^[A-Z]{3}$/.test(config.page.currency))) {
+      throw new ConfigError("page.currency must be a three-letter uppercase currency code or null");
+    }
+  }
+  if (config.checkout !== void 0) {
+    fields(config.checkout, "checkout", ["shipTo"]);
+    fields(config.checkout.shipTo, "checkout.shipTo", ["country", "postcode", "state", "city"]);
+    const { country } = config.checkout.shipTo;
+    if (typeof country !== "string" || !/^[A-Za-z]{2}$/.test(country)) throw new ConfigError("checkout.shipTo.country must be a two-letter country code");
+    for (const key of ["postcode", "state", "city"]) text5(config.checkout.shipTo[key], `checkout.shipTo.${key}`);
+  }
+}
+
+// packages/cli/src/audit.ts
 function mulberry32(seed) {
   let a = seed >>> 0;
   return () => {
@@ -55026,7 +55201,7 @@ async function runAudit(config, deps = {}) {
   });
   const startedAt = now().toISOString();
   const rules = deps.rules ?? allRules;
-  check(config, rules);
+  checkConfig(config, rules);
   let store;
   try {
     store = new URL(config.store);
@@ -55041,7 +55216,7 @@ async function runAudit(config, deps = {}) {
   const size = config.sample ?? 25;
   const feedUrl = config.feed ? new URL(config.feed, store).href : void 0;
   const hosts = unique([store.hostname, ...feedUrl ? [new URL(feedUrl).hostname] : []]);
-  const fetcher = createFetcher({ hosts, ...config.fetch });
+  const fetcher = createFetcher({ ...config.fetch, hosts });
   const ctx = { store, fetcher, now, log };
   const sightings = [];
   const issues = [];
@@ -55055,16 +55230,19 @@ async function runAudit(config, deps = {}) {
   let chosen = [];
   const pick = (all) => sample(all.filter((p) => p.variants <= (config.maxVariants ?? 30)), size, config.seed ?? 1);
   if (platform === "woocommerce") {
-    const listing = await collectWooCatalog(ctx, { select: () => false });
-    issues.push(...listing.issues);
-    parents2 = listing.parents.map((p) => ({ id: p.id, permalink: p.permalink, variants: Math.max(1, p.variationIds.length) }));
-    chosen = pick(parents2);
-    if (chosen.length) {
-      const ids = new Set(chosen.map((p) => p.id));
-      const catalog = await collectWooCatalog(ctx, { select: (p) => ids.has(p.id) });
-      sightings.push(...catalog.sightings);
-      issues.push(...catalog.issues.filter((i) => !listing.issues.some((l) => l.code === i.code && l.locator === i.locator)));
-    }
+    let ids;
+    const catalog = await collectWooCatalog(ctx, {
+      select: (parent2, all) => {
+        if (!ids) {
+          parents2 = all.map((p) => ({ id: p.id, permalink: p.permalink, variants: Math.max(1, p.variationIds.length) }));
+          chosen = pick(parents2);
+          ids = new Set(chosen.map((p) => p.id));
+        }
+        return ids.has(parent2.id);
+      }
+    });
+    sightings.push(...catalog.sightings);
+    issues.push(...catalog.issues);
   } else if (platform === "shopify") {
     const listing = await collectShopifyCatalog(ctx, {});
     issues.push(...listing.issues);
@@ -55140,13 +55318,13 @@ async function runAudit(config, deps = {}) {
     rules: run.rules,
     findings: run.findings,
     issues,
-    ok: run.ok
+    ok: run.ok && graph.products.length > 0 && (!config.strict || issues.length === 0)
   };
 }
 
 // packages/cli/src/bin.ts
 var DOCS = "https://github.com/kairwang01/regmark/blob/main/docs";
-var USAGE = `regmark: check that what a shop tells machines matches what its checkout charges
+var USAGE = `regmark: catch ecommerce product-data mismatches across pages, feeds and store APIs
 
 Usage
   regmark demo                      audit a bundled shop that has 19 defects planted in it
@@ -55168,6 +55346,7 @@ Scope
   --seed <n>                changes which products are sampled, default 1
   --datum <a,b,c>           which surface to believe, most trusted first
   --budget <rule=n>         allow up to n findings for a rule; repeatable
+  --strict                  exit 2 if any surface has a collection issue
 
 Output
   --html <file>   --json <file>   --sarif <file>   --junit <file>   --markdown <file>
@@ -55194,14 +55373,17 @@ async function version() {
 }
 async function loadConfig(file) {
   const abs = path.resolve(file);
-  if (abs.endsWith(".json")) return JSON.parse(await readFile(abs, "utf8"));
-  const mod = await import(pathToFileURL(abs).href);
-  if (!mod.default || typeof mod.default !== "object") throw new ConfigError(`${file} has no default export`);
-  return mod.default;
+  let value;
+  if (abs.endsWith(".json")) value = JSON.parse(await readFile(abs, "utf8"));
+  else value = (await import(pathToFileURL(abs).href)).default;
+  configObject(value, file);
+  checkConfig({ ...value, store: value.store ?? "https://config.example", platform: value.platform === "none" ? void 0 : value.platform }, allRules);
+  return value;
 }
-function parseShipTo(text5) {
-  const [country = "", postcode] = text5.split(":");
-  if (!/^[A-Za-z]{2}$/.test(country)) throw new ConfigError(`--ship-to wants a two-letter country code, got "${text5}"`);
+function parseShipTo(text6) {
+  const [country = "", postcode, extra] = text6.split(":");
+  if (!/^[A-Za-z]{2}$/.test(country)) throw new ConfigError(`--ship-to wants a two-letter country code, got "${text6}"`);
+  if (extra !== void 0 || postcode === "") throw new ConfigError("--ship-to wants CC or CC:postcode");
   return postcode ? { country: country.toUpperCase(), postcode } : { country: country.toUpperCase() };
 }
 function parseBudget(entries) {
@@ -55213,13 +55395,13 @@ function parseBudget(entries) {
   }
   return out2;
 }
-var wholeNumber2 = (flag, text5) => {
-  if (!/^\d+$/.test(text5)) throw new ConfigError(`${flag} wants a whole number, got "${text5}"`);
-  return Number(text5);
+var wholeNumber2 = (flag, text6) => {
+  if (!/^\d+$/.test(text6)) throw new ConfigError(`${flag} wants a whole number, got "${text6}"`);
+  return Number(text6);
 };
-var out = (text5) => process.stdout.write(text5);
-var note = (text5) => process.stderr.write(text5);
-var dim = (text5) => process.stderr.isTTY && !process.env.NO_COLOR ? styleText2("dim", text5) : text5;
+var out = (text6) => process.stdout.write(text6);
+var note = (text6) => process.stderr.write(text6);
+var dim = (text6) => process.stderr.isTTY && !process.env.NO_COLOR ? styleText2("dim", text6) : text6;
 var ruleAnchor = (id, severity) => `${id.replace(/\./g, "")}-${severity}`;
 function explain(id) {
   const rule = allRules.find((r) => r.id === id);
@@ -55245,10 +55427,10 @@ function explain(id) {
 `);
   return 0;
 }
-function wrap2(text5, width) {
+function wrap2(text6, width) {
   const lines = [];
   let line = "";
-  for (const word of text5.split(/\s+/)) {
+  for (const word of text6.split(/\s+/)) {
     if (line && line.length + 1 + word.length > width) {
       lines.push(line);
       line = word;
@@ -55262,6 +55444,7 @@ function wrap2(text5, width) {
 async function init(target) {
   if (!target) throw new ConfigError("which shop? regmark init <store-url>");
   const store = new URL(target).origin;
+  checkConfig({ store: target }, allRules);
   const file = "regmark.config.json";
   if (existsSync(file)) throw new ConfigError(`${file} already exists; edit it, or delete it and run init again`);
   const config = { store, platform: "auto", sample: 25, budget: {} };
@@ -55349,6 +55532,7 @@ async function main(argv) {
       seed: { type: "string" },
       datum: { type: "string" },
       budget: { type: "string", multiple: true },
+      strict: { type: "boolean" },
       json: { type: "string" },
       sarif: { type: "string" },
       junit: { type: "string" },
@@ -55410,6 +55594,7 @@ async function main(argv) {
     ...values.page?.length ? { pages: values.page } : {},
     ...values.sample ? { sample: wholeNumber2("--sample", values.sample) } : {},
     ...values.seed ? { seed: wholeNumber2("--seed", values.seed) } : {},
+    ...values.strict ? { strict: true } : {},
     ...values.datum ? { datum: values.datum.split(",").map((s) => s.trim()) } : {},
     ...values.budget?.length ? { budget: { ...fromFile.budget, ...parseBudget(values.budget) } } : {},
     // An empty variable is what a CI job passes when the secret is not set; it must not blank out the file's token.
@@ -55427,6 +55612,12 @@ async function main(argv) {
 `)) : void 0
   });
   await writeReports(result, values);
+  if (config.strict && result.issues.length > 0) {
+    if (!values.quiet) out(renderTerminal(result, { color }));
+    note(`regmark: strict audit incomplete: ${result.issues.length} collection issue(s); inspect the report before trusting this run
+`);
+    return 2;
+  }
   if (result.counts.products === 0) {
     if (!values.quiet) out(renderTerminal(result, { color }));
     note(`regmark: no product could be read from ${new URL(result.store).host}, so nothing was checked

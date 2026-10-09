@@ -29,7 +29,7 @@ for (const [prefix, bits] of [
   blocked.addSubnet(prefix, bits, 'ipv4');
 }
 for (const [prefix, bits] of [
-  ['::', 127], // unspecified and loopback
+  ['::', 96], // unspecified, loopback and deprecated IPv4-compatible addresses
   ['64:ff9b:1::', 48], // local-use NAT64
   ['100::', 64], // discard
   ['2001:db8::', 32], // documentation
@@ -57,9 +57,18 @@ export function isPublicAddress(address: string): boolean {
   const family = net.isIP(address);
   if (family === 4) return !blocked.check(address, 'ipv4');
   if (family !== 6) return false;
-  const v4 = embeddedIPv4(address);
+  // DNS answers need not use compressed notation. Canonicalise before
+  // inspecting translation prefixes so expanded NAT64 addresses cannot hide
+  // a private IPv4 destination. Scoped literals are never internet targets.
+  let canonical: string;
+  try {
+    canonical = new URL(`http://[${address}]/`).hostname.slice(1, -1);
+  } catch {
+    return false;
+  }
+  const v4 = embeddedIPv4(canonical);
   if (v4) return isPublicAddress(v4);
-  return !blocked.check(address, 'ipv6');
+  return !blocked.check(canonical, 'ipv6');
 }
 
 export class PrivateAddressError extends Error {

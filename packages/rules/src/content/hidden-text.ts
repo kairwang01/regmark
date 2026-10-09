@@ -33,19 +33,26 @@ const MIN_LENGTH = 20;
  * which is what keeps it out. Without a name to go on the bar is higher.
  */
 export function looksStuffed(text: string, title?: string): boolean {
-  const words = text.toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? [];
-  if (words.length < 8) return false;
   const counts = new Map<string, number>();
-  for (const w of words) counts.set(w, (counts.get(w) ?? 0) + 1);
+  let words = 0;
+  let top = 0;
+  // Iterate matches instead of materialising every word or spreading the
+  // counts into Math.max: a large, valid page can exceed the argument limit.
+  for (const [word] of text.toLowerCase().matchAll(/[\p{L}\p{N}]{4,}/gu)) {
+    const n = (counts.get(word) ?? 0) + 1;
+    counts.set(word, n);
+    words++;
+    if (n > top) top = n;
+  }
+  if (words < 8) return false;
   const named = new Set((title ?? '').toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? []);
   if (named.size > 0) {
     return [...named].some((w) => {
       const n = counts.get(w) ?? 0;
-      return n >= 4 && n / words.length >= 0.2;
+      return n >= 4 && n / words >= 0.2;
     });
   }
-  const top = Math.max(...counts.values());
-  return top >= 6 && top / words.length >= 0.3;
+  return top >= 6 && top / words >= 0.3;
 }
 
 export default defineRule({

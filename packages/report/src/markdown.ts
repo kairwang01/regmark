@@ -5,7 +5,7 @@
 
 import { PLATE_OF } from '@regmark/core';
 import type { AuditResult, Evidence, Finding, Plate, RuleSummary, Surface } from '@regmark/core';
-import { durationMs, nothingRead, subjectOf } from './shared.ts';
+import { collectionFailure, durationMs, nothingRead, subjectOf } from './shared.ts';
 
 export type MarkdownOptions = {
   /** How many findings to list per rule before summarising the rest. Default 10. */
@@ -121,7 +121,9 @@ export function renderMarkdown(result: AuditResult, options: MarkdownOptions = {
   if (notes > 0) counts.push(plural(notes, 'note'));
 
   const overBudget = result.rules.filter((r) => r.skipped === undefined && !r.passed).length;
-  const verdict = result.ok ? 'Every rule is within its budget.' : `${plural(overBudget, 'rule')} over budget.`;
+  const verdict = result.ok ? 'Every rule is within its budget.' : overBudget > 0
+    ? `${plural(overBudget, 'rule')} over budget.`
+    : collectionFailure(result) ?? 'The audit did not pass.';
   sections.push(
     empty
       ? `No product could be read from ${code(hostOf(result.store))}, so nothing was checked.`

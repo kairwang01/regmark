@@ -1,13 +1,14 @@
 // schema.org microdata, basic support only: one sighting per offers scope of
 // each Product, or one from a direct price when the Product has no offers.
 
-import { load } from 'cheerio';
+import type { CheerioAPI } from 'cheerio';
+import { documentOf, type PageSource } from './document.ts';
 import { parseAllMoney, parseMoney } from '@regmark/core';
 import type { Availability, CollectIssue, CollectResult, Money, Observation, Sighting, Surface, VariantIds } from '@regmark/core';
 
 const SURFACE: Surface = 'microdata';
 
-type Doc = ReturnType<typeof load>;
+type Doc = CheerioAPI;
 type El = ReturnType<Doc>[0];
 
 const PRODUCT_TYPE = /^https?:\/\/(?:www\.)?schema\.org\/Product$/i;
@@ -25,11 +26,11 @@ const AVAILABILITY = new Map<string, Availability>([
   ['discontinued', 'discontinued'],
 ]);
 
-export function extractMicrodata(html: string, pageUrl: string, fetchedAt: string): CollectResult {
+export function extractMicrodata(html: PageSource, pageUrl: string, fetchedAt: string): CollectResult {
   const sightings: Sighting[] = [];
   const issues: CollectIssue[] = [];
   try {
-    const $ = load(html);
+    const $ = documentOf(html);
     const products = $('[itemscope]').toArray().filter((el) => isProduct($, el));
     products.forEach((product, productIndex) => {
       emitProduct($, product, productIndex, { pageUrl, fetchedAt, out: sightings });

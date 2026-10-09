@@ -82,3 +82,8 @@ test('a size guide tucked behind a button is not reported', () => {
   const sizes = 'Size guide: small fits chest 34 to 36, medium fits chest 38 to 40, large fits chest 42 to 44, extra large fits chest 46 to 48.';
   assert.deepEqual(run(rule, [whole('page', URL, { title: 'Classic Tee', text: [sample(sizes, { hidden: true, hiddenReason: 'display:none' })] })]), []);
 });
+
+test('large hidden text with distinct words does not overflow the argument stack', () => {
+  const text = Array.from({ length: 150_000 }, (_, i) => `word${i}`).join(' ');
+  assert.equal(looksStuffed(text), false);
+});

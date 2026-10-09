@@ -1,12 +1,19 @@
 # Configuration
 
 Every command, flag, config field and environment variable that Regmark reads,
-with the defaults the code sets.
+with the defaults the code sets. Start with the [quickstart](quickstart.md) for
+a first audit. This reference describes the current source; `--strict` and the
+expanded nested-field validation are new since the `v0.1.0` release. Use the
+reference from your release tag when running a pinned bundle.
 
-A mistake in any of them stops the run with exit code 2 before a single request
-is made: a flag that does not exist, a misspelt field in the config file, a
-platform, surface or rule id nobody has heard of. An audit that quietly checked
-less than you asked for would be worse than one that refused to start.
+[Commands](#command-line) · [Config fields](#fields) · [Sampling](#which-products-get-audited) · [Baseline](#which-surface-is-believed) · [Budgets](#budgets) · [Request policy](#how-requests-are-made) · [Ownership](#writes)
+
+Unknown flags, unknown top-level or nested config fields, invalid field types,
+invalid HTTP(S) URLs and unknown platform, surface or budget rule names stop
+the run with exit code 2 before collection. URLs may not contain credentials.
+Numeric settings must be safe integers; request intervals are 0–2,147,483,647 ms
+and timeouts are 1–2,147,483,647 ms. CSS selectors must be non-empty strings;
+selector parsing happens when pages are read.
 
 The words used here (surface, plate, datum, sighting, budget) are defined in
 [docs/rules.md](rules.md#words-used-below).
@@ -37,9 +44,10 @@ line replaces it.
 | Flag | Value | Default | What it does |
 |---|---|---|---|
 | `--sample` | whole number, 1 or more | `25` | How many products to audit. |
-| `--seed` | whole number | `1` | Changes which products the sample picks. The same seed on the same catalogue picks the same products. |
+| `--seed` | whole number, 0 or more | `1` | Changes which products the sample picks. The same seed on the same catalogue picks the same products. |
 | `--datum` | surface names, comma-separated | `checkout,platform,page` | The surfaces to believe, most trusted first. See [Which surface is believed](#which-surface-is-believed). |
 | `--budget` | `rule=n`, repeatable | see [Budgets](#budgets) | The most findings allowed for one rule. The rule must exist (`regmark rules` lists them) and the value is a whole number. Replaces the same rule in the config file. |
+| `--strict` | switch | off | Treat any collection issue as an incomplete audit: set report `ok` to `false` and exit `2`. Reports are still written when collection completes. New since `v0.1.0`; use a current source build until released. |
 
 #### Output
 
@@ -110,18 +118,25 @@ no flags.
 
 | Code | Meaning |
 |---|---|
-| `0` | The audit ran and every rule is within its budget. Also returned by `demo`, `rules`, a successful `explain`, `init`, `--help` and `--version`. |
+| `0` | Products were read, every rule is within its budget, and strict mode (when enabled) found no collection issue. Also returned by `demo`, `rules`, a successful `explain`, `init`, `--help` and `--version`. |
 | `1` | The audit ran and at least one rule is over its budget. The report files are written before the code is set. |
-| `2` | The audit could not run, or it ran and read no product. The first covers a bad flag or value, a config error, a store that is not an http or https URL, an unknown command or rule, an `init` that would overwrite a file, and any other error. Also returned when no command is given. |
+| `2` | The audit could not run, it ran and read no product, or `--strict` found a collection issue. The first covers a bad flag or value, a config error, a store that is not an http or https URL, an unknown command or rule, an `init` that would overwrite a file, and any other error. Also returned when no command is given. |
 
-A collection problem does not change the exit code by itself. A probe that was
-skipped, or one page that could not be read, is recorded as an issue, and the
+In default mode, a collection problem does not change the exit code by itself.
+A probe that was skipped, or one page that could not be read, is recorded as an issue, and the
 run still exits 0 if every rule passes. Check the `issues` list in the JSON
 report, or the collection issue line in the summary. See
 [Collection issue codes](report-format.md#collection-issue-codes).
 
-The exception is an audit that read no product at all: the shop was not
-recognised and had no sitemap, or robots.txt refused every path. Every rule is
+With `--strict` or `"strict": true`, any collection issue causes exit `2` and
+`ok: false` in the report, even if the rule budgets pass. This includes a failed
+feed read, a refused page, an unsupported probe, unverified ownership and cart
+cleanup failures. Strict mode does not prove full catalogue coverage: sampling
+and unsupported collectors still apply, and a skipped rule alone is not a
+collection issue.
+
+In either mode, an audit that read no product at all also exits `2`: the shop
+was not recognised and had no sitemap, or robots.txt refused every path. Every rule is
 then within budget because there was nothing to check. Regmark exits 2, and no
 report calls that run a pass.
 
@@ -169,6 +184,7 @@ A flag replaces the file's value, one field at a time:
 - `store`: a URL on the command line replaces the file's `store`.
 - `platform`, `feed`, `sample`, `seed` and `datum`: a flag replaces the file's
   value. `--page` replaces the file's `pages`.
+- `strict`: `--strict` sets it to true. No CLI flag sets a configured true value back to false.
 - `budget`: the file's entries are kept. Each rule given with `--budget`
   replaces its own entry.
 - `fetch`: the file's entries are kept. `--interval` replaces
@@ -205,18 +221,19 @@ exit code 2 and a message naming the mistake.
 | `page.priceSelector` | CSS selector | none | The element that holds the current price. Replaces the built-in price readers. If it matches nothing, or its text holds no single amount, no page price is read. |
 | `page.availabilitySelector` | CSS selector | none | The element that holds the stock line. Replaces the built-in stock reader. |
 | `page.titleSelector` | CSS selector | none | The element that holds the product title. Tried before the built-in selectors: `h1.product_title`, `h1[itemprop="name"]`, `main h1`, `h1`. |
-| `page.currency` | string or null | When every price in the page's structured data uses one currency, that currency. Otherwise null. | The currency for a bare amount such as "$39". A null value is the same as not setting it. |
+| `page.currency` | uppercase three-letter string or null | When every price in the page's structured data uses one currency, that currency. Otherwise null. | The currency for a bare amount such as "$39". A null value is the same as not setting it. |
 | `page.descriptionSelectors` | string[] | the built-in list | The elements read as product description. Replaces the list. The built-in list is `DEFAULT_DESCRIPTION` in `packages/collect-page/src/text.ts`. |
 | `page.reviewSelectors` | string[] | the built-in list | The elements read as reviews. Replaces the list. The built-in list is `DEFAULT_REVIEW` in `packages/collect-page/src/text.ts`. |
 | `sample` | whole number, 1 or more | `25` | How many products to audit. Same as `--sample`. |
-| `maxVariants` | whole number | `30` | Products with more variants than this are not candidates for the sample. The file only; there is no flag. See [Which products get audited](#which-products-get-audited). |
-| `seed` | whole number | `1` | Changes which products the sample picks. Same as `--seed`. |
+| `maxVariants` | whole number, 1 or more | `30` | Products with more variants than this are not candidates for the sample. The file only; there is no flag. See [Which products get audited](#which-products-get-audited). |
+| `seed` | whole number, 0 or more | `1` | Changes which products the sample picks. Same as `--seed`. |
+| `strict` | boolean | `false` | Incomplete collection sets report `ok` to false and CLI exit code to 2. Same as `--strict`; current source feature. |
 | `datum` | array of surface names | `["checkout", "platform", "page"]` | The surfaces to believe, most trusted first. Same as `--datum`. |
 | `budget` | object: rule id to whole number | defaults in [Budgets](#budgets) | The most findings allowed per rule. Same as `--budget`. |
 | `ownershipToken` | string | none | The ownership token. It must be 16 to 128 characters: letters, digits, `_` and `-`. Prefer `REGMARK_OWNERSHIP_TOKEN`, which keeps the secret out of the file. |
 | `fetch` | object | see [How requests are made](#how-requests-are-made) | The request policy. |
-| `fetch.minIntervalMs` | whole number | `1000` | The minimum gap in milliseconds between two requests to one host. Same as `--interval`. |
-| `fetch.timeoutMs` | whole number | `15000` | The time in milliseconds allowed for one request. |
+| `fetch.minIntervalMs` | integer, 0–2,147,483,647 | `1000` | The minimum gap in milliseconds between two requests to one host. Same as `--interval`. |
+| `fetch.timeoutMs` | integer, 1–2,147,483,647 | `15000` | The time in milliseconds allowed for one request. |
 | `fetch.allowPrivateNetwork` | boolean | `false` | Same as `--allow-private-network`. |
 | `fetch.respectRobots` | boolean | `true` | Set to `false` to skip the robots.txt check for reads. |
 | `fetch.userAgent` | string | `Regmark/0.1.0 (+https://github.com/kairwang01/regmark)` | The User-Agent header sent with each request. |
@@ -259,6 +276,12 @@ not in the file; set `REGMARK_OWNERSHIP_TOKEN` in the environment instead.
 
 ## Which products get audited
 
+This is a sampled audit, not a full crawler. Pages are parsed from the server
+response with no browser or JavaScript execution. Shopify collection is
+read-only; UCP, ACP and MCP collectors are not implemented. A fact that cannot
+be extracted cannot be compared. Review `surfaces`, `counts`, skipped rules
+and `issues` together when assessing the result.
+
 The steps below run in this order. Each one uses the output of the one before.
 
 1. **Platform.** With `auto`, Regmark makes at most two reads. The first is
@@ -286,8 +309,8 @@ The steps below run in this order. Each one uses the output of the one before.
    the variants, so there is no second read.
 6. **Feed.** With `--feed`, the feed is read once. Its items are kept when their
    product URL matches the URL of a sampled product. An item whose product the
-   platform does not list at all is a stray. Up to `sample` strays are added
-   to the page list. Strays are not chosen by the seed.
+   platform does not list at all is a stray. Up to `sample` distinct stray
+   product URLs are added to the page list. Strays are not chosen by the seed.
 7. **Page list.** The first rule that applies decides the list:
    - `pages`, from the file or from `--page`. The listed URLs are read exactly.
    - Otherwise, the sampled product permalinks, when step 2 found a platform
@@ -344,7 +367,7 @@ surface in the list that gave an observation of that fact. The default list is
 ## Budgets
 
 - By default, an error rule has a budget of 0. Any finding fails the run. A warn
-  or info rule has no limit. It never fails the run.
+  or info rule has no limit by default; an explicit budget can make it fail.
 - A budget is the most findings a rule can have and still pass. Set one with
   `--budget rule.id=n`, which may be repeated, or in the file's `budget` object,
   such as `{ "price.mismatch": 3 }`. A flag replaces the same rule in the file.
@@ -354,12 +377,15 @@ surface in the list that gave an observation of that fact. The default list is
 - A budget for a rule id that does not exist stops the run, so a misspelt id
   cannot leave a rule unguarded.
 - The run passes, and exits 0, only when every rule is within its budget and at
-  least one product was read. A rule that was skipped because a surface was not
-  read counts as passed.
+  least one product was read. Strict mode also requires zero collection issues.
+  A rule skipped because a required surface was not read contributes no findings;
+  this is not evidence that the missing surface is correct.
 
 To adopt the tool on a shop that already has findings, set each budget to the
-count the shop has today. The build then passes today and fails on any new
-finding. Lower each number as its findings are fixed, so it can only go down.
+count the shop has today. A later increase above that count fails the build.
+Budgets track counts, not finding identities: a new finding can replace an old
+one without changing the count, so review the reports too. Lower each budget
+as findings are fixed.
 
 ## How requests are made
 
@@ -380,9 +406,10 @@ Every request goes through one fetcher. The table gives the values in
 ### Host allowlist
 
 A run contacts only the store's host, and the feed's host when `feed` is set.
-A page or sitemap on another host is refused, and the message starts with
-`foreign-host`. A redirect to another host is not followed. The response is
-returned as it is, and the caller sees the 3xx status.
+A page or sitemap outside that allowlist is refused with `foreign-host`.
+Redirects outside the allowlist are not followed: the caller receives the 3xx
+response. Redirects between allowed origins may be followed, but caller-supplied
+headers are dropped across origins so credentials and cart tokens cannot leak.
 
 ### Private addresses
 
@@ -398,7 +425,7 @@ The refused ranges are:
   `172.16.0.0/12`, `192.0.0.0/24`, `192.0.2.0/24`, `192.168.0.0/16`,
   `198.18.0.0/15`, `198.51.100.0/24`, `203.0.113.0/24`, `224.0.0.0/4` and
   `240.0.0.0/4`.
-- IPv6: `::/127` (unspecified and loopback), `64:ff9b:1::/48`, `100::/64`,
+- IPv6: `::/96` (unspecified, loopback and deprecated IPv4-compatible addresses), `64:ff9b:1::/48`, `100::/64`,
   `2001:db8::/32`, `fc00::/7`, `fe80::/10` and `ff00::/8`.
 
 An IPv4 address inside an IPv6 mapped or NAT64 address is checked as IPv4.
@@ -446,3 +473,6 @@ has verified that the operator controls the shop, in one of two ways:
 The token is chosen by the operator. It must be 16 to 128 characters: letters,
 digits, `_` and `-`. If neither check succeeds, the probe is skipped and an
 `ownership-not-verified` issue is recorded. A write is never redirected.
+In default mode, the ownership issue does not fail an otherwise passing audit; use current source's `--strict` when that
+missing probe must fail CI. The probe writes cart/session state, attempts
+cleanup after each variant and never places an order or initiates payment.

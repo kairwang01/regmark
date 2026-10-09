@@ -1,7 +1,7 @@
 import { styleText } from 'node:util';
 import { PLATE_OF } from '@regmark/core';
 import type { AuditResult, Plate, Severity, Surface } from '@regmark/core';
-import { durationMs, findingSentence, nothingRead, subjectOf } from './shared.ts';
+import { collectionFailure, durationMs, nothingRead, subjectOf } from './shared.ts';
 
 export type TerminalOptions = { color?: boolean; maxExamples?: number };
 
@@ -161,7 +161,7 @@ export function renderTerminal(result: AuditResult, options: TerminalOptions = {
   } else {
     // The rules are named above, each with its count; here only how many broke their budget.
     const over = result.rules.filter((r) => !r.passed).length;
-    summary += `. ${plural(over, 'rule')} over budget.`;
+    summary += over > 0 ? `. ${plural(over, 'rule')} over budget.` : `. ${collectionFailure(result) ?? 'The audit did not pass.'}`;
   }
 
   const lines = [header, plates];

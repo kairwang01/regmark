@@ -22,7 +22,11 @@ export default defineRule({
       // Any other surface that states a shipping cost, whether it agrees or not,
       // tells the buyer something before checkout. Whether it is right is
       // shipping.mismatch's question.
-      if (offer.shipping.some((o) => o.surface !== 'checkout')) continue;
+      if (offer.shipping.some((o) =>
+        o.surface !== 'checkout' &&
+        (o.value.cost !== null || o.value.free) &&
+        (!o.value.country || !d.value.country || o.value.country.toUpperCase() === d.value.country.toUpperCase()),
+      )) continue;
       findings.push({
         rule: ID,
         severity: 'warn',

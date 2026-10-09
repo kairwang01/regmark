@@ -269,7 +269,7 @@ export type AuditResult = {
   rules: RuleSummary[];
   findings: Finding[];
   issues: CollectIssue[];
-  /** True when every rule is within its budget. */
+  /** True when rules meet their budgets, at least one product was read, and strict collection policy (if enabled) passes. */
   ok: boolean;
 };
 

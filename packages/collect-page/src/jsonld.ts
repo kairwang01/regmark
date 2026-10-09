@@ -2,7 +2,7 @@
 // per Offer. Ambiguous or malformed values are left out rather than guessed,
 // because a wrong value turns into a false alarm downstream.
 
-import { load } from 'cheerio';
+import { documentOf, type PageSource } from './document.ts';
 import { parseAllMoney, parseMoney } from '@regmark/core';
 import type {
   Availability,
@@ -46,11 +46,11 @@ const TYPE_PREFIX = /^(?:https?:\/\/schema\.org\/|schema:)/i;
 const LIST_PRICE_TYPE = /(?:ListPrice|StrikethroughPrice)$/;
 const NOT_PERMITTED = /MerchantReturnNotPermitted$/;
 
-export function extractJsonLd(html: string, pageUrl: string, fetchedAt: string): CollectResult {
+export function extractJsonLd(html: PageSource, pageUrl: string, fetchedAt: string): CollectResult {
   const out: Sighting[] = [];
   const issues: CollectIssue[] = [];
   try {
-    const $ = load(html);
+    const $ = documentOf(html);
     const scripts = $('script').toArray().filter((el) => ($(el).attr('type') ?? '').trim().toLowerCase() === 'application/ld+json');
     scripts.forEach((el, scriptIndex) => {
       const locator = `${pageUrl}#jsonld[${scriptIndex}]`;

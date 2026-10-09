@@ -2,8 +2,8 @@
   "slug": "regmark",
   "name": "Regmark",
   "codename": true,
-  "tagline": "让 AI 购物代理读到的商品事实，和结账时实际收的对得上。",
-  "pitch": "一个开源的命令行测试工具。它把商品页、结构化数据、商品 feed、店铺后台接口上的价格、库存、运费，逐项拿去和结账实算的结果比对，对不上就让 CI 失败。",
+  "tagline": "在发布前，查出商品页、JSON-LD 和 Feed 中的价格与库存冲突。",
+  "pitch": "Regmark 是开源电商数据一致性检查 CLI。支持 WooCommerce 和 Shopify 的公开商品接口，按规格核对页面、结构化数据与 Google Merchant Feed；可选经所有权验证的 WooCommerce 购物车探针核对运费，输出 HTML、JSON、SARIF、JUnit 和 Markdown 报告并接入 CI。",
   "stage": "0.1.0，可以试用",
   "updated": "2026-10-09",
   "facts": [
@@ -13,7 +13,7 @@
     ],
     [
       "验收",
-      "样板店 22 条预置缺陷全部查出，对照店零误报"
+      "样板店 19 个预置缺陷对应 22 条报告，对照样板店无发现（非真实店铺准确率）"
     ],
     [
       "源码",

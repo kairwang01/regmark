@@ -15,6 +15,7 @@
 
 import http from 'node:http';
 import https from 'node:https';
+import { pipeline, Writable } from 'node:stream';
 import { TextDecoder } from 'node:util';
 import zlib from 'node:zlib';
 import type { Fetched, Fetcher, RequestOptions } from '../types.ts';
@@ -98,7 +99,10 @@ function decoderFor(contentType: string | undefined): TextDecoder {
 }
 
 export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly string[] }): GuardedFetcher {
-  const policy: FetchPolicy = { ...DEFAULT_POLICY, ...options };
+  // JS callers often forward optional fields explicitly. Undefined means
+  // "use the default", never "disable robots or response limits".
+  const overrides = Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined));
+  const policy: FetchPolicy = { ...DEFAULT_POLICY, ...overrides, hosts: options.hosts };
   const allowed = new Set(policy.hosts.map(hostKey));
   const nextSlot = new Map<string, number>();
   const robotsCache = new Map<string, Promise<Robots | 'allow-all' | 'deny-all'>>();
@@ -118,6 +122,8 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
   }
 
   function assertAllowedHost(u: URL): void {
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new FetchRefused('bad-url', u.href, 'only http and https');
+    if (u.username || u.password) throw new FetchRefused('bad-url', u.href, 'credentials in URL');
     if (!allowed.has(hostKey(u.hostname))) throw new FetchRefused('foreign-host', u.href);
     const literal = ipLiteral(u.hostname);
     if (literal && !policy.allowPrivateNetwork && !isPublicAddress(literal)) {
@@ -134,6 +140,8 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
   }
 
   function request(method: string, u: URL, headers: Record<string, string>, body?: Buffer): Promise<Raw> {
+    // This is the socket boundary, including robots.txt redirect targets.
+    assertAllowedHost(u);
     stats.requests += 1;
     return new Promise<Raw>((resolve, reject) => {
       const lib = u.protocol === 'https:' ? https : http;
@@ -154,27 +162,34 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
         },
         (res) => {
           const encoding = String(res.headers['content-encoding'] ?? '').toLowerCase();
-          const stream =
+          const decoder =
             encoding === 'gzip' || encoding === 'x-gzip'
-              ? res.pipe(zlib.createGunzip())
+              ? zlib.createGunzip()
               : encoding === 'br'
-                ? res.pipe(zlib.createBrotliDecompress())
+                ? zlib.createBrotliDecompress()
                 : encoding === 'deflate'
-                  ? res.pipe(zlib.createInflate())
-                  : res;
+                  ? zlib.createInflate()
+                  : undefined;
           const chunks: Buffer[] = [];
           let size = 0;
-          stream.on('data', (chunk: Buffer) => {
-            size += chunk.length;
-            if (size > policy.maxBytes) {
-              req.destroy();
-              reject(new FetchRefused('too-large', u.href, `over ${policy.maxBytes} bytes`));
+          const sink = new Writable({
+            write(chunk: Buffer, _encoding, done) {
+              size += chunk.length;
+              if (size > policy.maxBytes) {
+                done(new FetchRefused('too-large', u.href, `over ${policy.maxBytes} bytes`));
+                return;
+              }
+              chunks.push(chunk);
+              done();
+            },
+          });
+          // pipeline propagates upstream aborts and destroys the response and
+          // decoder on failure, including decompression and size-limit errors.
+          pipeline(decoder ? [res, decoder, sink] : [res, sink], (err) => {
+            if (err) {
+              reject(err instanceof FetchRefused ? err : new FetchRefused('network', u.href, err.message));
               return;
             }
-            chunks.push(chunk);
-          });
-          stream.on('error', (err) => reject(new FetchRefused('network', u.href, (err as Error).message)));
-          stream.on('end', () => {
             const out: Record<string, string> = {};
             for (const [k, v] of Object.entries(res.headers)) {
               if (v !== undefined) out[k.toLowerCase()] = Array.isArray(v) ? v.join(', ') : v;
@@ -249,11 +264,12 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
 
     async get(url: string, init: RequestOptions = {}): Promise<Fetched> {
       let u = parse(url);
+      let headers = init.headers ?? {};
       for (let hop = 0; ; hop++) {
         assertAllowedHost(u);
         await assertRobots(u);
         await pace(u);
-        const raw = await request('GET', u, init.headers ?? {});
+        const raw = await request('GET', u, headers);
         const location = raw.headers['location'];
         if (!REDIRECTS.has(raw.status) || !location) return finish(u, raw);
         let next: URL;
@@ -265,6 +281,9 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
         // A redirect that leaves the allowlist is the caller's to interpret, not ours to follow.
         if ((next.protocol !== 'http:' && next.protocol !== 'https:') || !allowed.has(hostKey(next.hostname))) return finish(u, raw);
         if (hop >= policy.maxRedirects) throw new FetchRefused('too-many-redirects', url);
+        // An allowlisted feed host is not entitled to a shop's credentials or
+        // cart token. Only same-origin redirects may inherit caller headers.
+        if (next.origin !== u.origin) headers = {};
         u = next;
       }
     },

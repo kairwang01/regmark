@@ -2,6 +2,12 @@
 
 ## Before you start
 
+Try the [fixture demo](docs/quickstart.md) and read the
+[supported boundaries](README.md#supported-surfaces-and-limits). Good first
+contributions include a minimal theme HTML fixture, a clearer rule explanation, a reproducible false
+alarm, or a correction that keeps the English and Chinese READMEs aligned.
+No live store credentials are needed for the test suite.
+
 The most useful contribution is a report of a false alarm or a missed defect
 from a real shop. The fixture shops in this repository are built from our own
 expectations, so they cannot find the cases we did not think of. A real shop
@@ -15,10 +21,12 @@ You need Node 22.18 or later and pnpm. Use the pnpm version named in the
 `packageManager` field of `package.json`.
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 pnpm test        # unit tests
 pnpm bench       # the benchmark against the two fixture shops
 pnpm typecheck
+pnpm bundle      # rebuild the distributable when runtime sources change
+node scripts/bundle.mjs --check
 ```
 
 There is no build step for development. Node runs the TypeScript sources
@@ -27,8 +35,15 @@ dependencies are installed, the tests and the benchmark need no network access
 and no API keys.
 
 `dist/regmark.mjs` is the whole tool bundled into one file, for `npx` and for
-the GitHub Action. It is rebuilt with `pnpm bundle` when a release is cut. Leave
-it out of pull requests: a 2 MB generated file makes a diff unreadable.
+the GitHub Action. Rebuild it with `pnpm bundle` when runtime sources change,
+and include the matching generated file in the pull request. CI checks that the committed
+bundle matches the sources because GitHub installs and the Action execute
+that file directly. Review source changes first, then verify the bundle
+freshness check; do not hand-edit generated code.
+
+The repository workflow runs type checking, unit tests, fixture benchmarks and
+bundle verification on Node 22 and 24. A release pin still points at its
+original implementation until a new release is published.
 
 ## How the code is laid out
 
@@ -43,7 +58,7 @@ rule, and rules know no reporter.
 - `packages/collect-woo/`: WooCommerce Store API and the checkout probe
 - `packages/collect-shopify/`: Shopify public catalogue, read-only
 - `packages/rules/`: the fifteen rules
-- `packages/report/`: terminal, JSON, SARIF, JUnit and HTML output
+- `packages/report/`: terminal, JSON, SARIF, JUnit, Markdown and HTML output
 - `packages/cli/`: the command line and the audit itself
 - `fixtures/shop/`: the two test shops, one misprinted and one clean
 - `e2e/`: the benchmark
@@ -55,15 +70,16 @@ Do the steps in this order.
 
 1. **Describe the rule in `docs/rules.md`.** Say when it fires. Say just as
    carefully when it stays silent. Add the level and a one-line summary. Add
-   the rule to the rule table in `README.md` and change the rule count there.
+   the rule to the tables in `README.md` and `README.zh-CN.md`, and update both
+   rule counts.
 2. **Add a defect to `fixtures/shop/src/shop.ts`.** Append an entry to the
    `DEFECTS` list. Give it the next id, a one-line `summary`, the findings it
    should produce in `expected`, and an `apply` function that changes one
    surface. Then run `pnpm bench` and watch it fail: it prints each missed
    defect as `MISSED` and each unexpected finding as `EXTRA`, and it passes
    only when there are none of either. If you add defects, update the defect
-   and finding counts in the Status section of `README.md` in the same pull
-   request.
+   and finding counts in both READMEs, the demo text and affected documentation
+   in the same pull request.
 3. **Write the rule.** Put it in one file: `packages/rules/src/parity/` when it
    compares surfaces, or `packages/rules/src/content/` when it reads product
    text. The file exports a default `defineRule({...})` with `id`, `severity`,
@@ -80,8 +96,9 @@ Do the steps in this order.
 5. **Register the rule** in `packages/rules/src/index.ts`. Import it and add it
    to `parityRules` or `contentRules`. The order of those arrays is the order
    reports list the rules in.
-6. **Run `pnpm test && pnpm bench`.** Both must pass. The clean shop must still
-   report nothing. The benchmark fails if it does.
+6. **Run `pnpm typecheck`, `pnpm test` and `pnpm bench`.** All must pass. The
+   clean shop must still report nothing. Rebuild and verify the bundle after
+   changing runtime sources.
 
 The fixture comes before the rule because a defect written first states the
 expected finding in advance. The rule is then measured against a fixed shop,
@@ -123,6 +140,18 @@ disagreement is a finding is the rules' job. A collector takes a
 - Text from a shop is untrusted. It is escaped in every report format. A
   reporter that writes shop text without escaping is a bug, whatever the format.
 
+## Documentation and demonstration changes
+
+- Keep commands aligned with CLI behavior and distinguish current source from
+  released versions, especially for new flags.
+- Explain coverage: read-only defaults, optional WooCommerce cart writes,
+  Shopify read-only support, static HTML and sample limits.
+- Refresh screenshots from actual fixture output; label synthetic examples.
+  Use the [demo reproduction guide](docs/demo.md).
+- Check relative links and keep the two READMEs consistent.
+- Cite official sources for external platform requirements. Do not claim
+  guaranteed merchant approval, rankings, AI citations or star growth.
+
 ## Reporting a false alarm
 
 Use the **False alarm** template. Include:
@@ -135,6 +164,10 @@ Use the **False alarm** template. Include:
 You may leave the shop's name out if you include the page HTML or the feed
 entry that shows the statement. The snippet is enough for a maintainer to start
 from. Report a missed defect the same way, with the **Missed defect** template.
+
+When sharing fixtures, remove cookies, authorization headers, ownership tokens
+and customer details. A short HTML fragment or feed entry is usually enough;
+you do not need to publish a complete private shop export.
 
 ## Licence of contributions
 

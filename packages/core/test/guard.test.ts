@@ -8,13 +8,14 @@ test('isPublicAddress() refuses every private, loopback, link-local and reserved
     '100.64.0.1', '0.0.0.0', '224.0.0.1', '255.255.255.255', '198.18.0.1', '192.0.2.1',
     '::1', '::', 'fe80::1', 'fc00::1', 'fd12:3456::1', 'ff02::1', '2001:db8::1',
     '::ffff:127.0.0.1', '::ffff:7f00:1', '::ffff:10.0.0.1', '::ffff:a9fe:a9fe', '64:ff9b::7f00:1',
+    '64:ff9b:0:0:0:0:7f00:1', '0064:FF9B:0000:0000:0000:0000:A9FE:A9FE', '::127.0.0.1',
     'not-an-ip', '',
   ];
   for (const a of refused) assert.equal(isPublicAddress(a), false, a);
 });
 
 test('isPublicAddress() accepts ordinary public addresses', () => {
-  for (const a of ['1.1.1.1', '8.8.8.8', '43.172.86.173', '172.15.0.1', '172.32.0.1', '2606:4700:4700::1111', '::ffff:8.8.8.8', '64:ff9b::808:808']) {
+  for (const a of ['1.1.1.1', '8.8.8.8', '43.172.86.173', '172.15.0.1', '172.32.0.1', '2606:4700:4700::1111', '::ffff:8.8.8.8', '64:ff9b::808:808', '64:ff9b:0:0:0:0:808:808']) {
     assert.equal(isPublicAddress(a), true, a);
   }
 });

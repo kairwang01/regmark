@@ -50,6 +50,7 @@ export function splitRows(text: string): string[][] {
     }
     i += 1;
   }
+  if (quoted) throw new Error('tab-separated feed has an unterminated quoted cell');
   if (cell !== '' || row.length > 0) {
     row.push(cell);
     rows.push(row);
@@ -62,6 +63,9 @@ export function readTsv(text: string): FeedItem[] {
   const [header, ...body] = splitRows(text);
   if (!header) return [];
   const names = header.map(headerName);
+  if (!names.includes('id') || !names.includes('link')) {
+    throw new Error('tab-separated feed must have id and link column headers');
+  }
   return body.map((cells) => {
     // No prototype: a header named "constructor" must not read as present.
     const fields: Record<string, string> = Object.create(null);

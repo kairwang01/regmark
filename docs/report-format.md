@@ -26,12 +26,19 @@ script reads the rest of the file.
 | `rules` | array of `RuleSummary` | One entry per rule, in the order of the rule catalogue. |
 | `findings` | array of `Finding` | Every finding. Sorted by severity (error, then warn, then info), then by rule, product, variant and surface. |
 | `issues` | array of `CollectIssue` | Problems in reading the shop. They are not findings about its data. |
-| `ok` | boolean | `true` when every rule is within its budget. |
+| `ok` | boolean | `true` when at least one product was read, every rule is within budget, and the requested collection policy passes. |
 
-`ok` alone does not mean the shop passed. When `counts.products` is 0 nothing
-was read, every rule is trivially within budget, and `ok` is `true`. The
-command line exits 2 in that case, and no report calls it a pass. A script that
-reads this file should check `counts.products` as well.
+An empty audit now has `ok: false`. In strict mode, any collection issue also
+sets `ok: false`, independently of finding budgets. In the published 0.1.0
+report, an empty audit could have `ok: true`; consumers accepting older reports
+must also check `counts.products > 0`. The command line exits 2 for an empty
+audit or a strict collection failure. Without strict mode, collection issues
+remain diagnostic and do not independently change `ok`.
+
+JUnit includes a collection error when collection alone prevents a passing
+audit, and a `system-err` with collection diagnostics. SARIF includes invocation
+status and tool execution notifications. A rule-budget failure remains a
+finding failure; inspect `issues` as well when an audit has both kinds of problem.
 
 ## RuleSummary (`rules[]`)
 

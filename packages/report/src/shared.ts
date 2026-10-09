@@ -45,3 +45,12 @@ export function artifactUri(locator: string): string {
 export function nothingRead(result: AuditResult): boolean {
   return result.counts.products === 0;
 }
+
+/** Why collection prevents a passing audit, independently of finding budgets. */
+export function collectionFailure(result: AuditResult): string | undefined {
+  if (nothingRead(result)) return 'No product was read, so nothing was checked.';
+  if (!result.ok && result.issues.length > 0 && result.rules.every((rule) => rule.passed)) {
+    return 'Collection issues prevent a passing audit.';
+  }
+  return undefined;
+}
