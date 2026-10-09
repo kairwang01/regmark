@@ -93,6 +93,13 @@ describe('ACP feed formats', () => {
     assert.deepStrictEqual(ids(result), ['T-1']);
   });
 
+  it('takes the delimiter from the header line, past any blank lines before it', () => {
+    const tsv = ['', '  ', 'id\tlink\ttitle\tdescription\timage_link\tavailability\tprice\tbrand', 'G-1\thttps://example.com/g\tMug, blue\tD\thttps://example.com/g.jpg\tin_stock\t18.00 USD\tB'].join('\n');
+    const result = parse(tsv);
+    assert.deepStrictEqual(result.issues, []);
+    assert.equal(result.sightings[0]!.title, 'Mug, blue');
+  });
+
   it('refuses a CSV or TSV header that names no page or no item', () => {
     refused('item_id,title,price\nA,Mug,1.00 USD', /neither a url column \(OpenAI format\) nor a link column/);
     refused('title,url,price\nMug,https://example.com/a,1.00 USD', /has a url column but no item_id column/);

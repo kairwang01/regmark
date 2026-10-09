@@ -18,7 +18,7 @@
 
 import { type Availability, type CollectIssue, type Money, money, type Observation, type ReturnPolicy, type ShippingQuote, type Sighting, type VariantIds } from '@regmark/core';
 import { parseIso8601 } from '../dates.ts';
-import { type MapContext, resolveUrl } from '../map.ts';
+import { httpUrl, type MapContext, resolveUrl } from '../map.ts';
 import { type FlatRecord, isObject, placeLocator, placeText, type Profile } from './read.ts';
 
 const SURFACE = 'acp' as const;
@@ -76,22 +76,13 @@ function shown(v: unknown): string {
   return text.length > 80 ? `${text.slice(0, 77)}...` : text;
 }
 
-function httpUrl(text: string): string | undefined {
-  try {
-    const u = new URL(text);
-    return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * The end of a sale window "start/end", each end an ISO 8601 date or a
  * date-time with a zone, start before end. A date alone covers its whole UTC
  * day. The end is returned as written for a date, which price.sale-expired
  * reads as the end of that day, and as an instant otherwise.
  */
-export function saleWindowEnd(text: string): string | undefined {
+function saleWindowEnd(text: string): string | undefined {
   const parts = text.split('/');
   if (parts.length !== 2) return undefined;
   const start = parseIso8601(parts[0]!);

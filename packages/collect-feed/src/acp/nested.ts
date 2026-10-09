@@ -8,14 +8,15 @@
 // refund_policy link is the only return policy it can state.
 
 import { type Availability, type CollectIssue, fromMinor, isBuyable, minorUnitOf, type Money, type Observation, type Sighting, type VariantIds } from '@regmark/core';
-import { type MapContext, resolveUrl } from '../map.ts';
+import { httpUrl, type MapContext, resolveUrl } from '../map.ts';
 import { isObject, placeLocator, placeText, type ProductRecord } from './read.ts';
 
 const SURFACE = 'acp' as const;
 
 /**
  * The status values the protocol names. It calls the list extensible, so a
- * status not here is not an error when `available` says the same thing.
+ * status not here is read through `available` when that is given, and
+ * reported only when it is not.
  */
 const STATUS: ReadonlyMap<string, Availability> = new Map([
   ['in_stock', 'in_stock'],
@@ -38,15 +39,6 @@ function idText(v: unknown): string | undefined {
 }
 
 const textOf = (v: unknown): string | undefined => (typeof v === 'string' ? v.trim() || undefined : undefined);
-
-function httpUrl(text: string): string | undefined {
-  try {
-    const u = new URL(text);
-    return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 type VariantRead = {
   ctx: MapContext;

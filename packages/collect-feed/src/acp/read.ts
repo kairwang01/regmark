@@ -10,8 +10,8 @@
 //            protocol's Feed API: products.jsonl, one Product per line, or a
 //            {"products": [...]} document as the Feed API returns it.
 //
-// Parquet is also accepted for upload, and XML, RSS and Atom are not; neither
-// is read here. Each is refused with a message that says what to export.
+// OpenAI also takes Parquet, which is not read here, and no ACP format is XML.
+// Either is refused with a message that says what to export instead.
 
 import type { CollectIssue } from '@regmark/core';
 import { headerName, splitRows } from '../tsv.ts';
@@ -96,8 +96,8 @@ function readProductsDocument(products: unknown[], feedUrl: string): AcpRead {
  * first, so a header with `url` is read as that.
  */
 function readDelimited(text: string): AcpRead {
-  const firstLine = text.split(/\r?\n/, 1)[0] ?? '';
-  const delimiter = firstLine.includes('\t') ? '\t' : ',';
+  const headerLine = text.split(/\r?\n/).find((line) => line.trim() !== '') ?? '';
+  const delimiter = headerLine.includes('\t') ? '\t' : ',';
   let rows: string[][];
   try {
     rows = splitRows(text, delimiter);
