@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { formatMoney, fromMinor, money, parseAllMoney, parseMoney, sameMoney } from '../src/index.ts';
+import { formatMoney, fromMinor, minorUnitOf, money, parseAllMoney, parseMoney, sameMoney } from '../src/index.ts';
 
 test('money() reads plain decimals exactly', () => {
   assert.deepEqual(money('39.00', 'usd'), { units: 390000, currency: 'USD' });
@@ -74,4 +74,16 @@ test('formatMoney() keeps two decimals and adds more only when needed', () => {
   assert.equal(formatMoney(money('1299.5', null)), '1299.50');
   assert.equal(formatMoney(money('12.345', 'KWD')), '12.345 KWD');
   assert.equal(formatMoney(money('0.0001', 'USD')), '0.0001 USD');
+});
+
+test('minorUnitOf() follows ISO 4217, including the less common zero- and four-digit currencies', () => {
+  for (const code of ['BIF', 'CLP', 'DJF', 'GNF', 'ISK', 'JPY', 'KMF', 'KRW', 'PYG', 'RWF', 'UGX', 'UYI', 'VND', 'VUV', 'XAF', 'XOF', 'XPF']) {
+    assert.equal(minorUnitOf(code), 0, code);
+  }
+  for (const code of ['BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND']) assert.equal(minorUnitOf(code), 3, code);
+  assert.equal(minorUnitOf('CLF'), 4);
+  assert.equal(minorUnitOf('UYW'), 4);
+  assert.equal(minorUnitOf('USD'), 2);
+  // 5000 in Rwandan francs' minor units is 5,000 francs, as the page says.
+  assert.ok(sameMoney(fromMinor(5000, minorUnitOf('RWF'), 'RWF')!, parseMoney('RWF 5,000')!));
 });

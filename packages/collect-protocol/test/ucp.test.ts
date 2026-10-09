@@ -128,6 +128,15 @@ describe('collectUcp: versions', () => {
     assert.deepEqual(result.issues.map((i) => [i.code, i.message]), [['version-unsupported', 'the shop offers UCP 2026-01-23, 2026-01-11; Regmark reads 2026-08-25 and 2026-04-08']]);
   });
 
+  it('names a few of the versions a profile offers, however many it lists', async () => {
+    const supported = Object.fromEntries(Array.from({ length: 400 }, (_, i) => [`${1000 + i}-01-01`, `${ORIGIN}/old/${i}`]));
+    const { ctx } = fakeEndpoint({ [PROFILE_URL]: { body: businessProfile({ version: '2027-01-01', supported }) } });
+    const [only] = (await collectUcp(ctx, { products: [TEE] })).issues;
+    assert.equal(only?.code, 'version-unsupported');
+    assert.ok(only!.message.length < 200, only!.message);
+    assert.match(only!.message, /^the shop offers UCP 2027-01-01, [\d-]+(, [\d-]+){4}, …; Regmark reads/);
+  });
+
   it('refuses an older profile that says it is another version than the one it is listed under', async () => {
     const leaf = `${ORIGIN}/.well-known/ucp/2026-08-25`;
     const { ctx } = fakeEndpoint({ [PROFILE_URL]: { body: businessProfile({ version: '2027-03-01', supported: { '2026-08-25': leaf } }) }, [leaf]: { body: businessProfile({ version: '2027-03-01' }) } });

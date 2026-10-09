@@ -110,6 +110,8 @@ export async function readCatalogue(ask: Ask, options: CatalogueOptions): Promis
   });
 
   const found = new Set<number>();
+  // Products a lookup or a search asked about. Only these can be said to be missing.
+  const asked = new Set<number>();
   const emitted = new Set<string>();
   const all = [...owner.keys()];
   // Ids before this position were answered. A failed batch leaves the rest unasked.
@@ -118,8 +120,8 @@ export async function readCatalogue(ask: Ask, options: CatalogueOptions): Promis
 
   if (options.lookup) {
     for (let start = 0; start < all.length; start += LOOKUP_BATCH) {
-      const asked = all.slice(start, start + LOOKUP_BATCH);
-      const answer = checked(await ask('lookup_catalog', withFilter({ ids: asked }, options)), surface, 'lookup_catalog');
+      const batch = all.slice(start, start + LOOKUP_BATCH);
+      const answer = checked(await ask('lookup_catalog', withFilter({ ids: batch }, options)), surface, 'lookup_catalog');
       if (!answer.ok) {
         issues.push(answer.issue);
         // The rest would most likely fail the same way, once per batch.
@@ -127,7 +129,8 @@ export async function readCatalogue(ask: Ask, options: CatalogueOptions): Promis
         failed = true;
         break;
       }
-      const askedSet = new Set(asked);
+      for (const id of batch) asked.add(owner.get(id)!);
+      const askedSet = new Set(batch);
       eachVariant(answer.payload, (product, variant, p, v) => {
         // Group the ids that found this variant by the product that asked.
         const byRef = new Map<number, { id: string; exact: boolean }[]>();
@@ -170,6 +173,7 @@ export async function readCatalogue(ask: Ask, options: CatalogueOptions): Promis
         failed = true;
         break;
       }
+      asked.add(index);
       const products = answer.payload.products as unknown[];
       const p = products.findIndex((product) => isRecord(product) && sameProduct(ref, product));
       if (p < 0) continue;
@@ -190,10 +194,19 @@ export async function readCatalogue(ask: Ask, options: CatalogueOptions): Promis
   if (!failed) {
     for (const [index, ref] of refs.entries()) {
       if (found.has(index) || skipped.has(index)) continue;
-      issues.push(issueOf(surface, 'not-found', 'the catalogue has no product for this page', ref.url));
+      if (asked.has(index)) issues.push(issueOf(surface, 'not-found', 'the catalogue has no product for this page', ref.url));
+      else issues.push(issueOf(surface, 'not-asked', notAskedWhy(ref, options), ref.url));
     }
   }
   return { sightings: read.filter((r) => !unanswered.has(r.index)).map((r) => r.sighting), issues };
+}
+
+/** Why a sampled product was never put to the catalogue. */
+function notAskedWhy(ref: ProductRef, options: CatalogueOptions): string {
+  if (!options.lookup && ref.variantIds?.length) {
+    return 'not asked: the catalogue offers no lookup_catalog, and a search, which may return part of a product, is not used for one the storefront lists by variant id';
+  }
+  return 'not asked: nothing the audit knows about this page (a variant id, SKU, handle or title) is something this catalogue can be asked by';
 }
 
 const withFilter = (request: Record<string, unknown>, options: CatalogueOptions): Record<string, unknown> =>
@@ -297,7 +310,13 @@ function toSighting(
   }
 
   const availability = readAvailability(variant.availability);
-  if (availability) sighting.availability = observe(availability, JSON.stringify(variant.availability), 'availability');
+  if (availability && isRecord(variant.availability)) {
+    // Only the fields read go into the record of what was said: the rest of the
+    // shop's object could be any size and any depth.
+    const { available, status } = variant.availability;
+    const said = { available: typeof available === 'boolean' ? available : undefined, status: typeof status === 'string' ? clip(status, 40) : undefined };
+    sighting.availability = observe(availability, JSON.stringify(said), 'availability');
+  }
   return { sighting, issues };
 }
 
@@ -313,7 +332,7 @@ function readPrice(value: unknown): { money: Money; raw: string } | 'unreadable'
   if (typeof amount !== 'number' || !Number.isSafeInteger(amount) || amount < 0) return 'unreadable';
   if (typeof currency !== 'string' || !/^[A-Z]{3}$/.test(currency)) return 'unreadable';
   const money = fromMinor(amount, minorUnitOf(currency), currency);
-  return money ? { money, raw: JSON.stringify(value) } : 'unreadable';
+  return money ? { money, raw: JSON.stringify({ amount, currency }) } : 'unreadable';
 }
 
 /** No sale basis means each; UN/CEFACT C62 is "one", the same thing said explicitly. */
@@ -343,15 +362,21 @@ function readAvailability(value: unknown): Availability | undefined {
   return undefined;
 }
 
-/** UCP's well-known barcode types that are GTINs: GTIN, EAN, UPC, JAN, and ISBN-13 (an EAN). */
-const GTIN_TYPES: ReadonlySet<string> = new Set(['GTIN', 'EAN', 'UPC', 'JAN', 'ISBN']);
+/** UCP's well-known barcode types that are GTINs: GTIN, EAN, UPC and JAN. An ISBN is one only as ISBN-13. */
+const GTIN_TYPES: ReadonlySet<string> = new Set(['GTIN', 'EAN', 'UPC', 'JAN']);
 
+/**
+ * The first barcode that is a GTIN, its value as written for
+ * identity.gtin-invalid to check. An ISBN-10 is not a GTIN, so it is passed
+ * over for the next barcode rather than read as a broken one.
+ */
 function barcodeGtin(value: unknown): string | undefined {
   if (!Array.isArray(value)) return undefined;
   for (const barcode of value) {
-    if (isRecord(barcode) && typeof barcode.type === 'string' && GTIN_TYPES.has(barcode.type.toUpperCase()) && nonEmptyString(barcode.value)) {
-      return barcode.value.trim();
-    }
+    if (!isRecord(barcode) || typeof barcode.type !== 'string' || !nonEmptyString(barcode.value)) continue;
+    const type = barcode.type.trim().toUpperCase();
+    if (GTIN_TYPES.has(type)) return barcode.value.trim();
+    if (type === 'ISBN' && /^\d{13}$/.test(barcode.value.replace(/[\s-]/g, ''))) return barcode.value.trim();
   }
   return undefined;
 }

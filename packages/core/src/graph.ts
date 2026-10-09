@@ -43,23 +43,37 @@ const BACKEND: ReadonlySet<Surface> = new Set(['platform', 'checkout']);
 const NAMING_ORDER: readonly Surface[] = ['platform', 'checkout', 'jsonld', 'microdata', 'feed', 'ucp', 'acp', 'mcp', 'page', 'opengraph'];
 const byNamingOrder = (a: Sighting, b: Sighting) => NAMING_ORDER.indexOf(a.surface) - NAMING_ORDER.indexOf(b.surface);
 
-type Ambiguous = { gtins: Set<string>; skus: Set<string> };
+type Ambiguous = {
+  gtins: Set<string>;
+  /** SKUs that cannot join products: each appears under more than one product URL. */
+  skus: Set<string>;
+  /** SKUs that cannot join variants: a backend gives each to more than one of its variants. */
+  variantSkus: Set<string>;
+};
 
 /** What a surface calls a variant: its SKU, else its first alias. */
 const localName = (s: Sighting): string | null => (s.ids.sku ? skuKey(s.ids.sku) : s.ids.aliases?.[0] ? skuKey(s.ids.aliases[0]) : null);
 
 /**
  * A GTIN that one surface puts on two different variants, or a SKU that
- * appears under more than one product URL, identifies nothing.
+ * appears under more than one product URL, identifies nothing. Nor, between
+ * variants, does a SKU that a backend gives to several of its own variants,
+ * as shops that put the style number on every size do.
  *
- * The GTIN check is per surface on purpose. Two surfaces may name the same
+ * The checks are per surface on purpose. Two surfaces may name the same
  * variant differently (a SKU here, a backend id there) and that is not a
  * conflict; one surface giving two of its own entries the same barcode is.
  */
 function findAmbiguous(sightings: readonly Sighting[]): Ambiguous {
   const gtinToNames = new Map<string, { gtin: string; names: Set<string> }>();
   const skuToUrls = new Map<string, Set<string>>();
+  const skuToVariants = new Map<string, { sku: string; ids: Set<string> }>();
   sightings.forEach((s, i) => {
+    if (s.ids.sku && s.ids.variantId && BACKEND.has(s.surface)) {
+      const k = `${s.surface}|${skuKey(s.ids.sku)}`;
+      if (!skuToVariants.has(k)) skuToVariants.set(k, { sku: skuKey(s.ids.sku), ids: new Set() });
+      skuToVariants.get(k)!.ids.add(s.ids.variantId);
+    }
     const gtin = normalizeGtin(s.ids.gtin);
     if (gtin && s.scope === 'variant') {
       const k = `${s.surface}|${gtinKey(gtin)}`;
@@ -76,6 +90,7 @@ function findAmbiguous(sightings: readonly Sighting[]): Ambiguous {
   return {
     gtins: new Set([...gtinToNames.values()].filter((v) => v.names.size > 1).map((v) => v.gtin)),
     skus: new Set([...skuToUrls].filter(([, urls]) => urls.size > 1).map(([sku]) => sku)),
+    variantSkus: new Set([...skuToVariants.values()].filter((v) => v.ids.size > 1).map((v) => v.sku)),
   };
 }
 
@@ -97,13 +112,14 @@ function productKeys(s: Sighting, amb: Ambiguous): string[] {
 
 function variantKeys(s: Sighting, amb: Ambiguous): string[] {
   const keys: string[] = [];
-  if (s.ids.sku) keys.push(`sku:${skuKey(s.ids.sku)}`);
+  const sku = s.ids.sku && !amb.variantSkus.has(skuKey(s.ids.sku)) ? s.ids.sku : undefined;
+  if (sku) keys.push(`sku:${skuKey(sku)}`);
   const gtin = normalizeGtin(s.ids.gtin);
   if (gtin && !amb.gtins.has(gtinKey(gtin))) keys.push(`gtin:${gtinKey(gtin)}`);
   if (BACKEND.has(s.surface) && s.ids.variantId) keys.push(`vid:${s.ids.variantId}`);
   // WooCommerce, for one, writes the backend id into the JSON-LD "sku" when a
   // product has no SKU of its own. Inside one product that is safe to follow.
-  if (!BACKEND.has(s.surface) && s.ids.sku && /^\d+$/.test(s.ids.sku.trim())) keys.push(`vid:${s.ids.sku.trim()}`);
+  if (!BACKEND.has(s.surface) && sku && /^\d+$/.test(sku.trim())) keys.push(`vid:${sku.trim()}`);
   // An alias may be a SKU or a backend id on some other surface. Inside one
   // product the chance of an accidental match is negligible.
   for (const alias of s.ids.aliases ?? []) keys.push(`sku:${skuKey(alias)}`, `vid:${alias}`);
@@ -139,9 +155,11 @@ function gather<K extends Fact>(sightings: readonly Sighting[], field: K): Offer
 
 const uniqueSurfaces = (sightings: readonly Sighting[]): Surface[] => [...new Set(sightings.map((s) => s.surface))];
 
-function toOffer(sightings: Sighting[], fallbackKey: string): Offer {
+function toOffer(sightings: Sighting[], fallbackKey: string, amb: Ambiguous): Offer {
   const ids = mergeIds(sightings);
-  const key = ids.sku ?? ids.gtin ?? (ids.variantId ? `#${ids.variantId}` : null) ?? (optionsKey(ids.options) || fallbackKey);
+  // A SKU several variants share would give them all one key.
+  const sku = ids.sku && !amb.variantSkus.has(skuKey(ids.sku)) ? ids.sku : undefined;
+  const key = sku ?? ids.gtin ?? (ids.variantId ? `#${ids.variantId}` : null) ?? (optionsKey(ids.options) || fallbackKey);
   return {
     key,
     ids,
@@ -206,7 +224,7 @@ function toProduct(sightings: Sighting[], amb: Ambiguous, index: number): Produc
     }
   }
 
-  const variants = [...clusters.values()].map((c, i) => toOffer(c, `variant-${i + 1}`)).sort((a, b) => a.key.localeCompare(b.key));
+  const variants = [...clusters.values()].map((c, i) => toOffer(c, `variant-${i + 1}`, amb)).sort((a, b) => a.key.localeCompare(b.key));
   const named = [...sightings].sort(byNamingOrder);
   const url = named.find((s) => s.ids.url)?.ids.url;
   const text: TextSample[] = sightings.flatMap((s) => s.text ?? []);

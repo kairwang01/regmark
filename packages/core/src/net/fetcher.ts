@@ -148,7 +148,7 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
     if (at > now) await sleep(at - now);
   }
 
-  function request(method: string, u: URL, headers: Record<string, string>, body?: Buffer): Promise<Raw> {
+  function request(method: string, u: URL, headers: Record<string, string>, body?: Buffer, complete?: (body: string) => boolean): Promise<Raw> {
     // This is the socket boundary, including robots.txt redirect targets.
     assertAllowedHost(u);
     stats.requests += 1;
@@ -181,24 +181,7 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
                   : undefined;
           const chunks: Buffer[] = [];
           let size = 0;
-          const sink = new Writable({
-            write(chunk: Buffer, _encoding, done) {
-              size += chunk.length;
-              if (size > policy.maxBytes) {
-                done(new FetchRefused('too-large', u.href, `over ${policy.maxBytes} bytes`));
-                return;
-              }
-              chunks.push(chunk);
-              done();
-            },
-          });
-          // pipeline propagates upstream aborts and destroys the response and
-          // decoder on failure, including decompression and size-limit errors.
-          pipeline(decoder ? [res, decoder, sink] : [res, sink], (err) => {
-            if (err) {
-              reject(err instanceof FetchRefused ? err : new FetchRefused('network', u.href, err.message));
-              return;
-            }
+          const headersOf = (): Record<string, string> => {
             const out: Record<string, string> = {};
             for (const [k, v] of Object.entries(res.headers)) {
               // Cookie expiry dates contain commas, so several Set-Cookie
@@ -206,7 +189,46 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
               const joiner = k.toLowerCase() === 'set-cookie' ? '\n' : ', ';
               if (v !== undefined) out[k.toLowerCase()] = Array.isArray(v) ? v.join(joiner) : v;
             }
-            resolve({ status: res.statusCode ?? 0, headers: out, body: Buffer.concat(chunks) });
+            return out;
+          };
+          // An event stream (always UTF-8) is offered to the caller as it
+          // arrives, so an answer is not held up by a stream left open.
+          const until = String(res.headers['content-type'] ?? '').toLowerCase().includes('text/event-stream') ? complete : undefined;
+          const utf8 = new TextDecoder();
+          let text = '';
+          let settled = false;
+          const sink = new Writable({
+            write(chunk: Buffer, _encoding, done) {
+              if (settled) return done();
+              size += chunk.length;
+              if (size > policy.maxBytes) {
+                done(new FetchRefused('too-large', u.href, `over ${policy.maxBytes} bytes`));
+                return;
+              }
+              chunks.push(chunk);
+              if (until) {
+                text += utf8.decode(chunk, { stream: true });
+                if (until(text)) {
+                  settled = true;
+                  resolve({ status: res.statusCode ?? 0, headers: headersOf(), body: Buffer.concat(chunks) });
+                  done();
+                  // What the server goes on sending is not waited for.
+                  res.destroy();
+                  return;
+                }
+              }
+              done();
+            },
+          });
+          // pipeline propagates upstream aborts and destroys the response and
+          // decoder on failure, including decompression and size-limit errors.
+          pipeline(decoder ? [res, decoder, sink] : [res, sink], (err) => {
+            if (settled) return;
+            if (err) {
+              reject(err instanceof FetchRefused ? err : new FetchRefused('network', u.href, err.message));
+              return;
+            }
+            resolve({ status: res.statusCode ?? 0, headers: headersOf(), body: Buffer.concat(chunks) });
           });
         },
       );
@@ -313,7 +335,7 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
         // robots.txt speaks to crawlers. The owner reading their own shop is not one.
         if (!owner) await assertRobots(u);
         await pace(u);
-        const raw = await request('GET', u, headers);
+        const raw = await request('GET', u, headers, undefined, init.complete);
         const location = raw.headers['location'];
         if (!REDIRECTS.has(raw.status) || !location) return finish(u, init.gzipFile ? gunzipFile(u, raw) : raw);
         let next: URL;
@@ -345,7 +367,7 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
       await pace(u);
       const body = Buffer.from(JSON.stringify(json));
       // A redirect is returned, not followed: replaying a body elsewhere is not something to do silently.
-      return finish(u, await request('POST', u, { 'content-type': 'application/json', accept: 'application/json', ...headers }, body));
+      return finish(u, await request('POST', u, { 'content-type': 'application/json', accept: 'application/json', ...headers }, body, init.complete));
     },
 
     async send(method, url, init = {}): Promise<Fetched> {

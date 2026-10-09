@@ -78,6 +78,41 @@ describe('collectMcp: the conversation', () => {
     assert.equal(result.sightings.length, 2);
   });
 
+  it('resumes a stream the server closed before answering, from the last event id, as MCP 2025-11-25 allows', async () => {
+    const server = mcpServer({ session: 'sess-1', call: answerIds });
+    let pending: Reply | undefined;
+    const polled = (call: Call): Reply => {
+      if (call.method === 'GET') {
+        assert.equal(call.headers['last-event-id'], 'ev-1');
+        assert.equal(call.headers.accept, 'text/event-stream');
+        assert.equal(call.headers['mcp-session-id'], 'sess-1');
+        return { headers: { 'content-type': 'text/event-stream' }, body: `id: ev-2\ndata: ${JSON.stringify(pending!.body)}\n\n` };
+      }
+      const reply = server(call);
+      if ((call.body as Record<string, unknown>).method !== 'tools/call') return reply;
+      pending = reply;
+      // A priming event with an id and no data, then the connection closes.
+      return { headers: { 'content-type': 'text/event-stream' }, body: 'id: ev-1\nretry: 5\ndata: \n\n' };
+    };
+    const { ctx, calls } = fakeEndpoint({ [MCP]: polled });
+    const result = await collectMcp(ctx, { products: [TEE] });
+    assert.deepEqual(result.issues, []);
+    assert.equal(result.sightings.length, 2);
+    assert.deepEqual(calls.map((c) => c.method), ['POST', 'POST', 'POST', 'POST', 'GET']);
+  });
+
+  it('gives up on a stream that never answers after a few resumes', async () => {
+    const server = mcpServer({ call: answerIds });
+    const silent = (call: Call): Reply =>
+      call.method === 'GET' || (call.body as Record<string, unknown>).method === 'tools/call'
+        ? { headers: { 'content-type': 'text/event-stream' }, body: 'id: ev-1\ndata: \n\n' }
+        : server(call);
+    const { ctx, calls } = fakeEndpoint({ [MCP]: silent });
+    const result = await collectMcp(ctx, { products: [TEE] });
+    assert.equal(calls.filter((c) => c.method === 'GET').length, 3);
+    assert.deepEqual(result.issues.map((i) => i.code), ['parse-error']);
+  });
+
   it('reads a tool result that carries the payload only as JSON text', async () => {
     const payload = answerIds('lookup_catalog', { catalog: { ids: ['101'] } });
     const { ctx } = fakeEndpoint({ [MCP]: mcpServer({ raw: true, call: () => ({ content: [{ type: 'image', data: '' }, { type: 'text', text: JSON.stringify(payload) }] }) }) });

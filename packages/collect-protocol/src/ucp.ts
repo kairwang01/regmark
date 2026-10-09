@@ -130,7 +130,8 @@ async function negotiate(ctx: CollectContext, top: { profile: Profile }): Promis
     return { ok: true, version, profile: leaf.profile };
   }
   const offered = [ucp.version, ...Object.keys(older)].filter((v): v is string => typeof v === 'string' && VERSION_TEXT.test(v));
-  const listed = offered.length ? offered.join(', ') : 'no version Regmark can read';
+  // A profile may name any number of versions; a message names a few.
+  const listed = offered.length ? `${offered.slice(0, 6).join(', ')}${offered.length > 6 ? ', …' : ''}` : 'no version Regmark can read';
   return { ok: false, issue: issue('ucp', 'version-unsupported', `the shop offers UCP ${listed}; Regmark reads ${UCP_VERSIONS.join(' and ')}`, url) };
 }
 

@@ -166,8 +166,18 @@ describe('readCatalogue: what it leaves out', () => {
     assert.deepEqual(sighting?.ids, { url: `${ORIGIN}/products/p`, aliases: ['1'] });
   });
 
-  it('takes a GTIN from an EAN, UPC, JAN or ISBN barcode as given, and leaves checking it to the identity rule', async () => {
-    for (const type of ['EAN', 'upc', 'JAN', 'ISBN']) {
+  it('takes an ISBN as a GTIN only when it is an ISBN-13, and goes on to the next barcode when it is an ISBN-10', async () => {
+    const gtinOf = async (barcodes: unknown[]) => {
+      const { ask } = script(() => lookupAnswer([product('9', 'p', [found(variant('1', 'A', 1, { barcodes }), ['1', 'exact'])])]));
+      return (await readCatalogue(ask, options([{ url: `${ORIGIN}/products/p`, variantIds: ['1'] }]))).sightings[0]?.ids.gtin;
+    };
+    assert.equal(await gtinOf([{ type: 'ISBN', value: '978-0-306-40615-7' }]), '978-0-306-40615-7');
+    assert.equal(await gtinOf([{ type: 'ISBN', value: '0306406152' }, { type: 'EAN', value: '9780306406157' }]), '9780306406157');
+    assert.equal(await gtinOf([{ type: 'ISBN', value: '080442957X' }]), undefined);
+  });
+
+  it('takes a GTIN from an EAN, UPC or JAN barcode as given, and leaves checking it to the identity rule', async () => {
+    for (const type of ['EAN', 'upc', 'JAN']) {
       const { ask } = script(() => lookupAnswer([product('9', 'p', [found(variant('1', 'A', 1, { barcodes: [{ type, value: ' 012345678905 ' }] }), ['1', 'exact'])])]));
       const [sighting] = (await readCatalogue(ask, options([{ url: `${ORIGIN}/products/p`, variantIds: ['1'] }]))).sightings;
       assert.equal(sighting?.ids.gtin, '012345678905', type);
@@ -235,6 +245,21 @@ describe('readCatalogue: what it asks', () => {
     const result = await readCatalogue(ask, options([TEE]));
     assert.deepEqual(asked.map(([op]) => op), ['lookup_catalog']);
     assert.deepEqual(result.issues.map((i) => [i.code, i.message, i.locator]), [['not-found', 'the catalogue has no product for this page', TEE.url]]);
+  });
+
+  it('calls a product it never asked about not asked, not missing: a search-only catalogue and exact variant ids', async () => {
+    const { ask, asked } = script(() => lookupAnswer([]));
+    const result = await readCatalogue(ask, options([TEE], { lookup: false }));
+    assert.deepEqual(asked, []);
+    assert.deepEqual(result.issues.map((i) => [i.code, i.locator]), [['not-asked', TEE.url]]);
+    assert.match(result.issues[0]!.message, /offers no lookup_catalog/);
+  });
+
+  it('calls a product with nothing to ask by not asked', async () => {
+    const { ask, asked } = script(() => lookupAnswer([]));
+    const result = await readCatalogue(ask, options([{ url: `${ORIGIN}/?p=123` }]));
+    assert.deepEqual(asked, []);
+    assert.deepEqual(result.issues.map((i) => [i.code, i.locator]), [['not-asked', `${ORIGIN}/?p=123`]]);
   });
 
   it('searches by title for a product known only from outside, and takes the result that names the same page', async () => {
@@ -308,5 +333,28 @@ describe('readCatalogue: what it asks', () => {
     const { ask, asked } = script(() => lookupAnswer([]));
     assert.deepEqual(await readCatalogue(ask, options([])), { sightings: [], issues: [] });
     assert.deepEqual(asked, []);
+  });
+});
+
+describe('readCatalogue: answers a reader must survive', () => {
+  // Written as text: JSON.stringify cannot write it either.
+  const deep = '['.repeat(20_000) + ']'.repeat(20_000);
+  const answerWith = (extra: string) =>
+    JSON.parse(JSON.stringify(lookupAnswer([product('100', 'classic-tee', [found(variant('101', 'TEE-S', 3900, { availability: { available: true, x: 'DEEP' } }), ['101', 'exact'])])])).replace('"DEEP"', extra));
+
+  it('reads a variant whose objects carry a value nested deeper than JSON.stringify can walk', async () => {
+    const { ask } = script(() => answerWith(deep));
+    const result = await readCatalogue(ask, options([{ ...TEE, variantIds: ['101'] }]));
+    assert.deepEqual(result.issues, []);
+    assert.equal(result.sightings[0]?.availability?.value, 'in_stock');
+    assert.equal(result.sightings[0]?.availability?.raw, '{"available":true}');
+  });
+
+  it('reads a price in a currency with no minor unit by the ISO 4217 exponent', async () => {
+    const rwf = variant('101', 'TEE-S', 5000, {});
+    rwf.price = { amount: 5000, currency: 'RWF' };
+    const { ask } = script(() => lookupAnswer([product('100', 'classic-tee', [found(rwf, ['101', 'exact'])])]));
+    const result = await readCatalogue(ask, options([{ ...TEE, variantIds: ['101'] }]));
+    assert.deepEqual(result.sightings[0]?.price?.value, { units: 50_000_000, currency: 'RWF' });
   });
 });

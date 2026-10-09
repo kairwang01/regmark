@@ -29,6 +29,13 @@ before(async () => {
     if (url === '/bomb.gz') return void res.writeHead(200, { 'content-type': 'application/gzip' }).end(zlib.gzipSync(Buffer.alloc(200_000, 97)));
     if (url === '/broken.gz') return void res.writeHead(200, { 'content-type': 'application/gzip' }).end(Buffer.from([0x1f, 0x8b, 1, 2, 3]));
     if (url === '/slow') return void setTimeout(() => res.writeHead(200).end('late'), 600);
+    if (url === '/open-stream') {
+      // Answers at once, then keeps the stream open, as an MCP server may.
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.write(': ping\n\n');
+      setTimeout(() => res.write('id: 1\ndata: {"jsonrpc":"2.0","id":1,"result":{}}\n\n'), 20);
+      return;
+    }
     if (url === '/hop') return void res.writeHead(302, { location: '/hello' }).end();
     if (url === '/loop') return void res.writeHead(302, { location: '/loop' }).end();
     if (url === '/away') return void res.writeHead(301, { location: 'https://elsewhere.example/x' }).end();
@@ -50,7 +57,10 @@ before(async () => {
   origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
 
-after(() => server.close());
+after(() => {
+  server.closeAllConnections();
+  server.close();
+});
 
 const local = (extra = {}) => createFetcher({ hosts: ['127.0.0.1'], allowPrivateNetwork: true, respectRobots: false, minIntervalMs: 0, ...extra });
 const refusal = (code: string) => (err: unknown) => err instanceof FetchRefused && err.code === code;
@@ -389,4 +399,35 @@ test('several Set-Cookie headers are kept one per line, because cookie dates con
   } finally {
     shop.close();
   }
+});
+
+test('query() takes an event stream as complete once the caller finds its answer in it, though the server keeps it open', async () => {
+  const seen: string[] = [];
+  const started = Date.now();
+  const r = await local({ timeoutMs: 5_000 }).query(`${origin}/open-stream`, {}, {
+    complete: (body) => {
+      seen.push(body);
+      return body.includes('"id":1');
+    },
+  });
+  assert.ok(Date.now() - started < 2_000, 'it does not wait for the stream to close');
+  assert.equal(r.status, 200);
+  assert.match(r.body, /data: \{"jsonrpc":"2.0","id":1,"result":\{\}\}/);
+  assert.equal(seen[0], ': ping\n\n', 'the stream is offered as it arrives');
+});
+
+test('query() without a completion test waits for an open stream until the time limit', async () => {
+  await assert.rejects(local({ timeoutMs: 300 }).query(`${origin}/open-stream`, {}), refusal('timeout'));
+});
+
+test('a completion test is not consulted for a response that is not an event stream', async () => {
+  let asked = false;
+  const r = await local().get(`${origin}/hello`, {
+    complete: () => {
+      asked = true;
+      return true;
+    },
+  });
+  assert.equal(asked, false);
+  assert.equal(r.body, 'héllo');
 });

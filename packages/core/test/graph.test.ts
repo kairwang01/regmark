@@ -252,3 +252,32 @@ test('without views, every product has an empty list of them', () => {
   const g = buildGraph([sighting('jsonld', { sku: 'MUG', url: URL_MUG })]);
   assert.deepEqual(g.products[0]!.alternateViews, []);
 });
+
+test('variants that share one SKU, as the style number on every size, are kept apart by their backend ids', () => {
+  const g = buildGraph([
+    sighting('platform', { sku: 'A12498M', variantId: '1', productId: '9', url: URL_TEE, options: { Size: '8' } }, { price: price('platform', '100.00') }),
+    sighting('platform', { sku: 'A12498M', variantId: '2', productId: '9', url: URL_TEE, options: { Size: '11' } }, { price: price('platform', '110.00') }),
+    sighting('mcp', { sku: 'A12498M', aliases: ['1'], url: URL_TEE, options: { Size: '8' } }, { price: price('mcp', '100.00') }),
+    sighting('mcp', { sku: 'A12498M', aliases: ['2'], url: URL_TEE, options: { Size: '11' } }, { price: price('mcp', '110.00') }),
+  ]);
+  assert.equal(g.products.length, 1);
+  const variants = g.products[0]!.variants;
+  assert.equal(variants.length, 2);
+  // Each variant gets a key of its own, not the shared SKU.
+  assert.deepEqual(variants.map((v) => v.key).sort(), ['#1', '#2']);
+  for (const v of variants) {
+    assert.deepEqual(v.surfaces.sort(), ['mcp', 'platform']);
+    assert.equal(new Set(v.price.map((o) => o.value.units)).size, 1, 'each variant is compared with itself');
+    assert.equal(v.ids.sku, 'A12498M');
+  }
+});
+
+test('a SKU two surfaces each give to one variant still joins them', () => {
+  const g = buildGraph([
+    sighting('platform', { sku: 'MUG-1', variantId: '7', productId: '3', url: URL_TEE }),
+    sighting('checkout', { sku: 'MUG-1', variantId: '7', productId: '3' }),
+    sighting('feed', { sku: 'MUG-1', url: URL_TEE }),
+  ]);
+  assert.equal(g.products[0]!.variants.length, 1);
+  assert.equal(g.products[0]!.variants[0]!.key, 'MUG-1');
+});
