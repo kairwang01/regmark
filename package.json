@@ -1,22 +1,57 @@
 {
-  "name": "regmark-workspace",
-  "private": true,
-  "type": "module",
-  "description": "Regmark: check that what a shop tells machines matches what its checkout charges.",
+  "name": "regmark",
+  "version": "0.1.0",
+  "description": "Check that what a shop tells machines matches what its checkout charges: price, stock and shipping parity across product pages, JSON-LD, feeds and the cart.",
+  "keywords": [
+    "ecommerce",
+    "structured-data",
+    "json-ld",
+    "schema.org",
+    "google-merchant-center",
+    "product-feed",
+    "woocommerce",
+    "shopify",
+    "agentic-commerce",
+    "audit",
+    "ci",
+    "cli"
+  ],
+  "homepage": "https://opensource.kairwang.cloud/regmark/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kairwang01/regmark.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kairwang01/regmark/issues"
+  },
   "license": "Apache-2.0",
   "author": "Kair Wang",
+  "type": "module",
+  "bin": {
+    "regmark": "dist/regmark.mjs"
+  },
+  "files": [
+    "dist/regmark.mjs",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE",
+    "docs/rules.md"
+  ],
   "packageManager": "pnpm@11.23.0",
   "engines": {
-    "node": ">=22.18"
+    "node": ">=22"
   },
   "scripts": {
+    "build": "node scripts/build.mjs",
     "test": "node --test \"packages/*/test/**/*.test.ts\" \"fixtures/*/test/**/*.test.ts\"",
     "bench": "node --test \"e2e/**/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json",
-    "regmark": "node packages/cli/src/bin.ts"
+    "regmark": "node packages/cli/src/bin.ts",
+    "prepublishOnly": "pnpm build && pnpm typecheck && pnpm test && pnpm bench"
   },
   "devDependencies": {
     "@types/node": "^22.18.0",
+    "esbuild": "^0.28.2",
     "typescript": "^5.9.2"
   }
 }

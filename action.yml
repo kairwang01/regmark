@@ -1,0 +1,105 @@
+name: Regmark audit
+description: Check that what a shop tells machines matches what its checkout charges. Fails the job when a rule goes over its budget.
+author: Kair Wang
+branding:
+  icon: crosshair
+  color: blue
+
+inputs:
+  store:
+    description: The shop to audit, such as https://shop.example. Use a staging or preview URL for pull requests.
+    required: true
+  feed:
+    description: Product feed URL in Google Merchant format, absolute or relative to the store.
+    required: false
+  platform:
+    description: woocommerce, shopify, auto or none.
+    required: false
+    default: auto
+  checkout:
+    description: Set to true to run the checkout probe (WooCommerce). Needs ownership-token.
+    required: false
+    default: 'false'
+  ship-to:
+    description: Destination for the checkout probe, as CC or CC:postcode.
+    required: false
+    default: US
+  ownership-token:
+    description: The token served at /.well-known/regmark.txt on the shop. Pass it from a secret.
+    required: false
+  sample:
+    description: How many products to audit.
+    required: false
+    default: '25'
+  budget:
+    description: Allowed findings per rule, one rule=number per line.
+    required: false
+  config:
+    description: Path to a regmark config file in the repository.
+    required: false
+  report-name:
+    description: Name of the uploaded artifact that holds the HTML, JSON and SARIF reports.
+    required: false
+    default: regmark-report
+  args:
+    description: Extra command-line arguments, passed through as written.
+    required: false
+
+outputs:
+  ok:
+    description: true when every rule is within its budget.
+    value: ${{ steps.audit.outputs.ok }}
+  sarif:
+    description: Path of the SARIF report, for github/codeql-action/upload-sarif.
+    value: regmark-report/regmark.sarif
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - id: audit
+      shell: bash
+      env:
+        REGMARK_OWNERSHIP_TOKEN: ${{ inputs.ownership-token }}
+        INPUT_STORE: ${{ inputs.store }}
+        INPUT_FEED: ${{ inputs.feed }}
+        INPUT_PLATFORM: ${{ inputs.platform }}
+        INPUT_CHECKOUT: ${{ inputs.checkout }}
+        INPUT_SHIP_TO: ${{ inputs.ship-to }}
+        INPUT_SAMPLE: ${{ inputs.sample }}
+        INPUT_BUDGET: ${{ inputs.budget }}
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_ARGS: ${{ inputs.args }}
+      run: |
+        mkdir -p regmark-report
+        # Inputs arrive through the environment, never by pasting them into
+        # this script, so a value cannot become shell.
+        args=(audit "$INPUT_STORE" --platform "$INPUT_PLATFORM" --sample "$INPUT_SAMPLE" --no-color
+              --html regmark-report/regmark.html --json regmark-report/regmark.json
+              --sarif regmark-report/regmark.sarif --markdown regmark-report/regmark.md)
+        [ -n "$INPUT_FEED" ] && args+=(--feed "$INPUT_FEED")
+        [ -n "$INPUT_CONFIG" ] && args+=(--config "$INPUT_CONFIG")
+        [ "$INPUT_CHECKOUT" = "true" ] && args+=(--checkout --ship-to "$INPUT_SHIP_TO")
+        while IFS= read -r line; do
+          line="${line//[[:space:]]/}"
+          [ -n "$line" ] && args+=(--budget "$line")
+        done <<< "$INPUT_BUDGET"
+        # shellcheck disable=SC2206
+        extra=($INPUT_ARGS)
+        set +e
+        node "$GITHUB_ACTION_PATH/dist/regmark.mjs" "${args[@]}" "${extra[@]}"
+        code=$?
+        set -e
+        [ -f regmark-report/regmark.md ] && cat regmark-report/regmark.md >> "$GITHUB_STEP_SUMMARY"
+        if [ "$code" -eq 0 ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; else echo "ok=false" >> "$GITHUB_OUTPUT"; fi
+        exit "$code"
+
+    - if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.report-name }}
+        path: regmark-report/
+        if-no-files-found: ignore
