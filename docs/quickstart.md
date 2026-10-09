@@ -62,7 +62,7 @@ Regmark tries WooCommerce, then Shopify. It reads the public catalogue when avai
 Add the surfaces shopping agents read when the shop has them. They are read-only too:
 
 ```bash
-regmark audit https://shop.example --ucp --mcp --acp-feed /feeds/acp.json \
+regmark audit https://shop.example --ucp --mcp --acp-feed /feeds/acp.jsonl.gz \
   --sample 5 --html report.html
 ```
 

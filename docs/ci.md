@@ -112,7 +112,7 @@ still decides the job.
       - uses: kairwang01/regmark@v0
         with:
           store: https://staging.shop.example
-          acp-feed: /feeds/acp.json
+          acp-feed: /feeds/acp.jsonl.gz
           ucp: 'true'
           mcp: 'true'
           cloaking: 'true'

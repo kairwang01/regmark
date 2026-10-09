@@ -2,9 +2,8 @@
 
 Every command, flag, config field and environment variable that Regmark reads,
 with the defaults the code sets. Start with the [quickstart](quickstart.md) for
-a first audit. This reference describes the current source; `--strict` and the
-expanded nested-field validation are new since the `v0.1.0` release. Use the
-reference from your release tag when running a pinned bundle.
+a first audit. This reference describes the current release; when you run a
+pinned older version, read the reference from that release's tag.
 
 [Commands](#command-line) · [Config fields](#fields) · [ACP feed](#the-acp-feed) · [Sampling](#which-products-get-audited) · [Baseline](#which-surface-is-believed) · [Budgets](#budgets) · [Request policy](#how-requests-are-made) · [Ownership](#writes) · [Cloaking check](#the-cloaking-check) · [Agent endpoints](#the-agent-endpoints)
 
@@ -52,7 +51,7 @@ line replaces it.
 | `--datum` | surface names, comma-separated | `checkout,platform,page` | The surfaces to believe, most trusted first. See [Which surface is believed](#which-surface-is-believed). |
 | `--budget` | `rule=n`, repeatable | see [Budgets](#budgets) | The most findings allowed for one rule. The rule must exist (`regmark rules` lists them) and the value is a whole number. Replaces the same rule in the config file. |
 | `--max-age` | `surface=age`, repeatable | none | The oldest a feed may be, as a whole number of minutes, hours or days: `feed=90m`, `feed=24h`, `feed=7d`. The surface is `feed` or `acp`, and that feed must be read in the same run. Turns on [`availability.stale`](rules.md#availabilitystale-warn), which compares the time the feed says it was generated with the time of the audit. Replaces the same surface in the config file. |
-| `--strict` | switch | off | Treat any collection issue as an incomplete audit: set report `ok` to `false` and exit `2`. Reports are still written when collection completes. New since `v0.1.0`; use a current source build until released. |
+| `--strict` | switch | off | Treat any collection issue as an incomplete audit: set report `ok` to `false` and exit `2`. Reports are still written when collection completes. |
 
 #### Output
 
@@ -251,7 +250,7 @@ exit code 2 and a message naming the mistake.
 | `sample` | whole number, 1 or more | `25` | How many products to audit. Same as `--sample`. |
 | `maxVariants` | whole number, 1 or more | `30` | Products with more variants than this are not candidates for the sample. The file only; there is no flag. See [Which products get audited](#which-products-get-audited). |
 | `seed` | whole number, 0 or more | `1` | Changes which products the sample picks. Same as `--seed`. |
-| `strict` | boolean | `false` | Incomplete collection sets report `ok` to false and CLI exit code to 2. Same as `--strict`; current source feature. |
+| `strict` | boolean | `false` | Incomplete collection sets report `ok` to false and CLI exit code to 2. Same as `--strict`. |
 | `datum` | array of surface names | `["checkout", "platform", "page"]` | The surfaces to believe, most trusted first. Same as `--datum`. |
 | `budget` | object: rule id to whole number | defaults in [Budgets](#budgets) | The most findings allowed per rule. Same as `--budget`. |
 | `maxAge` | object: `feed` or `acp` to a duration string | none | The oldest each feed may be, such as `{ "feed": "24h" }`. A duration is a whole number followed by `m`, `h` or `d`, greater than zero. The named feed must be read in the same run (`feed` needs `feed`, `acp` needs `acpFeed`), or the run stops with exit 2. Without it, `availability.stale` is skipped. Same as `--max-age`. |
@@ -566,8 +565,8 @@ The token is chosen by the operator. It must be 16 to 128 characters: letters,
 digits, `_` and `-`. If neither check succeeds, the probe and the cloaking
 check are skipped and an `ownership-not-verified` issue is recorded for each.
 A write is never redirected.
-In default mode, the ownership issue does not fail an otherwise passing audit; use current source's `--strict` when that
-missing probe must fail CI. The probe writes cart/session state, attempts
+In default mode, the ownership issue does not fail an otherwise passing audit;
+use `--strict` when that missing probe must fail CI. The probe writes cart/session state, attempts
 cleanup after each variant and never places an order or initiates payment.
 
 ### The cloaking check

@@ -1,8 +1,8 @@
 
   demo-shop.example    19 variants    0s
-  C page jsonld opengraph    M feed    Y –    K platform checkout
+  C page jsonld opengraph    M feed    Y acp ucp mcp    K platform checkout
 
-  ✓ 15 rules passed
+  ✓ 17 rules passed
 
   0 errors, 0 warnings. Within budget.
 
