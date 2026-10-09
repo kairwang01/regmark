@@ -78,7 +78,9 @@ test('clean shop: no findings of any severity, and no collection issues', async 
   assert.equal(result.ok, true);
   assert.equal(result.counts.products, 10);
   assert.equal(result.counts.variants, 19);
-  assert.ok(result.rules.every((r) => r.skipped === undefined), 'every rule ran');
+  // The opt-in checks are skipped until their settings are given; every other rule ran.
+  const optIn = new Set(['availability.stale', 'content.cloaking']);
+  assert.ok(result.rules.every((r) => r.skipped === undefined || optIn.has(r.id)), 'every rule ran');
 });
 
 test('the checkout probe leaves no cart with anything in it', () => {
@@ -96,7 +98,7 @@ test('without an ownership token the probe does not write, and the checkout rule
   assert.equal(after, before, 'no state-changing request reached the shop');
   assert.deepEqual(result.issues.map((i) => i.code), ['ownership-not-verified']);
   assert.ok(!result.surfaces.includes('checkout'));
-  assert.deepEqual(result.rules.filter((r) => r.skipped).map((r) => r.id).sort(), ['shipping.mismatch', 'shipping.undisclosed', 'variant.unpurchasable']);
+  assert.deepEqual(result.rules.filter((r) => r.skipped).map((r) => r.id).sort(), ['availability.stale', 'content.cloaking', 'shipping.mismatch', 'shipping.undisclosed', 'variant.unpurchasable']);
   assert.deepEqual(result.findings, []);
 });
 

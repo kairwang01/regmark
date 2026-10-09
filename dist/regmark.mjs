@@ -2665,6 +2665,15 @@ function createFetcher(options) {
         u = next2;
       }
     },
+    async query(url, json, init2 = {}) {
+      const u = parse8(url);
+      const headers = callerHeaders(u, init2);
+      assertAllowedHost(u);
+      if (!init2.asOwner) await assertRobots(u);
+      await pace(u);
+      const body = Buffer.from(JSON.stringify(json));
+      return finish(u, await request("POST", u, { "content-type": "application/json", accept: "application/json", ...headers }, body));
+    },
     async send(method, url, init2 = {}) {
       const u = parse8(url);
       assertAllowedHost(u);

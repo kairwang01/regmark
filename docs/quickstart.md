@@ -5,33 +5,35 @@ Run a known example first, then audit a small sample of your shop. The bundled C
 ## 1. See a finding without connecting a shop
 
 ```bash
-npx --allow-git=all github:kairwang01/regmark demo
+npx regmark demo
 ```
 
-This installs from the project's GitHub repository, starts a temporary local fixture shop, audits it and closes it. Open `regmark-demo.html` in your browser. The fixture has 19 planted defects that produce 22 findings; for example, its feed says `22.00 USD` while its cart charges `24.00 USD` for the same variant.
+This downloads the package, starts a temporary local fixture shop, audits it and closes it. Open `regmark-demo.html` in your browser. The fixture has defects planted in it, each with the findings it should produce; for example, its feed says `22.00 USD` while its cart charges `24.00 USD` for the same variant, and one of its pages tells shopping agents a lower price than it tells browsers.
 
 ```bash
-npx --allow-git=all github:kairwang01/regmark demo --clean --html regmark-clean.html
+npx regmark demo --clean --html regmark-clean.html
 ```
 
 The clean fixture should produce zero findings. Both demo commands exit `0`: they demonstrate the reports, including an intentionally failing shop. Use `audit` for a CI gate.
 
-The first run needs network access to obtain the package. The installed demo itself uses only its local fixture. `--allow-git=all` explicitly permits Git installation in npm versions that require it; if an older npm warns about that option, omit it.
+The first run needs network access to obtain the package. The demo itself uses only its local fixture.
 
 ## 2. Choose how to run it
 
 | Method | Use when | Command |
 |---|---|---|
-| GitHub package | Trying the current repository bundle | `npx --allow-git=all github:kairwang01/regmark demo` |
-| Global command | Running audits repeatedly | `npm install --global --allow-git=all github:kairwang01/regmark` |
-| Release file | Pinning a version in another CI system | Download and run `regmark.mjs` below |
-| Source checkout | Developing or trying changes before release | See [Development](#development) |
+| npx | Trying it, or an occasional audit | `npx regmark demo` |
+| Project dev dependency | Pinning the version a project's scripts use | `npm install --save-dev regmark`, then `npx regmark audit …` |
+| Global command | Running audits repeatedly | `npm install --global regmark` |
+| Release file | A CI image with Node and no package manager | Download and run `regmark.mjs` below |
+| GitHub Action | GitHub Actions | `uses: kairwang01/regmark@v0`, see the [CI guide](ci.md) |
+| Source checkout | Developing or trying unreleased changes | See [Development](#development) |
 
-For a pinned release, download both files from the same release:
+For a pinned release file, download both files from the same release:
 
 ```bash
-curl -fsSLO https://github.com/kairwang01/regmark/releases/download/v0.1.0/regmark.mjs
-curl -fsSLO https://github.com/kairwang01/regmark/releases/download/v0.1.0/regmark.mjs.sha256
+curl -fsSLO https://github.com/kairwang01/regmark/releases/download/v0.2.0/regmark.mjs
+curl -fsSLO https://github.com/kairwang01/regmark/releases/download/v0.2.0/regmark.mjs.sha256
 sha256sum -c regmark.mjs.sha256
 node regmark.mjs demo
 ```
@@ -55,7 +57,16 @@ regmark audit https://shop.example --feed /feeds/google.xml \
 
 A relative feed URL is resolved against the shop's origin. An absolute feed URL on another host is allowed because you explicitly named it. `--feed` expects a URL, not a local filesystem path.
 
-Regmark tries WooCommerce, then Shopify. It reads the public catalogue when available, and the server-returned HTML for each sampled product. It does not execute JavaScript. The default baseline is the platform API, falling back to the visible page. Actual cart totals are only read when a verified WooCommerce checkout probe runs.
+Regmark tries WooCommerce, then Shopify. It reads the public catalogue when available, and the server-returned HTML for each sampled product. It does not execute JavaScript. The default baseline is the platform API, falling back to the visible page. Actual cart observations are only read when a verified checkout probe runs.
+
+Add the surfaces shopping agents read when the shop has them. They are read-only too:
+
+```bash
+regmark audit https://shop.example --ucp --mcp --acp-feed /feeds/acp.json \
+  --sample 5 --html report.html
+```
+
+`--ucp` discovers the shop's Universal Commerce Protocol profile at `/.well-known/ucp` and reads its catalogue; `--mcp` asks the shop's storefront MCP server about the same products; `--acp-feed` reads an Agentic Commerce Protocol product feed. Give the feed's age limit with `--max-age feed=24h` to have a stale feed reported. [What each reads](configuration.md).
 
 Each host is paced at one request per second by default, so catalogue, page and variation reads can take minutes. Use `--verbose` for progress in a CI log. Start with a small sample before increasing coverage.
 
@@ -74,7 +85,7 @@ regmark rules
 
 For example, a feed price of `22.00 USD` against a platform price of `24.00 USD` points to a disagreement with the platform; it does not establish that checkout charges `24.00 USD`. Add a verified probe when that distinction matters.
 
-A normal `audit` exits `1` when an error rule exceeds its default zero budget. This is a useful result: its report files are still written. Exit `2` means a configuration/execution problem or no readable products. Current source also provides `--strict`, which makes any collection issue exit `2`; check your installed version before using this option. [Exit codes and collection issues](configuration.md#exit-codes).
+A normal `audit` exits `1` when an error rule exceeds its default zero budget. This is a useful result: its report files are still written. Exit `2` means a configuration/execution problem or no readable products. `--strict` also makes any collection issue exit `2`. [Exit codes and collection issues](configuration.md#exit-codes).
 
 ## 5. Save the setup
 
@@ -103,16 +114,16 @@ regmark audit --html report.html --json report.json
 
 CLI flags override matching file fields. Budgets merge per rule. A `checkout` object in the config turns on cart probing, even without `--checkout`; keep a separate read-only config if you use both modes. Prefer the environment variable for the ownership token. [Full precedence rules](configuration.md#precedence).
 
-## Optional: a WooCommerce cart probe
+## Optional: the cart probe and the cloaking check
 
 Use a staging shop you control. Create a token containing 16–128 letters, digits, `_` or `-`, serve `regmark-verify=<token>` at `/.well-known/regmark.txt`, and put that token in the `REGMARK_OWNERSHIP_TOKEN` environment variable or CI secret. DNS TXT verification is also supported.
 
 ```bash
-regmark audit https://staging.shop.example --platform woocommerce \
-  --feed /feeds/google.xml --checkout --ship-to US:94103 --html report.html
+regmark audit https://staging.shop.example --feed /feeds/google.xml \
+  --checkout --ship-to US:94103 --cloaking --html report.html
 ```
 
-The probe creates cart/session state, adds one unit per tested variant, sets the destination, reads totals and attempts to empty the cart after each variant. It does not place an order or pay. Verify that the report includes checkout observations and review any cleanup or ownership issue. Shopify has no checkout probe in this release. [Verification details](configuration.md#writes).
+The probe creates cart/session state, adds one unit per tested variant, sets the destination, reads the price, shipping and (on WooCommerce) the total, and empties the cart after each variant. It does not place an order or pay. On Shopify, tax is only known at checkout, so the probe reads the line price, whether the cart accepts the variant, and the shipping estimate. The cloaking check fetches each sampled page again as a browser and as a shopping agent and reports a page that tells them different prices or stock levels; it costs one extra request per page per client. Verify that the report includes checkout observations and review any cleanup or ownership issue. [Verification details](configuration.md#writes).
 
 ## Common problems
 
@@ -125,8 +136,9 @@ The probe creates cart/session state, adds one unit per tested variant, sets the
 | Theme price is absent | Check the raw HTML; configure `page.priceSelector` and `page.currency` if needed |
 | Price only appears after JavaScript runs | Regmark reads static response HTML; provide server-rendered facts or use browser testing alongside it |
 | Private-address request refused | For your local/staging network, explicitly add `--allow-private-network` |
-| Ownership check or probe is skipped | Check the store hostname, served token, environment variable and WooCommerce platform detection |
-| Report passes with collection issues | Default mode preserves partial results; current source's `--strict` rejects any collection issue |
+| Ownership check or probe is skipped | Check the store hostname, served token, environment variable and platform detection |
+| Report passes with collection issues | Default mode preserves partial results; `--strict` rejects any collection issue |
+| `--ucp` or `--mcp` reports a version or not-found issue | The shop may not offer that endpoint, or may speak a protocol version Regmark does not read yet; the issue names which |
 | Too few variants were checked | Inspect catalogue limits, `sample`, `maxVariants` and missing/blocked source issues |
 | A finding seems wrong | Attach the rule, values, locators and a minimal sanitized fixture to a [false-alarm issue](https://github.com/kairwang01/regmark/issues/new?template=false-alarm.yml) |
 
