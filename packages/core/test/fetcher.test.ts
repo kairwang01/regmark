@@ -24,6 +24,10 @@ before(async () => {
     }
     if (url === '/bomb') return void res.writeHead(200, { 'content-encoding': 'gzip' }).end(zlib.gzipSync(Buffer.alloc(200_000, 97)));
     if (url === '/big') return void res.writeHead(200).end(Buffer.alloc(200_000, 97));
+    if (url === '/file.gz') return void res.writeHead(200, { 'content-type': 'application/gzip' }).end(zlib.gzipSync('{"item_id":"A"}\n'));
+    if (url === '/twice.gz') return void res.writeHead(200, { 'content-encoding': 'gzip' }).end(zlib.gzipSync(zlib.gzipSync('twice')));
+    if (url === '/bomb.gz') return void res.writeHead(200, { 'content-type': 'application/gzip' }).end(zlib.gzipSync(Buffer.alloc(200_000, 97)));
+    if (url === '/broken.gz') return void res.writeHead(200, { 'content-type': 'application/gzip' }).end(Buffer.from([0x1f, 0x8b, 1, 2, 3]));
     if (url === '/slow') return void setTimeout(() => res.writeHead(200).end('late'), 600);
     if (url === '/hop') return void res.writeHead(302, { location: '/hello' }).end();
     if (url === '/loop') return void res.writeHead(302, { location: '/loop' }).end();
@@ -151,6 +155,20 @@ test('undefined policy overrides retain safe defaults and obey a real robots ref
 test('the size limit counts decompressed bytes', async () => {
   await assert.rejects(local({ maxBytes: 50_000 }).get(`${origin}/big`), refusal('too-large'));
   await assert.rejects(local({ maxBytes: 50_000 }).get(`${origin}/bomb`), refusal('too-large'));
+});
+
+test('a gzip file is unpacked only when the caller says the resource may be one', async () => {
+  assert.equal((await local().get(`${origin}/file.gz`, { gzipFile: true })).body, '{"item_id":"A"}\n');
+  assert.notEqual((await local().get(`${origin}/file.gz`)).body, '{"item_id":"A"}\n');
+  // A .gz file sent with Content-Encoding: gzip is compressed twice, and unpacked twice.
+  assert.equal((await local().get(`${origin}/twice.gz`, { gzipFile: true })).body, 'twice');
+  // A body without the magic bytes is left as it is.
+  assert.equal((await local().get(`${origin}/hello`, { gzipFile: true })).body, 'héllo');
+});
+
+test('a gzip file is held to the size limit after it is unpacked, and a broken one fails', async () => {
+  await assert.rejects(local({ maxBytes: 50_000 }).get(`${origin}/bomb.gz`, { gzipFile: true }), refusal('too-large'));
+  await assert.rejects(local().get(`${origin}/broken.gz`, { gzipFile: true }), refusal('network'));
 });
 
 test('invalid or interrupted compressed responses fail without leaving a decoder running', async () => {

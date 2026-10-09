@@ -332,6 +332,13 @@ export type RequestOptions = {
    * client on a shop that has not shown it is the operator's.
    */
   asOwner?: boolean;
+  /**
+   * The resource may itself be a gzip file, such as products.jsonl.gz, which
+   * a static host serves as application/gzip with no Content-Encoding. A body
+   * that starts with the gzip magic bytes is then decompressed before it is
+   * decoded, and the size limit counts the decompressed bytes. Reads only.
+   */
+  gzipFile?: boolean;
 };
 
 /**

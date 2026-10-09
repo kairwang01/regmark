@@ -266,6 +266,23 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
     return headers;
   }
 
+  /**
+   * A body that is a gzip file, not a gzip transfer: Content-Encoding is
+   * undone in the pipeline, but a .gz file arrives still compressed. Only the
+   * magic bytes decide, because hosts label these files in several ways. The
+   * limit is the one the pipeline enforces, so a small file cannot unpack
+   * into a large one.
+   */
+  function gunzipFile(u: URL, raw: Raw): Raw {
+    if (raw.body.length < 2 || raw.body[0] !== 0x1f || raw.body[1] !== 0x8b) return raw;
+    try {
+      return { ...raw, body: zlib.gunzipSync(raw.body, { maxOutputLength: policy.maxBytes }) };
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ERR_BUFFER_TOO_LARGE') throw new FetchRefused('too-large', u.href, `over ${policy.maxBytes} bytes`);
+      throw new FetchRefused('network', u.href, `gzip: ${(err as Error).message}`);
+    }
+  }
+
   const finish = (u: URL, raw: Raw): Fetched => ({
     url: u.href,
     status: raw.status,
@@ -290,7 +307,7 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
         await pace(u);
         const raw = await request('GET', u, headers);
         const location = raw.headers['location'];
-        if (!REDIRECTS.has(raw.status) || !location) return finish(u, raw);
+        if (!REDIRECTS.has(raw.status) || !location) return finish(u, init.gzipFile ? gunzipFile(u, raw) : raw);
         let next: URL;
         try {
           next = new URL(location, u);
