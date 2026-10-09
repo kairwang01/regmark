@@ -2,17 +2,19 @@ import type { Money } from './types.ts';
 
 const SCALE = 10_000;
 
-/** Currencies whose minor unit is not two digits. */
+/** Currencies whose minor unit is not two digits, as ISO 4217 lists them. */
 const MINOR_UNIT: Readonly<Record<string, number>> = {
   BHD: 3, IQD: 3, JOD: 3, KWD: 3, LYD: 3, OMR: 3, TND: 3,
-  CLP: 0, ISK: 0, JPY: 0, KRW: 0, PYG: 0, UGX: 0, VND: 0, XAF: 0, XOF: 0, XPF: 0,
+  BIF: 0, CLP: 0, DJF: 0, GNF: 0, ISK: 0, JPY: 0, KMF: 0, KRW: 0, PYG: 0, RWF: 0, UGX: 0, UYI: 0, VND: 0, VUV: 0,
+  XAF: 0, XOF: 0, XPF: 0,
+  CLF: 4, UYW: 4,
 };
 
 const ISO_CODES = new Set(
   (
-    'AED ARS AUD BGN BHD BRL CAD CHF CLP CNY COP CZK DKK EGP EUR GBP HKD HUF IDR ILS INR IQD ISK JOD JPY KRW KWD ' +
-    'LYD MAD MXN MYR NGN NOK NZD OMR PEN PHP PKR PLN PYG QAR RON RUB SAR SEK SGD THB TND TRY TWD UAH UGX USD VND ' +
-    'XAF XOF XPF ZAR'
+    'AED ARS AUD BGN BHD BIF BRL CAD CHF CLP CNY COP CZK DJF DKK EGP EUR GBP GNF HKD HUF IDR ILS INR IQD ISK JOD ' +
+    'JPY KMF KRW KWD LYD MAD MXN MYR NGN NOK NZD OMR PEN PHP PKR PLN PYG QAR RON RUB RWF SAR SEK SGD THB TND TRY ' +
+    'TWD UAH UGX USD VND VUV XAF XOF XPF ZAR'
   ).split(' '),
 );
 

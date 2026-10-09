@@ -249,6 +249,7 @@ test('a refusal about the request (an expired nonce) is a probe failure, not an 
       url.endsWith('/cart/add-item')
         ? reply(url, 403, { code: 'woocommerce_rest_invalid_nonce', message: 'Nonce is invalid.', data: { status: 403 } })
         : reply(url, 200, method === 'DELETE' ? [] : {}),
+    query: async (url: string) => reply(url, 500, {}),
   };
   const result = await probeWooCheckout(makeContext(fetcher), [{ variantId: '102', sku: 'TEE-BLU-M' }], { shipTo: { country: 'US' } });
   assert.equal(result.sightings.length, 0);

@@ -1,6 +1,9 @@
 {
   "store": "https://shop.example",
   "feed": "/feeds/google.xml",
+  "maxAge": {
+    "feed": "24h"
+  },
   "platform": "woocommerce",
   "checkout": {
     "shipTo": {
@@ -8,6 +11,7 @@
       "postcode": "94103"
     }
   },
+  "cloaking": true,
   "sample": 40,
   "seed": 7,
   "maxVariants": 30,

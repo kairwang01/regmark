@@ -53,6 +53,24 @@ describe('tab-separated feed', () => {
     );
   });
 
+  it('takes the price, not a day count, from an entry that gives handling and transit times', () => {
+    const body = [
+      'id\tlink\tprice\tshipping',
+      // Google's own example: one to one day of handling, two to three in transit.
+      'G-1\thttps://shop.example/p/g\t20.00 USD\tUS:CA:Overnight:16.00 USD:1:1:2:3',
+      'G-2\thttps://shop.example/p/h\t20.00 USD\tUS::Standard:6.20 USD:1:2',
+    ].join('\n');
+    const [first, second] = parseFeed(body, FEED_URL, FETCHED_AT, NOW).sightings;
+    assert.deepStrictEqual(
+      first?.shipping,
+      observation({ free: false, cost: { units: 160000, currency: 'USD' }, country: 'US' }, 'US:CA:Overnight:16.00 USD:1:1:2:3', at('G-1', 'shipping')),
+    );
+    assert.deepStrictEqual(
+      second?.shipping,
+      observation({ free: false, cost: { units: 62000, currency: 'USD' }, country: 'US' }, 'US::Standard:6.20 USD:1:2', at('G-2', 'shipping')),
+    );
+  });
+
   it('leaves missing cells empty on a short row', () => {
     const body = ['id\ttitle\tlink\tprice', 'E-1\tShort\thttps://shop.example/p/short'].join('\n');
     const result = parseFeed(body, FEED_URL, FETCHED_AT, NOW);

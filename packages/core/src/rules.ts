@@ -10,6 +10,7 @@ import type {
   OfferGraph,
   Rule,
   RuleContext,
+  RuleOptions,
   RuleSummary,
   Severity,
   Surface,
@@ -52,6 +53,8 @@ export type RunOptions = {
   /** Rule id to the largest finding count that still passes. Overrides the default. */
   budget?: Readonly<Record<string, number>>;
   now?: Date;
+  /** Settings for the rules that take one, such as maxAgeMs. */
+  options?: RuleOptions;
 };
 
 export type RunResult = { findings: Finding[]; rules: RuleSummary[]; ok: boolean };
@@ -72,6 +75,7 @@ export function runRules(graph: OfferGraph, rules: readonly Rule[], options: Run
     collected,
     graph,
     now: options.now ?? new Date(),
+    options: options.options ?? {},
     pick: (observations) => pickDatum(observations, options.datum),
   };
 
@@ -85,6 +89,11 @@ export function runRules(graph: OfferGraph, rules: readonly Rule[], options: Run
     if (missingAll.length || missingAny) {
       const need = missingAll.length ? missingAll.join(', ') : `one of ${rule.needsAny!.join(', ')}`;
       summaries.push({ ...base, findings: 0, passed: true, skipped: `needs ${need}` });
+      continue;
+    }
+    const unmet = rule.requires?.(ctx);
+    if (unmet) {
+      summaries.push({ ...base, findings: 0, passed: true, skipped: unmet });
       continue;
     }
     const own = graph.products.flatMap((p) => rule.check(p, ctx));

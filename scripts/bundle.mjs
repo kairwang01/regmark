@@ -16,10 +16,27 @@
 // packing it. That turns a two-second `npx github:…` into a failed install.
 
 import { readFile, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import path from 'node:path';
 import { build } from 'esbuild';
 
 const OUT = 'dist/regmark.mjs';
 const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+
+// The page collector uses one thing from cheerio: `load`, which parses with
+// parse5. cheerio's main entry also carries fromURL and loadBuffer, and with
+// them an HTTP client and a character-set library, about 1.5 MB that Regmark
+// never calls (all network access goes through its own guarded fetcher). The
+// bundle therefore takes `load` from the module that defines it. Its types
+// and behaviour are those of `import { load } from 'cheerio'`.
+const fromCollectPage = createRequire(new URL('../packages/collect-page/package.json', import.meta.url));
+const cheerioLoad = path.join(path.dirname(fromCollectPage.resolve('cheerio/package.json')), 'dist/esm/load-parse.js');
+const slimCheerio = {
+  name: 'regmark-slim-cheerio',
+  setup(b) {
+    b.onResolve({ filter: /^cheerio$/ }, () => ({ path: cheerioLoad }));
+  },
+};
 
 const result = await build({
   entryPoints: ['packages/cli/src/bin.ts'],
@@ -30,6 +47,7 @@ const result = await build({
   format: 'esm',
   target: 'node22',
   legalComments: 'none',
+  plugins: [slimCheerio],
   define: { __REGMARK_VERSION__: JSON.stringify(pkg.version) },
   // Some dependencies still call require() for Node built-ins.
   banner: { js: "import { createRequire as __regmarkRequire } from 'node:module';\nconst require = __regmarkRequire(import.meta.url);" },

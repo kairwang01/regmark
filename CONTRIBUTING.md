@@ -3,7 +3,7 @@
 ## Before you start
 
 Try the [fixture demo](docs/quickstart.md) and read the
-[supported boundaries](README.md#supported-surfaces-and-limits). Good first
+[supported boundaries](README.md#what-it-reads). Good first
 contributions include a minimal theme HTML fixture, a clearer rule explanation, a reproducible false
 alarm, or a correction that keeps the English and Chinese READMEs aligned.
 No live store credentials are needed for the test suite.
@@ -42,8 +42,22 @@ that file directly. Review source changes first, then verify the bundle
 freshness check; do not hand-edit generated code.
 
 The repository workflow runs type checking, unit tests, fixture benchmarks and
-bundle verification on Node 22 and 24. A release pin still points at its
-original implementation until a new release is published.
+bundle verification on Node 22 and 24, and runs the GitHub Action itself
+against both fixture shops. A release pin still points at its original
+implementation until a new release is published.
+
+## Cutting a release
+
+1. Set the new version in `package.json`, move the `Unreleased` notes in
+   `CHANGELOG.md` under a `## X.Y.Z (date)` heading, run `pnpm bundle` and
+   `pnpm check`, and merge that to `main`.
+2. Tag the merge commit `vX.Y.Z` and push the tag. The release workflow checks
+   the commit again, creates a draft GitHub release with the bundle and its
+   SHA-256, publishes the package to npm with provenance and moves the major
+   tag (`v0`).
+3. Open the draft release on GitHub, tick **Publish this Action to the GitHub
+   Marketplace**, check the categories and publish it. That last step cannot
+   be automated.
 
 ## How the code is laid out
 
@@ -53,11 +67,13 @@ rule, and rules know no reporter.
 - `packages/core/`: types, money, identifiers, the offer graph, the rule
   runner, the guarded fetcher, ownership verification
 - `packages/collect-page/`: visible price and stock, JSON-LD, microdata, Open
-  Graph, text
-- `packages/collect-feed/`: Google Merchant feeds
+  Graph, text, and the pages read again as other clients for the cloaking check
+- `packages/collect-feed/`: Google Merchant feeds and ACP product feeds
+- `packages/collect-protocol/`: the endpoints agents call: the UCP catalogue
+  and a shop's storefront MCP server, read-only
 - `packages/collect-woo/`: WooCommerce Store API and the checkout probe
-- `packages/collect-shopify/`: Shopify public catalogue, read-only
-- `packages/rules/`: the fifteen rules
+- `packages/collect-shopify/`: Shopify public catalogue and the cart probe
+- `packages/rules/`: the seventeen rules
 - `packages/report/`: terminal, JSON, SARIF, JUnit, Markdown and HTML output
 - `packages/cli/`: the command line and the audit itself
 - `fixtures/shop/`: the two test shops, one misprinted and one clean
@@ -144,8 +160,9 @@ disagreement is a finding is the rules' job. A collector takes a
 
 - Keep commands aligned with CLI behavior and distinguish current source from
   released versions, especially for new flags.
-- Explain coverage: read-only defaults, optional WooCommerce cart writes,
-  Shopify read-only support, static HTML and sample limits.
+- Explain coverage: read-only defaults, the owner-verified checks (cart
+  probe on WooCommerce and Shopify, cloaking check), the protocol versions the
+  UCP and MCP readers speak, static HTML and sample limits.
 - Refresh screenshots from actual fixture output; label synthetic examples.
   Use the [demo reproduction guide](docs/demo.md).
 - Check relative links and keep the two READMEs consistent.

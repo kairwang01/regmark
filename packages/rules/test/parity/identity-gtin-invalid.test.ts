@@ -95,3 +95,11 @@ test('an invalid GTIN that is also duplicated is reported once per variant, as i
   ]);
   assert.ok(findings.every((f) => f.message.includes('fails its check digit')));
 });
+
+test('a GTIN on a row held back from buyers is shown to no one, and is not checked', () => {
+  const findings = run(rule, [
+    variant('platform', { sku: 'BELT-34', variantId: '902', productId: '900', url: URL }),
+    variant('acp', { aliases: ['BELT-34'], gtin: BAD, url: URL }, { withheld: true }),
+  ]);
+  assert.deepEqual(findings, []);
+});

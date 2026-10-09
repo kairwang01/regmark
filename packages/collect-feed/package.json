@@ -1,7 +1,7 @@
 {
   "name": "@regmark/collect-feed",
-  "version": "0.1.0",
-  "description": "Reads Google Merchant format product feeds.",
+  "version": "0.2.0",
+  "description": "Reads Google Merchant and Agentic Commerce Protocol product feeds.",
   "license": "Apache-2.0",
   "author": "Kair Wang",
   "type": "module",

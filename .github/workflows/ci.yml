@@ -40,3 +40,76 @@ jobs:
           node dist/regmark.mjs demo --html /tmp/regmark-defects.html
           node dist/regmark.mjs demo --clean --html /tmp/regmark-clean.html
 
+
+  # The action itself, run the way a user's workflow runs it, against the
+  # fixture shop on the runner: the misprinted shop must fail the job with
+  # findings, and the clean shop must pass with none.
+  action:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [misprint, clean]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+      - name: Start the fixture shop
+        run: |
+          node fixtures/shop/src/serve.ts --mode ${{ matrix.mode }} --port 4010 &
+          for _ in $(seq 1 50); do
+            curl -fsS http://127.0.0.1:4010/robots.txt > /dev/null && exit 0
+            sleep 0.2
+          done
+          echo "the fixture shop did not start" >&2
+          exit 1
+      - id: regmark
+        uses: ./
+        continue-on-error: true
+        with:
+          store: http://127.0.0.1:4010
+          feed: /feeds/google.xml
+          max-age: feed=24h
+          acp-feed: /feeds/acp.jsonl.gz
+          platform: woocommerce
+          ucp: 'true'
+          mcp: 'true'
+          checkout: 'true'
+          ship-to: US:94103
+          cloaking: 'true'
+          ownership-token: fixture_0123456789abcdef
+          sample: '50'
+          report-name: regmark-${{ matrix.mode }}
+          args: --allow-private-network --interval 0
+      - name: Check the outcome
+        env:
+          MODE: ${{ matrix.mode }}
+          OUTCOME: ${{ steps.regmark.outcome }}
+          OK: ${{ steps.regmark.outputs.ok }}
+          EXIT_CODE: ${{ steps.regmark.outputs.exit-code }}
+          FINDINGS: ${{ steps.regmark.outputs.findings }}
+          PRODUCTS: ${{ steps.regmark.outputs.products }}
+        run: |
+          echo "mode=$MODE outcome=$OUTCOME ok=$OK exit=$EXIT_CODE findings=$FINDINGS products=$PRODUCTS"
+          for f in regmark.json regmark.html regmark.sarif regmark.md; do
+            test -s "regmark-report/$f" || { echo "missing report: $f" >&2; exit 1; }
+          done
+          test "$PRODUCTS" -gt 0
+          # Every surface the inputs asked for was read.
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync("regmark-report/regmark.json", "utf8"));
+            const want = ["acp", "checkout", "feed", "jsonld", "mcp", "opengraph", "page", "platform", "ucp"];
+            const missing = want.filter((s) => !r.surfaces.includes(s));
+            if (missing.length) { console.error("surfaces not read: " + missing.join(", ")); process.exit(1); }
+            const skipped = r.rules.filter((x) => x.skipped).map((x) => x.id);
+            if (skipped.length) { console.error("rules skipped: " + skipped.join(", ")); process.exit(1); }
+          '
+          if [ "$MODE" = misprint ]; then
+            test "$OUTCOME" = failure && test "$OK" = false && test "$EXIT_CODE" = 1 && test "$FINDINGS" -gt 0
+          else
+            test "$OUTCOME" = success && test "$OK" = true && test "$EXIT_CODE" = 0 && test "$FINDINGS" = 0
+          fi

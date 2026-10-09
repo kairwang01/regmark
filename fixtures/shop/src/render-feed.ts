@@ -17,7 +17,8 @@ function money(amount: string, currency: string | null): string {
   return xml(currency === null ? amount : `${amount} ${currency}`);
 }
 
-function variantUrl(origin: string, p: ProductSays, v: VariantSays): string {
+/** The variant's page: the product page with its options in the query, as WooCommerce links a variation. */
+export function variantUrl(origin: string, p: ProductSays, v: VariantSays): string {
   const base = `${origin}/product/${p.slug}/`;
   const entries = Object.entries(v.options);
   if (entries.length === 0) return base;
@@ -99,6 +100,8 @@ export function renderFeed(shop: Shop, origin: string): string {
     '<title>Northfold</title>',
     `<link>${xml(origin)}/</link>`,
     '<description>Northfold product feed</description>',
+    // toUTCString writes the RFC 822 form RSS asks for: "Fri, 09 Oct 2026 12:00:00 GMT".
+    `<lastBuildDate>${shop.feedBuiltAt.toUTCString()}</lastBuildDate>`,
     ...items.map((body) => `<item>\n${body}\n</item>`),
     '</channel>',
     '</rss>',

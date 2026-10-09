@@ -24,6 +24,9 @@ export function fakeShop(answers: Record<string, Answer>): FakeShop {
     async send(): Promise<Fetched> {
       throw new Error('the Shopify collector must never write');
     },
+    async query(): Promise<Fetched> {
+      throw new Error('the Shopify catalogue collector never posts a query');
+    },
   };
   const ctx: CollectContext = {
     store: new URL(ORIGIN),

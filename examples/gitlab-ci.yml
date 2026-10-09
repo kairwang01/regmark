@@ -3,9 +3,11 @@ regmark:
   image: node:22
   variables:
     # The release to run. Pin it, so the tool does not change under a build.
-    REGMARK_VERSION: v0.1.0
+    REGMARK_VERSION: v0.2.0
   script:
     - curl -fsSLO "https://github.com/kairwang01/regmark/releases/download/${REGMARK_VERSION}/regmark.mjs"
+    - curl -fsSLO "https://github.com/kairwang01/regmark/releases/download/${REGMARK_VERSION}/regmark.mjs.sha256"
+    - sha256sum -c regmark.mjs.sha256
     - node regmark.mjs audit "$REGMARK_STORE" --platform woocommerce --feed /feeds/google.xml --sample 25 --no-color --junit regmark-junit.xml --html regmark.html --json regmark.json
   artifacts:
     when: always

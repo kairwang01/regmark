@@ -1,4 +1,9 @@
 # Copy this file to .github/workflows/regmark.yml in your repository.
+#
+# It audits a staging shop on every pull request, posts the findings as one
+# pull request comment (updated on each push), keeps the reports as an
+# artifact and sends the SARIF report to code scanning. Remove what you do
+# not need: only `store` is required.
 name: Regmark
 
 on:
@@ -12,20 +17,24 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write
+      pull-requests: write # for the comment
+      security-events: write # for the SARIF upload
     steps:
+      # Needed only when the `config` input names a file in this repository.
       - uses: actions/checkout@v7
 
       - name: Audit the staging shop
-        uses: kairwang01/regmark@v0.1.0
+        uses: kairwang01/regmark@v0
         with:
           store: https://staging.shop.example
           feed: /feeds/google.xml
+          max-age: feed=24h
           platform: woocommerce
           checkout: 'true'
           ship-to: US:94103
           ownership-token: ${{ secrets.REGMARK_OWNERSHIP_TOKEN }}
           sample: '25'
+          comment: 'true'
 
       - name: Upload SARIF to code scanning
         if: always()

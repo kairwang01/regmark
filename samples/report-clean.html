@@ -103,7 +103,7 @@ td.budget{grid-column:4;grid-row:1;white-space:normal}}
   <p class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="8.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M16 1v30M1 16h30" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Regmark<span>audit report</span></p>
   <dl class="meta">
     <div><dt>shop</dt><dd>demo-shop.example</dd></div>
-    <div><dt>run</dt><dd>2026-10-09 07:52:57 UTC</dd></div>
+    <div><dt>run</dt><dd>2026-10-09 09:32:35 UTC</dd></div>
     <div><dt>took</dt><dd>0 s</dd></div>
     <div><dt>believes</dt><dd>checkout, then platform, then page</dd></div>
   </dl>
@@ -112,7 +112,7 @@ td.budget{grid-column:4;grid-row:1;white-space:normal}}
   <h1 class="press"><span class="pc" aria-hidden="true">In register</span><span class="pm" aria-hidden="true">In register</span><span class="py" aria-hidden="true">In register</span><span class="pk">In register</span></h1>
   <p><b>0 errors, 0 warnings</b> across 19 variants of 10 products. Every rule is within its budget.</p>
 </section>
-<section class="plates" aria-label="Surfaces collected, by plate"><div class="plate"><h3><span class="chip chip-c">C</span>Page</h3><p class="note">what the product page shows and embeds</p><ul><li>page</li><li>jsonld</li><li>opengraph</li></ul></div><div class="plate"><h3><span class="chip chip-m">M</span>Feed</h3><p class="note">what the merchant feed lists</p><ul><li>feed</li></ul></div><div class="plate none"><h3><span class="chip chip-y">Y</span>Protocol</h3><p class="note">what agent protocol endpoints return</p><ul><li>not collected</li></ul></div><div class="plate"><h3><span class="chip chip-k">K</span>Checkout</h3><p class="note">what the shop charges: the key plate</p><ul><li>platform</li><li>checkout</li></ul></div></section>
+<section class="plates" aria-label="Surfaces collected, by plate"><div class="plate"><h3><span class="chip chip-c">C</span>Page</h3><p class="note">what the product page shows and embeds</p><ul><li>page</li><li>jsonld</li><li>opengraph</li></ul></div><div class="plate"><h3><span class="chip chip-m">M</span>Feed</h3><p class="note">what the merchant feed lists</p><ul><li>feed</li></ul></div><div class="plate"><h3><span class="chip chip-y">Y</span>Protocol</h3><p class="note">what agent protocol endpoints return</p><ul><li>ucp</li><li>acp</li><li>mcp</li></ul></div><div class="plate"><h3><span class="chip chip-k">K</span>Checkout</h3><p class="note">what the shop charges: the key plate</p><ul><li>platform</li><li>checkout</li></ul></div></section>
 <section>
 <h2>Rules</h2>
 <table>
@@ -147,6 +147,12 @@ td.budget{grid-column:4;grid-row:1;white-space:normal}}
   <td class="what">A surface says an item can be bought when it cannot, or the reverse.</td>
   <td class="num">0</td>
   <td class="budget">limit 0</td>
+</tr><tr class="is-pass">
+  <td class="mark" title="clean"><span aria-hidden="true">✓</span><span class="vh">clean</span></td>
+  <td class="id">availability.stale</td>
+  <td class="what">A feed is older than the refresh interval set for it</td>
+  <td class="num">0</td>
+  <td class="budget">no limit</td>
 </tr><tr class="is-pass">
   <td class="mark" title="clean"><span aria-hidden="true">✓</span><span class="vh">clean</span></td>
   <td class="id">variant.missing</td>
@@ -207,6 +213,12 @@ td.budget{grid-column:4;grid-row:1;white-space:normal}}
   <td class="what">Characters that render as nothing and can carry text a person never sees.</td>
   <td class="num">0</td>
   <td class="budget">no limit</td>
+</tr><tr class="is-pass">
+  <td class="mark" title="clean"><span aria-hidden="true">✓</span><span class="vh">clean</span></td>
+  <td class="id">content.cloaking</td>
+  <td class="what">A page tells an agent a different price or stock level than a browser</td>
+  <td class="num">0</td>
+  <td class="budget">limit 0</td>
 </tr></tbody>
 </table>
 </section>

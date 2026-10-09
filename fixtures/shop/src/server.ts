@@ -1,4 +1,5 @@
-// The fixture shop's HTTP server: the page and feed renderers plus the store API.
+// The fixture shop's HTTP server: the page and feed renderers, the store API,
+// and the endpoints agents call (UCP and MCP).
 //
 // The origin written into pages comes from the address the socket actually
 // bound to, never from the request's Host header, so a client cannot make the
@@ -6,12 +7,16 @@
 
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { buildShop } from './shop.ts';
+import { gzipSync } from 'node:zlib';
+import { buildShop, clientOf } from './shop.ts';
 import type { Shop } from './shop.ts';
+import { renderAcpFeed } from './render-acp.ts';
 import { renderFeed } from './render-feed.ts';
 import { renderHome, renderProductPage, renderRobots, renderSitemap } from './render-page.ts';
 import { createStoreApi } from './store-api.ts';
 import type { CartSnapshot, StoreApi } from './store-api.ts';
+import { AGENT_PATHS, createAgentApi } from './agent-api.ts';
+import type { AgentApi } from './agent-api.ts';
 
 const STORE_BASE = '/wp-json/wc/store/v1';
 const MAX_BODY_BYTES = 64 * 1024;
@@ -20,28 +25,36 @@ const HTML = 'text/html; charset=utf-8';
 const TEXT = 'text/plain; charset=utf-8';
 const XML = 'application/xml; charset=utf-8';
 const JSON_TYPE = 'application/json; charset=utf-8';
+const JSONL = 'application/jsonl; charset=utf-8';
 
 export type RunningShop = {
   origin: string;
   shop: Shop;
   /** "METHOD /path?query" for every request received, in order. */
   requests: string[];
+  /** The User-Agent of every request received, in the same order; empty when none was sent. */
+  userAgents: string[];
   carts(): CartSnapshot[];
+  /** Every JSON-RPC request the MCP server received: "initialize", "tools/call lookup_catalog" and so on. */
+  rpcCalls(): string[];
   close(): Promise<void>;
 };
 
 export type StartOptions = { mode: 'clean' | 'misprint'; now?: Date; port?: number; host?: string };
 
-type Env = { shop: Shop; api: StoreApi; origin: string };
+type Env = { shop: Shop; api: StoreApi; agent: AgentApi; origin: string };
 
 export async function startShop(options: StartOptions): Promise<RunningShop> {
   const shop = buildShop(options.mode, options.now);
   const api = createStoreApi(shop);
+  const agent = createAgentApi(shop);
   const requests: string[] = [];
-  const env: Env = { shop, api, origin: '' };
+  const userAgents: string[] = [];
+  const env: Env = { shop, api, agent, origin: '' };
 
   const server = createServer(async (req, res) => {
     requests.push(`${req.method} ${req.url}`);
+    userAgents.push(req.headers['user-agent'] ?? '');
     try {
       await route(req, res, env);
     } catch {
@@ -72,7 +85,9 @@ export async function startShop(options: StartOptions): Promise<RunningShop> {
     origin: env.origin,
     shop,
     requests,
+    userAgents,
     carts: () => api.carts(),
+    rpcCalls: () => agent.rpcCalls(),
     close: () =>
       new Promise<void>((resolve, reject) => {
         server.close((err) => (err ? reject(err) : resolve()));
@@ -87,6 +102,7 @@ async function route(req: IncomingMessage, res: ServerResponse, env: Env): Promi
   const path = url.pathname;
 
   if (path === STORE_BASE || path.startsWith(`${STORE_BASE}/`)) return storeRoute(req, res, url, env);
+  if (AGENT_PATHS.has(path)) return agentRoute(req, res, url, env);
 
   if (req.method !== 'GET' && req.method !== 'HEAD') return notFound(res);
   const { shop, origin } = env;
@@ -95,6 +111,10 @@ async function route(req: IncomingMessage, res: ServerResponse, env: Env): Promi
   if (path === '/robots.txt') return send(res, 200, TEXT, renderRobots(origin));
   if (path === '/sitemap.xml') return send(res, 200, XML, renderSitemap(shop, origin));
   if (path === '/feeds/google.xml') return send(res, 200, XML, renderFeed(shop, origin));
+  if (path === '/feeds/acp.jsonl') return send(res, 200, JSONL, renderAcpFeed(shop, origin));
+  // The compressed file OpenAI asks for, served the way a static host serves
+  // a .gz file: as a file of its own type, with no Content-Encoding.
+  if (path === '/feeds/acp.jsonl.gz') return send(res, 200, 'application/gzip', gzipSync(renderAcpFeed(shop, origin)));
   if (path === '/.well-known/regmark.txt') return send(res, 200, TEXT, `regmark-verify=${shop.token}\n`);
   if (path === '/__regmark/expected.json') {
     const body = JSON.stringify({ mode: shop.mode, defects: shop.defects, expected: shop.expected });
@@ -103,7 +123,9 @@ async function route(req: IncomingMessage, res: ServerResponse, env: Env): Promi
 
   const page = /^\/product\/([^/]+)\/$/.exec(path);
   if (page) {
-    const body = renderProductPage(shop, page[1]!, origin);
+    // The page is the one place the shop looks at who is asking. A clean
+    // product answers everyone the same; one with an agent override does not.
+    const body = renderProductPage(shop, page[1]!, origin, clientOf(req.headers['user-agent']));
     return body === null ? notFound(res) : send(res, 200, HTML, body);
   }
   const bare = /^\/product\/([^/]+)$/.exec(path);
@@ -135,16 +157,11 @@ async function storeRoute(req: IncomingMessage, res: ServerResponse, url: URL, e
     }
   }
 
-  const headers: Record<string, string> = {};
-  for (const [name, value] of Object.entries(req.headers)) {
-    if (value !== undefined) headers[name] = Array.isArray(value) ? value.join(', ') : value;
-  }
-
   const result = env.api.handle({
     method: req.method ?? 'GET',
     path: url.pathname,
     query: url.searchParams,
-    headers,
+    headers: headersOf(req),
     body,
     origin: env.origin,
   });
@@ -152,6 +169,36 @@ async function storeRoute(req: IncomingMessage, res: ServerResponse, url: URL, e
 
   res.writeHead(result.status, { ...result.headers, 'content-type': JSON_TYPE });
   res.end(JSON.stringify(result.json));
+}
+
+async function agentRoute(req: IncomingMessage, res: ServerResponse, url: URL, env: Env): Promise<void> {
+  const { tooLarge, text } = await readBody(req);
+  if (tooLarge) return sendJson(res, 413, { code: 'request_too_large', content: 'Request body is larger than 64 KiB.' });
+  let body: unknown;
+  if (text.length > 0) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      return sendJson(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
+    }
+  }
+  const result = env.agent.handle({ method: req.method ?? 'GET', path: url.pathname, headers: headersOf(req), body, origin: env.origin });
+  if (!result) return notFound(res);
+  if (result.json === undefined) {
+    res.writeHead(result.status, result.headers);
+    res.end();
+    return;
+  }
+  res.writeHead(result.status, { ...result.headers, 'content-type': JSON_TYPE });
+  res.end(JSON.stringify(result.json));
+}
+
+function headersOf(req: IncomingMessage): Record<string, string> {
+  const headers: Record<string, string> = {};
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (value !== undefined) headers[name] = Array.isArray(value) ? value.join(', ') : value;
+  }
+  return headers;
 }
 
 /** Reads the whole body, but keeps draining past the limit so the client receives the 413 instead of a reset. */
@@ -170,7 +217,7 @@ async function readBody(req: IncomingMessage): Promise<{ tooLarge: boolean; text
   return { tooLarge, text: Buffer.concat(chunks).toString('utf8') };
 }
 
-function send(res: ServerResponse, status: number, type: string, body: string): void {
+function send(res: ServerResponse, status: number, type: string, body: string | Buffer): void {
   res.writeHead(status, { 'content-type': type });
   res.end(body);
 }

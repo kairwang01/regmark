@@ -103,28 +103,48 @@ locator in `properties`.
 | `microdata` | `<page URL>#microdata[<item index>]`, then `/offers[<n>]` and the field name | `https://shop.example/product/enamel-mug/#microdata[0]/offers[1]/price` |
 | `opengraph` | `<page URL>#meta[<attribute>="<key>"]` | `https://shop.example/product/enamel-mug/#meta[property="product:price:amount"]` |
 | `feed` | `<feed URL>#item[id="<item id>"]/<field>` | `https://shop.example/feeds/google.xml#item[id="TOTE-NAT"]/price` |
+| `acp`, a flat row | `<feed URL>#item[id="<item_id>"]/<field>`. A record with no id is located by its place: `#line[n]` in JSON Lines, `#row[n]` in CSV or TSV. | `https://shop.example/feeds/acp.jsonl.gz#item[id="SOCK-M"]/price` |
+| `acp`, a Product and its Variants | `<feed URL>#product[id="<product id>"]/variant[id="<variant id>"]/<field>` | `https://shop.example/feeds/products.jsonl#product[id="prod_classic_tee"]/variant[id="sku124-red-m"]/price` |
+| `feed`, `acp`, the time it was generated | `<feed URL>#<path>`: a path into the document, or `header(last-modified)` | `https://shop.example/feeds/google.xml#/rss/channel/lastBuildDate` |
 | `platform` | `<storefront API URL>#<JSON pointer>` | `https://shop.example/wp-json/wc/store/v1/products/403#/is_in_stock` |
-| `checkout` | `<cart API URL>#<JSON pointer>`. A refused add-to-cart has no pointer. | `https://shop.example/wp-json/wc/store/v1/cart/update-customer#/totals/total_shipping` |
+| `checkout` | `<cart API URL>#<JSON pointer>`. A refused add-to-cart has no pointer. On Shopify the URL of a shipping rate carries the destination in its query. | `https://shop.example/wp-json/wc/store/v1/cart/update-customer#/totals/total_shipping`, `https://shop.example/cart/add.js#/items/0/final_price` |
+| `ucp`, `mcp` | `<endpoint URL>#<operation>[<what was asked>]`, then a JSON pointer into the answer. The operation is `lookup_catalog` with the id that found the variant, or `search_catalog` with the query. Over MCP the pointer starts inside the JSON-RPC response, at `/result/structuredContent`. | `https://shop.example/ucp/v1/catalog/lookup#lookup_catalog[id="402"]/products/3/variants/1/price` |
 
 ## Collection issue codes
 
 | Code | Surface | Meaning |
 |---|---|---|
-| `collect-failed` | platform | The storefront listing failed as a whole. The message says why. |
+| `collect-failed` | any | The storefront listing failed as a whole, or a reader stopped on something it could not cope with; that surface is then missing from the audit, and the others are still read. The message says why. |
 | `parse-error` | platform | A storefront response was not JSON, or did not have the expected shape. |
 | `parse-error` | feed | The feed is empty, or it is not readable XML. |
+| `parse-error` | acp | The feed is empty, or it is not in a format an ACP feed uses: Parquet, XML and a bare JSON array are refused, and so is a CSV or TSV header with no item id or page URL column. The message says what to export. |
 | `parse-error` | page | A JSON-LD block is not valid JSON. |
 | `extract-failed` | page | Reading the JSON-LD, the microdata or the page failed. |
-| `fetch-failed` | platform, feed, page | A request failed: an HTTP error status, a refusal other than robots, a network error, or a sitemap that could not be read. The message starts with the [refusal code](configuration.md#refusals), such as `foreign-host`. |
-| `robots-disallowed` | platform, feed, page | robots.txt does not allow the URL. |
+| `fetch-failed` | platform, feed, acp, page | A request failed: an HTTP error status, a refusal other than robots, a network error, or a sitemap that could not be read. The message starts with the [refusal code](configuration.md#refusals), such as `foreign-host`. |
+| `robots-disallowed` | platform, feed, acp, page | robots.txt does not allow the URL. |
 | `not-found` | page | The page returned 404 or 410. |
 | `feed-item-incomplete` | feed | A feed item has no `id`, or no `link`, so it cannot be matched to a product. |
-| `feed-field-unreadable` | feed | A field, such as a price, could not be read as the value it should be. |
-| `probe-failed` | checkout | A step of the checkout probe failed. The message names the variant and the step. |
-| `no-shipping-rate` | checkout | The shop offered no shipping rate for the destination. |
-| `cart-not-emptied` | checkout | The probe could not empty the cart, or could not confirm that it is empty. The message says to check the shop admin. |
+| `feed-item-incomplete` | acp | A record has no item id or page URL, so it cannot be matched to a product and is left out. Also a record that lacks a field the format requires: it is still read, and the message names the fields, because an agent rejects such a row. |
+| `feed-field-unreadable` | feed, acp | A field, such as a price, could not be read as the value it should be. |
+| `feed-field-ignored` | acp | A value that reads, but that the format says is not used: a sale price that is not below the price, a `variant_dict` on a row that is not one of a group, a return window without `accepts_returns=true`, a shipping tuple beside `shipping_price`, or a second name for a value already given. |
+| `feed-line-unreadable` | acp | A line of a JSON Lines feed is not a JSON object, or a record holds a value too deeply nested to read. The other lines are read. |
+| `probe-failed` | checkout | A step of the checkout probe failed. The message names the variant and the step. Also used when something other than the cart answered, such as the shop's bot protection, a redirect or a page in place of the cart's JSON: the probe stops there, and no later variant is probed. |
+| `no-shipping-rate` | checkout | The shop offered no shipping rate for the destination, or refused the address. On Shopify the message quotes the shop's reason. |
+| `cart-not-emptied` | checkout | The probe could not empty the cart, or could not confirm that it is empty. On WooCommerce the message says to check the shop admin. A Shopify cart left behind is anonymous and holds no stock. |
 | `ownership-not-verified` | checkout | The probe was skipped, because ownership of the shop was not shown. |
-| `probe-unsupported` | checkout | The probe was skipped, because the platform is not WooCommerce. |
+| `ownership-not-verified` | page | The cloaking check was skipped, because ownership of the shop was not shown. |
+| `view-failed` | page | The cloaking check could not read a page as one client profile: an HTTP error status, a refusal or a network error. The message starts with `as <profile>:`. |
+| `view-redirected` | page | A page read as one client profile was redirected to another origin, where Regmark does not pose as the profile, so it is not compared. |
+| `probe-unsupported` | checkout | The probe was skipped, because the platform is neither WooCommerce nor Shopify. |
+| `not-found` | ucp, mcp | No UCP profile or no MCP server at the URL (404 or 410), or the catalogue was asked about a sampled product and has nothing for it; then the locator is the product page. |
+| `not-asked` | ucp, mcp | A sampled product was not put to the catalogue: the catalogue offers only search, which is not used for a product the storefront lists by variant id (a search may return part of its variants), or nothing known about the page is something the catalogue can be asked by. The locator is the product page. |
+| `not-supported` | ucp, mcp | The UCP profile offers no REST or MCP endpoint, or no catalogue capability, for the version spoken; or the MCP server lists no UCP catalogue tool, or does not know a method. The message names what the server does list. |
+| `version-unsupported` | ucp, mcp | The shop speaks no UCP version, or the server no MCP revision, that Regmark reads. The message lists both sides' versions. |
+| `parse-error` | ucp, mcp | An answer was not JSON, not a UCP profile or payload, or not a JSON-RPC answer to the request. |
+| `fetch-failed` | ucp, mcp | A request failed: an HTTP error status, a refusal other than robots, a JSON-RPC error, a tool that reported an error, or a UCP answer with `ucp.status` `error`. The message starts with the request, such as `lookup_catalog:`, then the refusal code or the shop's own error code. |
+| `robots-disallowed` | ucp, mcp | robots.txt does not allow the request. |
+| `field-unreadable` | ucp, mcp | A variant's price is not a whole number of minor units with a three-letter currency, so no price is read for it. |
+| `too-many-variants` | ucp, mcp | A sampled product has more than 50 variant ids, more than five lookups hold, so it is not looked up at all. |
 
 A collection issue does not change the exit code by itself. It does when it
 leaves nothing to check: an audit that read no product exits 2.

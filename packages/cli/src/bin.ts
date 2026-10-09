@@ -23,7 +23,7 @@ const DOCS = 'https://github.com/kairwang01/regmark/blob/main/docs';
 const USAGE = `regmark: catch ecommerce product-data mismatches across pages, feeds and store APIs
 
 Usage
-  regmark demo                      audit a bundled shop that has 19 defects planted in it
+  regmark demo                      audit a bundled shop with defects planted in it
   regmark demo --clean              the same shop with nothing wrong in it
   regmark audit <store-url>         audit a real shop
   regmark explain <rule>            the usual cause of a finding, and the fix
@@ -32,9 +32,13 @@ Usage
 
 Surfaces (audit)
   --feed <url>              product feed in Google Merchant format
+  --acp-feed <url>          agent product feed (ACP): JSON Lines, CSV or TSV, may be .gz
   --platform <name>         woocommerce, shopify, auto or none; default auto
-  --checkout                run the checkout probe (WooCommerce; needs an ownership token)
+  --ucp                     read the shop's UCP catalogue (/.well-known/ucp)
+  --mcp                     read the shop's storefront MCP server
+  --checkout                run the checkout probe (WooCommerce or Shopify; needs an ownership token)
   --ship-to <CC[:postcode]> destination for the checkout probe, default US
+  --cloaking                fetch pages again as a browser and as an agent, and compare (needs an ownership token)
   --page <url>              audit this product page; repeatable
 
 Scope
@@ -42,6 +46,7 @@ Scope
   --seed <n>                changes which products are sampled, default 1
   --datum <a,b,c>           which surface to believe, most trusted first
   --budget <rule=n>         allow up to n findings for a rule; repeatable
+  --max-age <surface=age>   oldest a feed may be, such as feed=24h; repeatable
   --strict                  exit 2 if any surface has a collection issue
 
 Output
@@ -59,7 +64,7 @@ Other
 The ownership token is read from REGMARK_OWNERSHIP_TOKEN. Put the line
 regmark-verify=<token> in /.well-known/regmark.txt on the shop.
 
-Exit code: 0 within budget, 1 over budget, 2 the audit could not run or read no product.
+Exit code: 0 within budget, 1 over budget, 2 the audit could not run, read no product, or (with --strict) had a collection issue.
 Documentation: ${DOCS}
 `;
 
@@ -77,7 +82,7 @@ async function loadConfig(file: string): Promise<Partial<AuditConfig>> {
   configObject(value, file);
   // Validate before merging flags: spreading a string or normalizing checkout
   // used to hide malformed safety options from the final validator.
-  checkConfig({ ...value, store: value.store ?? 'https://config.example', platform: value.platform === 'none' ? undefined : value.platform } as AuditConfig, allRules);
+  checkConfig({ ...value, store: value.store ?? 'https://config.example', platform: value.platform === 'none' ? undefined : value.platform } as AuditConfig, allRules, { partial: true });
   return value as Partial<AuditConfig>;
 }
 
@@ -94,6 +99,16 @@ function parseBudget(entries: string[]): Record<string, number> {
     const m = /^([a-z][a-z0-9.-]*)=(\d+)$/.exec(entry);
     if (!m) throw new ConfigError(`--budget wants rule=number, got "${entry}"`);
     out[m[1]!] = Number(m[2]);
+  }
+  return out;
+}
+
+function parseMaxAge(entries: string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const entry of entries) {
+    const m = /^([a-z]+)=(.+)$/.exec(entry);
+    if (!m) throw new ConfigError(`--max-age wants surface=duration, such as feed=24h; got "${entry}"`);
+    out[m[1]!] = m[2]!;
   }
   return out;
 }
@@ -153,8 +168,8 @@ async function init(target: string | undefined): Promise<number> {
     regmark audit                      read ${new URL(store).host} and report
     regmark audit --html report.html   and keep a report to share
 
-  To let Regmark compare against real checkout totals (WooCommerce):
-    1. choose a token of 16 or more letters and digits
+  To let Regmark compare against real checkout totals (WooCommerce or Shopify):
+    1. choose a token of 16 to 128 letters, digits, _ or -
     2. serve the line  regmark-verify=<token>  at ${store}/.well-known/regmark.txt
     3. REGMARK_OWNERSHIP_TOKEN=<token> regmark audit --checkout
 
@@ -179,19 +194,29 @@ async function writeReports(result: AuditResult, files: Outputs): Promise<void> 
   }
 }
 
-/** A run against the shop that ships inside the tool: the fastest way to see what a report looks like. */
-async function demo(clean: boolean, html: string | undefined, color: boolean): Promise<number> {
+/**
+ * A run against the shop that ships inside the tool: the fastest way to see
+ * what a report looks like. It writes the same report files an audit does,
+ * and always the HTML one.
+ */
+async function demo(clean: boolean, files: Outputs & { quiet?: boolean }, color: boolean): Promise<number> {
   const { OWNERSHIP_TOKEN, startShop } = await import('@regmark/fixture-shop');
   const shop = await startShop({ mode: clean ? 'clean' : 'misprint' });
+  const planted = shop.shop.defects.length;
   let result: AuditResult;
   try {
     result = await runAudit(
       {
         store: shop.origin,
         feed: '/feeds/google.xml',
+        acpFeed: '/feeds/acp.jsonl.gz',
         platform: 'woocommerce',
         checkout: { shipTo: { country: 'US', postcode: '94103' } },
+        cloaking: true,
+        ucp: true,
+        mcp: true,
         ownershipToken: OWNERSHIP_TOKEN,
+        maxAge: { feed: '24h' },
         sample: 50,
         fetch: { allowPrivateNetwork: true, minIntervalMs: 0 },
       },
@@ -207,13 +232,14 @@ async function demo(clean: boolean, html: string | undefined, color: boolean): P
       .replaceAll(new URL(shop.origin).host, 'demo-shop.example'),
   ) as AuditResult;
 
+  const file = files.html ?? 'regmark-demo.html';
+  await writeReports(named, { ...files, html: file });
+  if (files.quiet) return 0;
   out(renderTerminal(named, { color }));
-  const file = html ?? 'regmark-demo.html';
-  await writeFile(file, renderHtml(named));
   out(
     clean
       ? `  That was the same shop with nothing wrong in it: every surface agrees with the checkout.\n`
-      : `  That was a shop bundled with Regmark, with 19 defects planted in it. Each one is a\n  way real shops go wrong; run  regmark explain price.mismatch  to read about one.\n`,
+      : `  That was a shop bundled with Regmark, with ${planted} defects planted in it. Each one is a\n  way real shops go wrong; run  regmark explain price.mismatch  to read about one.\n`,
   );
   out(`\n  The full report is in ${file}\n  Now a real one:  regmark audit https://your-shop.example\n\n`);
   return 0;
@@ -225,8 +251,13 @@ async function main(argv: string[]): Promise<number> {
     allowPositionals: true,
     options: {
       feed: { type: 'string' },
+      'acp-feed': { type: 'string' },
       platform: { type: 'string' },
+      ucp: { type: 'boolean' },
+      mcp: { type: 'boolean' },
       checkout: { type: 'boolean' },
+      cloaking: { type: 'boolean' },
+      'max-age': { type: 'string', multiple: true },
       'ship-to': { type: 'string' },
       page: { type: 'string', multiple: true },
       sample: { type: 'string' },
@@ -275,7 +306,7 @@ async function main(argv: string[]): Promise<number> {
   }
   if (command === 'explain') return explain(target);
   if (command === 'init') return init(target);
-  if (command === 'demo') return demo(values.clean === true, values.html, color);
+  if (command === 'demo') return demo(values.clean === true, values, color);
   if (command !== 'audit') throw new ConfigError(`unknown command "${command}"; try regmark --help`);
 
   const configFile = values.config ?? (existsSync('regmark.config.json') ? 'regmark.config.json' : undefined);
@@ -297,6 +328,11 @@ async function main(argv: string[]): Promise<number> {
     store,
     platform: platformChoice === 'none' ? undefined : (platformChoice as AuditConfig['platform']),
     ...(values.feed ? { feed: values.feed } : {}),
+    ...(values['acp-feed'] ? { acpFeed: values['acp-feed'] } : {}),
+    ...(values.ucp ? { ucp: fromFile.ucp || true } : {}),
+    ...(values.mcp ? { mcp: fromFile.mcp || true } : {}),
+    ...(values.cloaking ? { cloaking: fromFile.cloaking || true } : {}),
+    ...(values['max-age']?.length ? { maxAge: { ...fromFile.maxAge, ...parseMaxAge(values['max-age']) } } : {}),
     ...(checkout ? { checkout: { shipTo: shipTo ?? fromFile.checkout?.shipTo ?? { country: 'US' } } } : {}),
     ...(values.page?.length ? { pages: values.page } : {}),
     ...(values.sample ? { sample: wholeNumber('--sample', values.sample) } : {}),

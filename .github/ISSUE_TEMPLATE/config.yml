@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Quickstart and troubleshooting
+    url: https://github.com/kairwang01/regmark/blob/main/docs/quickstart.md#common-problems
+    about: Answers to the problems people meet on a first audit.
   - name: What each rule means
     url: https://github.com/kairwang01/regmark/blob/main/docs/rules.md
     about: The definition of every rule, including when it stays silent.

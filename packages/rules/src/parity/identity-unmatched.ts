@@ -1,6 +1,15 @@
 import { defineRule } from '@regmark/core';
-import type { Finding } from '@regmark/core';
+import type { Finding, Sighting, Surface } from '@regmark/core';
 import { isReal } from './real.ts';
+
+/**
+ * The surfaces, in the given order, that offer something in `sightings`. A
+ * row held back from buyers is how a feed is told to stop offering a thing,
+ * so it does not count: it says the shop no longer sells it.
+ */
+function offeredBy(surfaces: readonly Surface[], sightings: readonly Sighting[]): Surface[] {
+  return surfaces.filter((surface) => sightings.some((s) => s.surface === surface && !s.withheld));
+}
 
 export default defineRule({
   id: 'identity.unmatched',
@@ -13,27 +22,31 @@ export default defineRule({
     if (real.length === 0) {
       // A page headline price is a statement about the product itself, so the page vouches for it.
       if (product.productLevel.some((s) => s.surface === 'page')) return [];
+      const surfaces = offeredBy(product.surfaces, [...product.variants.flatMap((v) => v.sightings), ...product.productLevel]);
+      if (surfaces.length === 0) return [];
       const finding: Finding = {
         rule: 'identity.unmatched',
         severity: 'warn',
-        message: `listed by ${product.surfaces.join(', ')}, but the shop does not sell it`,
+        message: `listed by ${surfaces.join(', ')}, but the shop does not sell it`,
         product: product.key,
       };
-      if (product.surfaces.length === 1) finding.surface = product.surfaces[0];
+      if (surfaces.length === 1) finding.surface = surfaces[0];
       return [finding];
     }
     return product.variants
       .filter((v) => !isReal(v))
-      .map((v): Finding => {
+      .flatMap((v): Finding[] => {
+        const surfaces = offeredBy(v.surfaces, v.sightings);
+        if (surfaces.length === 0) return [];
         const finding: Finding = {
           rule: 'identity.unmatched',
           severity: 'warn',
-          message: `listed by ${v.surfaces.join(', ')}, but the shop does not sell it`,
+          message: `listed by ${surfaces.join(', ')}, but the shop does not sell it`,
           product: product.key,
           variant: v.key,
         };
-        if (v.surfaces.length === 1) finding.surface = v.surfaces[0];
-        return finding;
+        if (surfaces.length === 1) finding.surface = surfaces[0];
+        return [finding];
       });
   },
 });

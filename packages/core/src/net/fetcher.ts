@@ -12,6 +12,8 @@
 //   - a response is cut off at a size limit that counts decompressed bytes
 //   - a request that changes state is refused unless the run verified that
 //     the operator controls the shop (see ownership.ts)
+//   - so is a read made as the owner: one that skips robots.txt, or sends a
+//     User-Agent other than Regmark's own
 
 import http from 'node:http';
 import https from 'node:https';
@@ -41,7 +43,7 @@ export type FetchPolicy = {
 };
 
 export const DEFAULT_POLICY: Omit<FetchPolicy, 'hosts'> = {
-  userAgent: 'Regmark/0.1.0 (+https://github.com/kairwang01/regmark)',
+  userAgent: 'Regmark/0.0.0-dev (+https://github.com/kairwang01/regmark)',
   agentToken: 'Regmark',
   minIntervalMs: 1000,
   timeoutMs: 15_000,
@@ -75,8 +77,13 @@ export class FetchRefused extends Error {
 }
 
 export type GuardedFetcher = Fetcher & {
-  /** Called once ownership has been verified. There is no way to call it from the command line. */
-  authorizeWrites(): void;
+  /**
+   * Called once ownership of `origin` has been verified. Writes and owner
+   * reads are then allowed to that shop's host, and to no other host on the
+   * allowlist: a feed host or an endpoint host has shown nothing. There is no
+   * way to call it from the command line.
+   */
+  authorizeWrites(origin: string): void;
   readonly stats: { requests: number };
 };
 
@@ -107,7 +114,9 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
   const nextSlot = new Map<string, number>();
   const robotsCache = new Map<string, Promise<Robots | 'allow-all' | 'deny-all'>>();
   const stats = { requests: 0 };
-  let writesAuthorized = false;
+  /** hostKey of the shop whose ownership was verified; undefined until then. */
+  let ownedHost: string | undefined;
+  const isOwned = (u: URL) => ownedHost !== undefined && hostKey(u.hostname) === ownedHost;
 
   function parse(url: string): URL {
     let u: URL;
@@ -139,7 +148,7 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
     if (at > now) await sleep(at - now);
   }
 
-  function request(method: string, u: URL, headers: Record<string, string>, body?: Buffer): Promise<Raw> {
+  function request(method: string, u: URL, headers: Record<string, string>, body?: Buffer, complete?: (body: string) => boolean): Promise<Raw> {
     // This is the socket boundary, including robots.txt redirect targets.
     assertAllowedHost(u);
     stats.requests += 1;
@@ -172,29 +181,54 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
                   : undefined;
           const chunks: Buffer[] = [];
           let size = 0;
+          const headersOf = (): Record<string, string> => {
+            const out: Record<string, string> = {};
+            for (const [k, v] of Object.entries(res.headers)) {
+              // Cookie expiry dates contain commas, so several Set-Cookie
+              // headers are kept one per line instead of comma-joined.
+              const joiner = k.toLowerCase() === 'set-cookie' ? '\n' : ', ';
+              if (v !== undefined) out[k.toLowerCase()] = Array.isArray(v) ? v.join(joiner) : v;
+            }
+            return out;
+          };
+          // An event stream (always UTF-8) is offered to the caller as it
+          // arrives, so an answer is not held up by a stream left open.
+          const until = String(res.headers['content-type'] ?? '').toLowerCase().includes('text/event-stream') ? complete : undefined;
+          const utf8 = new TextDecoder();
+          let text = '';
+          let settled = false;
           const sink = new Writable({
             write(chunk: Buffer, _encoding, done) {
+              if (settled) return done();
               size += chunk.length;
               if (size > policy.maxBytes) {
                 done(new FetchRefused('too-large', u.href, `over ${policy.maxBytes} bytes`));
                 return;
               }
               chunks.push(chunk);
+              if (until) {
+                text += utf8.decode(chunk, { stream: true });
+                if (until(text)) {
+                  settled = true;
+                  resolve({ status: res.statusCode ?? 0, headers: headersOf(), body: Buffer.concat(chunks) });
+                  done();
+                  // What the server goes on sending is not waited for.
+                  res.destroy();
+                  return;
+                }
+              }
               done();
             },
           });
           // pipeline propagates upstream aborts and destroys the response and
           // decoder on failure, including decompression and size-limit errors.
           pipeline(decoder ? [res, decoder, sink] : [res, sink], (err) => {
+            if (settled) return;
             if (err) {
               reject(err instanceof FetchRefused ? err : new FetchRefused('network', u.href, err.message));
               return;
             }
-            const out: Record<string, string> = {};
-            for (const [k, v] of Object.entries(res.headers)) {
-              if (v !== undefined) out[k.toLowerCase()] = Array.isArray(v) ? v.join(', ') : v;
-            }
-            resolve({ status: res.statusCode ?? 0, headers: out, body: Buffer.concat(chunks) });
+            resolve({ status: res.statusCode ?? 0, headers: headersOf(), body: Buffer.concat(chunks) });
           });
         },
       );
@@ -248,6 +282,36 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
     if (!ok) throw new FetchRefused('robots', u.href);
   }
 
+  /**
+   * Caller headers, checked. A different User-Agent is posing as another
+   * client, which Regmark does only on a shop that has shown it is the
+   * operator's, and only when the caller says it is reading as the owner.
+   */
+  function callerHeaders(u: URL, init: RequestOptions): Record<string, string> {
+    const headers = init.headers ?? {};
+    const posing = Object.keys(headers).some((name) => name.toLowerCase() === 'user-agent');
+    if (posing && !init.asOwner) throw new FetchRefused('write-not-authorized', u.href, 'a different User-Agent needs an owner read');
+    if (init.asOwner && !isOwned(u)) throw new FetchRefused('write-not-authorized', u.href, 'ownership of this host has not been verified');
+    return headers;
+  }
+
+  /**
+   * A body that is a gzip file, not a gzip transfer: Content-Encoding is
+   * undone in the pipeline, but a .gz file arrives still compressed. Only the
+   * magic bytes decide, because hosts label these files in several ways. The
+   * limit is the one the pipeline enforces, so a small file cannot unpack
+   * into a large one.
+   */
+  function gunzipFile(u: URL, raw: Raw): Raw {
+    if (raw.body.length < 2 || raw.body[0] !== 0x1f || raw.body[1] !== 0x8b) return raw;
+    try {
+      return { ...raw, body: zlib.gunzipSync(raw.body, { maxOutputLength: policy.maxBytes }) };
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ERR_BUFFER_TOO_LARGE') throw new FetchRefused('too-large', u.href, `over ${policy.maxBytes} bytes`);
+      throw new FetchRefused('network', u.href, `gzip: ${(err as Error).message}`);
+    }
+  }
+
   const finish = (u: URL, raw: Raw): Fetched => ({
     url: u.href,
     status: raw.status,
@@ -258,20 +322,22 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
 
   return {
     stats,
-    authorizeWrites() {
-      writesAuthorized = true;
+    authorizeWrites(origin: string) {
+      ownedHost = hostKey(new URL(origin).hostname);
     },
 
     async get(url: string, init: RequestOptions = {}): Promise<Fetched> {
       let u = parse(url);
-      let headers = init.headers ?? {};
+      let headers = callerHeaders(u, init);
+      const owner = init.asOwner === true;
       for (let hop = 0; ; hop++) {
         assertAllowedHost(u);
-        await assertRobots(u);
+        // robots.txt speaks to crawlers. The owner reading their own shop is not one.
+        if (!owner) await assertRobots(u);
         await pace(u);
-        const raw = await request('GET', u, headers);
+        const raw = await request('GET', u, headers, undefined, init.complete);
         const location = raw.headers['location'];
-        if (!REDIRECTS.has(raw.status) || !location) return finish(u, raw);
+        if (!REDIRECTS.has(raw.status) || !location) return finish(u, init.gzipFile ? gunzipFile(u, raw) : raw);
         let next: URL;
         try {
           next = new URL(location, u);
@@ -280,6 +346,11 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
         }
         // A redirect that leaves the allowlist is the caller's to interpret, not ours to follow.
         if ((next.protocol !== 'http:' && next.protocol !== 'https:') || !allowed.has(hostKey(next.hostname))) return finish(u, raw);
+        // Nor is one that takes an owner read to another origin. What answers
+        // there was never asked as the owner, and following it would hand
+        // the caller a page fetched as somebody else, even when a later hop
+        // comes back to the shop.
+        if (owner && next.origin !== u.origin) return finish(u, raw);
         if (hop >= policy.maxRedirects) throw new FetchRefused('too-many-redirects', url);
         // An allowlisted feed host is not entitled to a shop's credentials or
         // cart token. Only same-origin redirects may inherit caller headers.
@@ -288,13 +359,25 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
       }
     },
 
+    async query(url: string, json: unknown, init: RequestOptions = {}): Promise<Fetched> {
+      const u = parse(url);
+      const headers = callerHeaders(u, init);
+      assertAllowedHost(u);
+      if (!init.asOwner) await assertRobots(u);
+      await pace(u);
+      const body = Buffer.from(JSON.stringify(json));
+      // A redirect is returned, not followed: replaying a body elsewhere is not something to do silently.
+      return finish(u, await request('POST', u, { 'content-type': 'application/json', accept: 'application/json', ...headers }, body, init.complete));
+    },
+
     async send(method, url, init = {}): Promise<Fetched> {
       const u = parse(url);
       assertAllowedHost(u);
-      if (!writesAuthorized) throw new FetchRefused('write-not-authorized', u.href, 'ownership of this shop has not been verified');
+      if (!isOwned(u)) throw new FetchRefused('write-not-authorized', u.href, 'ownership of this host has not been verified');
       await pace(u);
       const body = init.json === undefined ? undefined : Buffer.from(JSON.stringify(init.json));
-      const headers = { ...(body ? { 'content-type': 'application/json' } : {}), ...(init.headers ?? {}) };
+      // A write is always made as the owner, so it may set its own User-Agent.
+      const headers = { ...(body ? { 'content-type': 'application/json' } : {}), ...callerHeaders(u, { ...init, asOwner: true }) };
       // Redirects are never followed for a write: replaying a body somewhere else is not something to do silently.
       return finish(u, await request(method, u, headers, body));
     },

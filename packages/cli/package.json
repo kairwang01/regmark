@@ -1,6 +1,6 @@
 {
   "name": "@regmark/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "The command line and the audit itself. Published as part of the regmark bundle.",
   "license": "Apache-2.0",
   "author": "Kair Wang",
@@ -14,6 +14,7 @@
   "dependencies": {
     "@regmark/collect-feed": "workspace:*",
     "@regmark/collect-page": "workspace:*",
+    "@regmark/collect-protocol": "workspace:*",
     "@regmark/collect-shopify": "workspace:*",
     "@regmark/collect-woo": "workspace:*",
     "@regmark/core": "workspace:*",

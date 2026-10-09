@@ -1,7 +1,7 @@
 # Demo screenshots and recording recipe
 
-The screenshots below come from Regmark's bundled fixture shop. Its 19 seeded
-defects produce 22 findings. They demonstrate the tool; they are not customer
+The screenshots below come from Regmark's bundled fixture shop. Its 27 seeded
+defects produce 31 findings. They demonstrate the tool; they are not customer
 results or a measured accuracy rate on real stores.
 
 ![Actual terminal output from the defect demo](assets/terminal.png)

@@ -54,6 +54,9 @@ body:
         - label: microdata
         - label: opengraph
         - label: feed
+        - label: acp
+        - label: ucp
+        - label: mcp
         - label: platform
         - label: checkout
   - type: textarea
@@ -72,6 +75,6 @@ body:
     id: version
     attributes:
       label: Regmark version
-      description: The output of node packages/cli/src/bin.ts --version
+      description: The output of regmark --version (or npx regmark --version)
     validations:
       required: true

@@ -346,6 +346,10 @@ export function createFakeShop(options: ShopOptions = {}): FakeShop {
       if (settings.networkError.includes(path)) throw new Error('socket hang up');
       return route(method, url, path, options.headers ?? {}, options.json);
     },
+
+    async query(): Promise<Fetched> {
+      throw new Error('the WooCommerce collectors never post a query');
+    },
   };
 }
 

@@ -20,6 +20,11 @@ export type FeedItem = {
  * Splits a tab-separated shipping cell into entries. Commas separate entries
  * only when the next token looks like a country and colon, so a price such
  * as "1,299 USD" inside one entry survives.
+ *
+ * The price is the fourth position, country:region:service:price, but Google
+ * lets the handling and transit times follow it as whole numbers of days:
+ * "US:CA:Overnight:16.00 USD:1:1:2:3". Those are dropped from the end before
+ * the price is taken, or the last day count would be read as the price.
  */
 export function parseShippingCell(cell: string): ShippingEntry[] {
   const out: ShippingEntry[] = [];
@@ -27,6 +32,7 @@ export function parseShippingCell(cell: string): ShippingEntry[] {
     const raw = part.trim();
     if (!raw) continue;
     const pieces = raw.split(':');
+    while (pieces.length > 4 && /^\s*\d+\s*$/.test(pieces[pieces.length - 1]!)) pieces.pop();
     const price = (pieces[pieces.length - 1] ?? '').trim();
     if (!price) continue;
     const country = pieces.length > 1 ? (pieces[0] ?? '').trim() : '';

@@ -26,9 +26,19 @@ const AVAILABILITY: ReadonlyMap<string, Availability> = new Map([
 
 const OPTION_FIELDS = ['color', 'size', 'material', 'pattern'] as const;
 
-function resolveUrl(link: string, feedUrl: string): string | undefined {
+export function resolveUrl(link: string, feedUrl: string): string | undefined {
   try {
     return new URL(link, feedUrl).href;
+  } catch {
+    return undefined;
+  }
+}
+
+/** An absolute http or https URL as written, normalised, or undefined: a policy link is never resolved against the feed. */
+export function httpUrl(text: string): string | undefined {
+  try {
+    const u = new URL(text);
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : undefined;
   } catch {
     return undefined;
   }

@@ -1,7 +1,7 @@
 {
   "name": "@regmark/collect-shopify",
-  "version": "0.1.0",
-  "description": "Reads a Shopify shop's public catalogue endpoint.",
+  "version": "0.2.0",
+  "description": "Reads a Shopify shop's public catalogue endpoint, and probes its storefront cart.",
   "license": "Apache-2.0",
   "author": "Kair Wang",
   "type": "module",

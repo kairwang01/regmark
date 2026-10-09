@@ -2,10 +2,12 @@
 // what each one means.
 
 import type { Rule } from '@regmark/core';
+import cloaking from './content/cloaking.ts';
 import hiddenText from './content/hidden-text.ts';
 import instructionLike from './content/instruction-like.ts';
 import invisibleChars from './content/invisible-chars.ts';
 import availabilityMismatch from './parity/availability-mismatch.ts';
+import availabilityStale from './parity/availability-stale.ts';
 import identityGtinInvalid from './parity/identity-gtin-invalid.ts';
 import identityUnmatched from './parity/identity-unmatched.ts';
 import policyReturnMissing from './parity/policy-return-missing.ts';
@@ -24,6 +26,7 @@ export const parityRules: readonly Rule[] = [
   priceTaxBasis,
   priceSaleExpired,
   availabilityMismatch,
+  availabilityStale,
   variantMissing,
   variantUnpurchasable,
   shippingMismatch,
@@ -33,6 +36,6 @@ export const parityRules: readonly Rule[] = [
   policyReturnMissing,
 ];
 
-export const contentRules: readonly Rule[] = [hiddenText, instructionLike, invisibleChars];
+export const contentRules: readonly Rule[] = [hiddenText, instructionLike, invisibleChars, cloaking];
 
 export const allRules: readonly Rule[] = [...parityRules, ...contentRules];

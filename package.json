@@ -1,7 +1,7 @@
 {
   "name": "regmark",
-  "version": "0.1.0",
-  "description": "Catch price, stock and shipping mismatches across product pages, JSON-LD, merchant feeds and store APIs, with CI reports and optional WooCommerce cart probes.",
+  "version": "0.2.0",
+  "description": "Catch price, stock and shipping mismatches between product pages, JSON-LD, merchant feeds, AI shopping-agent endpoints (UCP, MCP, ACP) and checkout. CLI and GitHub Action for WooCommerce and Shopify.",
   "keywords": [
     "ecommerce",
     "woocommerce",
@@ -17,7 +17,14 @@
     "github-actions",
     "sarif",
     "agentic-commerce",
-    "testing"
+    "testing",
+    "ucp",
+    "mcp",
+    "acp",
+    "ai-agents",
+    "github-action",
+    "merchant-center",
+    "price-monitoring"
   ],
   "homepage": "https://opensource.kairwang.cloud/regmark/",
   "repository": {
@@ -38,7 +45,14 @@
     "README.md",
     "README.zh-CN.md",
     "LICENSE",
-    "docs/"
+    "CHANGELOG.md",
+    "docs/quickstart.md",
+    "docs/configuration.md",
+    "docs/rules.md",
+    "docs/report-format.md",
+    "docs/ci.md",
+    "docs/demo.md",
+    "docs/positioning.md"
   ],
   "packageManager": "pnpm@11.23.0",
   "engines": {
@@ -57,5 +71,8 @@
     "@types/node": "^22.18.0",
     "esbuild": "^0.28.2",
     "typescript": "^5.9.2"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

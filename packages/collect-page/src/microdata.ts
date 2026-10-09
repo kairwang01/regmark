@@ -31,7 +31,9 @@ export function extractMicrodata(html: PageSource, pageUrl: string, fetchedAt: s
   const issues: CollectIssue[] = [];
   try {
     const $ = documentOf(html);
-    const products = $('[itemscope]').toArray().filter((el) => isProduct($, el));
+    // A product that is a property of another item (an entry in a list of
+    // related products, an accessory) is not the product this page sells.
+    const products = $('[itemscope]').toArray().filter((el) => isProduct($, el) && !isElsewhere($, el));
     products.forEach((product, productIndex) => {
       emitProduct($, product, productIndex, { pageUrl, fetchedAt, out: sightings });
     });
@@ -104,6 +106,13 @@ function fromRootOrProduct($: Doc, root: El, product: El, name: string, attrs: s
   if (own) return own;
   if (root === product) return undefined;
   return readValue($, findProp($, product, name), attrs);
+}
+
+/** itemprop values that make an item one of a list, or a product other than the page's own. */
+const ELSEWHERE: ReadonlySet<string> = new Set(['item', 'itemlistelement', 'isrelatedto', 'issimilarto', 'isaccessoryorsparepartfor', 'isconsumablefor']);
+
+function isElsewhere($: Doc, el: El): boolean {
+  return tokens($(el).attr('itemprop')).some((t) => ELSEWHERE.has(t.toLowerCase()));
 }
 
 function isProduct($: Doc, el: El): boolean {

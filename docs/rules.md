@@ -8,7 +8,18 @@ because a check that cries wolf gets removed from the pipeline it was added to.
 ## Words used below
 
 - **Surface**: where a statement was read from. See `Surface` in
-  `packages/core/src/types.ts`.
+  `packages/core/src/types.ts`. `feed` is a Google Merchant feed; `acp` is an
+  Agentic Commerce Protocol feed, the one a shopping agent sells from.
+- **Plate**: surfaces grouped the way a press sheet is separated: C the page
+  (`page`, `jsonld`, `microdata`, `opengraph`), M the feed (`feed`), Y the
+  endpoints a shopping agent calls directly (`ucp`, `acp`, `mcp`), and K the key
+  plate the others are registered against (`platform`, `checkout`). `ucp` is
+  the shop's UCP catalogue (`--ucp`) and `mcp` its storefront MCP server's
+  catalogue tools (`--mcp`); see
+  [docs/configuration.md](configuration.md#the-agent-endpoints). Both state
+  price, list price, stock and identifiers per variant. A variant they found
+  only as a product's featured variant is a product-level sighting, so neither
+  ever names part of a product's variants by accident.
 - **Datum**: the surface that is believed, chosen per fact by
   `ctx.pick(observations)`, which returns the observation from the first
   surface in the run's datum order (default `checkout`, `platform`, `page`)
@@ -25,6 +36,15 @@ because a check that cries wolf gets removed from the pipeline it was added to.
 - **Buyable**: `isBuyable(availability)` from core. `in_stock`, `preorder` and
   `backorder` are buyable; `out_of_stock` and `discontinued` are not; `unknown`
   is no statement at all.
+- **Checkout**: what a real cart said, read by the
+  [checkout probe](configuration.md#the-checkout-probe) on WooCommerce or
+  Shopify: whether one unit could be added (`purchasable`), its price, and
+  shipping to the probe destination. On Shopify the price is the line's
+  `final_price`, after any automatic discount on the line, so a discount that
+  only the cart applies is a `price.mismatch` on the surfaces that do not show
+  it. Only WooCommerce gives a landed total: Shopify works out tax at
+  checkout, which the probe never reaches. A run without the probe skips the
+  rules that need `checkout`.
 
 A finding always carries `product` (the `ProductNode.key`). It carries
 `variant` (the `Offer.key`) when it is about one variant, `surface` when one
@@ -114,6 +134,13 @@ surface)`; `actual` is `u`.
 If the stated price no longer matches the datum, `price.mismatch` reports it and
 this rule stays silent.
 
+Where the end date comes from on a feed: a Google feed's sale window schedules
+the sale, so the feed collector takes the sale price, and the window's end as
+`priceValidUntil`, only while the window is open, and the regular price
+outside it. An ACP feed's sale dates schedule nothing: a valid `sale_price` is
+what an agent shows whatever its window says. So the collector always takes
+it, and keeps the window's end, which this rule then judges.
+
 ### `availability.mismatch` (error)
 *A surface says an item can be bought when it cannot, or the reverse.*
 
@@ -137,11 +164,60 @@ machine-readable surface is held to what the page shows, and fires once,
 without `variant`, when it states at least one known availability and none has
 the page's buyability.
 
+### `availability.stale` (warn)
+*A feed is older than the refresh interval set for it.*
+
+A feed that agrees with the shop today but was generated nine days ago will
+disagree as soon as a price or a stock level changes. `availability.mismatch`
+cannot see that while the values still match; the feed's own timestamp can.
+
+The rule reads `generatedAt`, which the feed collector puts on every item it
+reads from one feed: the RSS channel's `lastBuildDate`, else the channel's
+`pubDate`; the Atom feed's own `updated` (not an entry's); else the
+`Last-Modified` header of the response. A tab-separated feed can only be dated
+by the header, and so can an ACP feed: none of its formats has a place for the
+time the file was generated. A timestamp is read only when it is a real RFC 822 date (RSS,
+HTTP) or RFC 3339 date-time (Atom) that names its zone; anything else is left
+out, never guessed.
+
+For each surface `S` with a limit in `ctx.options.maxAgeMs` (set by `maxAge` or
+`--max-age`): take the newest `generatedAt` on any of `S`'s sightings in the
+graph. Fire when `ctx.now` minus that instant is greater than the limit.
+
+One finding per surface per run, not one per product. The age belongs to the
+whole file, and a finding on each of its items would bury the rest of the
+report and swamp any budget set for this rule. The finding goes on the first
+product, in graph order, that has a sighting on `S` carrying `generatedAt`. It
+has `surface` `S`, no `variant`, and `actual` is the `generatedAt` observation,
+shown as `generated 2026-09-30T08:00:00Z, 9 days before the audit`. The message
+names the limit.
+
+Silent when the newest timestamp is within the limit or exactly at it, and when
+it is in the future. A timestamp on a surface without a limit is not judged.
+
+Skipped when no surface has a limit. Also skipped, rather than passed, when no
+surface with a limit states a readable time it was generated: a feed that does
+not say how old it is cannot be called fresh. Needs `feed` or `acp`.
+
 ### `variant.missing` (error)
 *A surface lists some of a product's variants and leaves others out.*
 
-Considered surfaces: `jsonld`, `microdata`, `ucp`, `acp`, `mcp`. Feeds are
-exempt, because leaving variants out of a feed is often deliberate.
+Considered surfaces: `jsonld`, `microdata`, `ucp`, `acp`, `mcp`. The Google
+feed (`feed`) is exempt, because leaving variants out of a Merchant Center feed
+is often deliberate.
+
+An ACP feed is not exempt, for three reasons. It is the list a shopping agent
+sells from, so a variant it leaves out cannot be bought through the agent at
+all. The spec asks for one row per variant, out of stock or not, and gives a
+merchant a way to hold one back on purpose: `is_eligible_search=false`. The
+collector still counts such a row as listing its variant (it states no facts
+about it), so a deliberate hold-back does not fire. And OpenAI keeps serving a
+record that drops out of the feed for up to 14 days, so a variant left out
+when it sold out stays on offer with its last, in-stock record.
+
+The `ucp` and `mcp` readers look each variant up by its own id, and ask for
+sold-out variants too where the server lets them, so a variant missing there is
+one the catalogue does not answer for.
 
 Call a variant *real* when its `surfaces` include `platform` or `checkout`. For
 each considered surface `S`: if at least one real variant has `S` in its
@@ -165,6 +241,14 @@ hold:
 
 Needs `checkout`.
 
+A refusal is the cart's own answer about the product. On WooCommerce it is the
+Store API's error code; on Shopify it is a `422` or `404` `Cart Error` from `add.js`,
+and `actual.raw` is its text, such as
+`The product 'Classic Tee' is already sold out.` A challenge from the shop's
+bot protection, a redirect or a page where the cart's answer should be is not
+a refusal: the probe records a `probe-failed` issue and stops, and no
+`purchasable` observation is made for this rule to read.
+
 ### `shipping.mismatch` (error)
 *A surface states a shipping cost the checkout does not charge.*
 
@@ -180,6 +264,14 @@ when all hold:
 
 One finding per `(variant, surface)`. Needs `checkout`.
 
+The checkout quote `d` is the cart's shipping total for the probe destination
+on WooCommerce, and the cheapest rate the cart offers for it on Shopify. Its
+country is the destination's.
+
+An ACP feed's `shipping_price` is the charge to the US, the market OpenAI's
+standard upload targets, so it is compared with a quote for a US destination
+only; its four-position `shipping` tuple names its own country.
+
 ### `shipping.undisclosed` (warn)
 *A buyer cannot learn the shipping cost before checkout.*
 
@@ -190,7 +282,7 @@ for a different country does not count as disclosure; an unspecified country
 is compatible, and country codes are compared without regard to case. An
 empty shipping object with neither a cost nor free shipping is not a disclosed
 cost. `actual` is the checkout observation.
-Needs `checkout`.
+Needs `checkout`. The checkout quote is the one `shipping.mismatch` uses.
 
 ### `identity.unmatched` (warn)
 *Something a surface lists cannot be tied to anything the shop sells.*
@@ -205,11 +297,17 @@ Applies only when `platform` or `checkout` was collected.
   real variant: fire once, with `variant`; `surface` is that variant's only
   surface when it has exactly one.
 
+A sighting marked `withheld`, an ACP row with `is_eligible_search=false`, does
+not count as listing anything here: holding a row back is how a feed is told
+to stop offering it. The surfaces named, and whether the rule fires at all,
+come from the other sightings.
+
 ### `identity.gtin-invalid` (warn)
 *A GTIN that fails its check digit, has an impossible length, or is given to
 two different variants.*
 
-For each variant and each of its `sightings` that has `ids.gtin`:
+For each variant and each of its `sightings` that has `ids.gtin` and is not
+`withheld` (a row held back from buyers shows its GTIN to no one):
 - if `normalizeGtin` returns null, or `isValidGtin` is false, fire for that
   `(variant, surface)`;
 - otherwise, if the same GTIN (compare with `gtinKey`) appears on the same
@@ -227,12 +325,23 @@ For each product with at least one real variant: fire once (no `variant`, no
 `surface`) when no variant has any `returnPolicy` observation with
 `value.present` true and no product-level sighting has one either.
 
+An ACP feed states a policy with `accepts_returns` (true, or false for a final
+sale) or a `return_policy` URL, or, in the Product and Variant model, a
+seller link of type `refund_policy`. A return window alone does not.
+
 ## Content hygiene rules
 
-These read `product.text`, a list of `TextSample`. All of them produce
+The first three read `product.text`, a list of `TextSample`. They produce
 product-level findings with `surface: 'page'`. `actual` evidence: `value` is the
 offending text cut to 120 characters, `raw` the same, `locator` the sample's
 locator.
+
+When the cloaking check ran, `product.text` also holds the text that only one
+client was shown: each sample a view has that the ordinary read does not (same
+`field`, same text) is added once, with ` [via <profile>]` after its locator.
+These three rules read it like any other sample, so an instruction served only
+to agents is reported, and a sentence every client sees is reported once.
+`content.cloaking` reads the views themselves.
 
 ### `content.hidden-text` (warn)
 *Text kept in the page but deliberately kept from the eye.*
@@ -296,8 +405,57 @@ Fire once per sample when either holds:
 `value` in the evidence should name what was found, for example
 `7 tag characters, 3 zero-width spaces`, not echo the invisible text.
 
-## Not in this release
+### `content.cloaking` (error)
+*A page tells an agent a different price or stock level than a browser.*
 
-`availability.stale` and `content.cloaking` are planned. They need information
-the collectors do not gather yet: feed export timestamps, and a second fetch
-with a different user agent.
+Runs only when the cloaking check ran (`--cloaking`, which needs verified
+ownership); otherwise it is skipped with `needs --cloaking`. The check reads
+each sampled page again once per client profile and keeps each reading as a
+view: sightings with `via` set to the profile name, gathered in
+`product.alternateViews` and kept out of the offer facts.
+
+The **reference** for a product is its `browser` view when there is one,
+otherwise its ordinary sightings (the read made with Regmark's own User-Agent).
+Every other view is compared with it. The reference is not itself compared with
+anything.
+
+For each view `V`, each surface `S` among `page`, `jsonld`, `microdata` and
+`opengraph`, and each of two facts, price and buyability: take the statements
+of that fact on `S` from `V` and from the reference. A buyability statement is
+`isBuyable(availability)`, and `unknown` is no statement. Then, for each
+statement `v` from the view, in order:
+
+- If the reference has sightings on `S` that are the same item as `v`, `v` is
+  held to the statements among them. Two sightings are the same item when the
+  first kind of identifier both carry agrees: SKU (by `skuKey`), else GTIN (by
+  `gtinKey`), else option set (by `optionsKey`). When those sightings state
+  nothing about the fact, `v` is skipped.
+- Otherwise `v` is held to every statement of the fact the reference makes on
+  `S`.
+- `v` is contradicted when it agrees with none of the statements it is held
+  to. Prices agree when `sameMoney` is true, so a different currency is a
+  different price and a missing currency is not. Buyability agrees when it is
+  equal.
+
+Fire for the first contradicted statement, once per `(view, surface, fact)`,
+without `variant`. `surface` is `S`; `expected` is the reference statement it
+was held to (the first one), `actual` is `v`. Both locators end in
+` [via <profile>]` when they come from a view. The message names the view, for
+example `a client identifying as agent was told 19.00 USD in jsonld; a browser
+22.00 USD`; with no browser view the reference is called `Regmark itself`.
+
+It stays silent when:
+
+- a view leaves a fact out, or leaves a surface out altogether. A lighter page
+  for bots is not a different offer;
+- either side's stock level is `unknown`, or the reference names the item and
+  states nothing about the fact;
+- the same facts come in another order, or a view states for the whole product
+  a price the reference gives one of the variants;
+- only markup or text differs: CSRF tokens, timestamps, tracking scripts,
+  related products. Text is the other content rules' business;
+- one surface in the view disagrees with another surface in the reference.
+  Each surface is compared only with itself;
+- a view could not be read for the product, or only the reference was read.
+  A page read through a redirect to another origin was not read as the client,
+  and is not a view.

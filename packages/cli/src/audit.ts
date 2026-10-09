@@ -9,33 +9,64 @@
 // to it.
 
 import { collectFeed } from '@regmark/collect-feed';
-import { collectPages } from '@regmark/collect-page';
-import type { PageOptions } from '@regmark/collect-page';
-import { collectShopifyCatalog } from '@regmark/collect-shopify';
+import { collectPages, collectViews } from '@regmark/collect-page';
+import type { ClientProfile, PageOptions } from '@regmark/collect-page';
+import { collectMcp, collectUcp } from '@regmark/collect-protocol';
+import type { ProductRef } from '@regmark/collect-protocol';
+import { collectShopifyCatalog, probeShopifyCart } from '@regmark/collect-shopify';
 import { collectWooCatalog, probeWooCheckout } from '@regmark/collect-woo';
 import type { ProbeTarget } from '@regmark/collect-woo';
 import { buildGraph, createFetcher, DEFAULT_DATUM, FetchRefused, runRules, urlKey, verifyOwnership } from '@regmark/core';
-import type { AuditResult, CollectContext, CollectIssue, FetchPolicy, Rule, Sighting, Surface } from '@regmark/core';
+import type { AuditResult, CollectContext, CollectIssue, FetchPolicy, Rule, RuleOptions, Sighting, Surface } from '@regmark/core';
 import { allRules } from '@regmark/rules';
 import { detectPlatform } from './detect.ts';
-import { checkConfig, ConfigError } from './config.ts';
+import { checkConfig, ConfigError, DEFAULT_CLOAKING_PROFILES, parseDuration } from './config.ts';
 export { ConfigError } from './config.ts';
 
+/** Reported when the caller does not say which version it is, as when the sources run without the bundle. */
+const DEFAULT_VERSION = '0.0.0-dev';
+
 export type ShipTo = { country: string; postcode?: string; state?: string; city?: string };
+
+export type ProtocolOption = { url?: string; agentProfile?: string };
 
 export type AuditConfig = {
   /** The shop's origin, such as https://shop.example */
   store: string;
   /** Product feed URL, absolute or relative to the store. */
   feed?: string;
+  /** Agentic Commerce Protocol product feed URL, absolute or relative to the store. Read as the `acp` surface. */
+  acpFeed?: string;
   /**
    * Read the catalogue from the shop's storefront API. 'auto' finds out which
    * platform the shop runs on with one or two reads. Left unset, no backend is
    * read and the audit works from the pages alone.
    */
   platform?: 'woocommerce' | 'shopify' | 'auto';
-  /** Run the checkout probe. WooCommerce only in this release; needs a verified ownership token. */
+  /** Run the checkout probe (WooCommerce or Shopify); needs a verified ownership token. */
   checkout?: { shipTo: ShipTo };
+  /**
+   * The oldest a surface's own timestamp may be before availability.stale
+   * reports it, as "90m", "24h" or "7d". Keyed by surface: feed or acp.
+   */
+  maxAge?: Partial<Record<'feed' | 'acp', string>>;
+  /**
+   * Fetch each sampled page again as other clients (by default a browser and
+   * a shopping agent) and compare what each was told. Needs a verified
+   * ownership token. `true` uses the default profiles.
+   */
+  cloaking?: boolean | { userAgents: Record<string, string> };
+  /**
+   * Read the shop's UCP catalogue. `true` discovers it at /.well-known/ucp;
+   * `url` names another profile URL. `agentProfile` replaces the agent
+   * profile sent with each request.
+   */
+  ucp?: boolean | ProtocolOption;
+  /**
+   * Read the shop's storefront MCP server. `true` uses /api/mcp; `url` names
+   * another endpoint. `agentProfile` as for `ucp`.
+   */
+  mcp?: boolean | ProtocolOption;
   /** Product page URLs to audit. Without this the sample comes from the platform, the sitemap or the feed. */
   pages?: string[];
   /** Sitemap to discover product pages from, when there is no platform. Default /sitemap.xml. */
@@ -99,6 +130,20 @@ const LOC = /<loc>\s*([^<\s]+)\s*<\/loc>/g;
 const decodeXml = (s: string) => s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'");
 
 /**
+ * A <loc> must be absolute, and some sitemaps write a path anyway: it is read
+ * against the sitemap's own URL, as a browser would. One that still names no
+ * http or https page is passed on as written, for the page reader to refuse.
+ */
+function resolveLoc(loc: string, sitemapUrl: string): string {
+  try {
+    const url = new URL(loc, sitemapUrl);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : loc;
+  } catch {
+    return loc;
+  }
+}
+
+/**
  * Product page URLs from a sitemap. Follows a sitemap index one level down,
  * product sitemaps first, and reads at most four files: this is discovery,
  * not a crawl.
@@ -107,7 +152,7 @@ async function discoverFromSitemap(ctx: CollectContext, sitemapUrl: string, issu
   const locs = async (url: string): Promise<{ index: boolean; urls: string[] }> => {
     const res = await ctx.fetcher.get(url);
     if (res.status < 200 || res.status > 299) throw new Error(`HTTP ${res.status}`);
-    return { index: /<sitemapindex[\s>]/i.test(res.body), urls: [...res.body.matchAll(LOC)].map((m) => decodeXml(m[1]!)) };
+    return { index: /<sitemapindex[\s>]/i.test(res.body), urls: [...res.body.matchAll(LOC)].map((m) => resolveLoc(decodeXml(m[1]!), url)) };
   };
   try {
     const top = await locs(sitemapUrl);
@@ -128,6 +173,71 @@ async function discoverFromSitemap(ctx: CollectContext, sitemapUrl: string, issu
 
 const unique = <T>(items: readonly T[]): T[] => [...new Set(items)];
 
+type Collected = { sightings: Sighting[]; issues: CollectIssue[] };
+
+/**
+ * Runs one collector. Each is written not to throw on anything a shop sends;
+ * should one throw anyway, that surface is lost and reported, and the other
+ * surfaces are still read and compared.
+ */
+async function guarded(surface: Surface, what: string, collect: () => Promise<Collected>): Promise<Collected> {
+  try {
+    return await collect();
+  } catch (err) {
+    return { sightings: [], issues: [{ surface, code: 'collect-failed', message: `${what}: ${err instanceof Error ? err.message : String(err)}` }] };
+  }
+}
+
+const PAGE_SURFACES: ReadonlySet<Surface> = new Set(['page', 'jsonld', 'microdata', 'opengraph']);
+
+/**
+ * What the run already knows about each sampled product, for the protocol
+ * collectors: they look up these products and nothing else.
+ */
+function productRefs(pageUrls: readonly string[], sightings: readonly Sighting[], key: (url: string | undefined) => string | null, store: URL): ProductRef[] {
+  return pageUrls.map((url) => {
+    const mine = sightings.filter((s) => key(s.ids.url) === key(url));
+    const ref: ProductRef = { url };
+    const title = mine.find((s) => s.surface === 'platform' && s.title)?.title ?? mine.find((s) => s.title)?.title;
+    if (title) ref.title = title;
+    const productId = mine.find((s) => s.surface === 'platform' && s.ids.productId)?.ids.productId;
+    if (productId) ref.productId = productId;
+    const handle = pathOf(url, store).split('/').filter(Boolean).pop();
+    if (handle) ref.handle = decodeSegment(handle);
+    const skus = unique(mine.map((s) => s.ids.sku).filter((s): s is string => !!s));
+    if (skus.length) ref.skus = skus;
+    const variantIds = unique(mine.filter((s) => s.surface === 'platform').map((s) => s.ids.variantId).filter((s): s is string => !!s));
+    if (variantIds.length) ref.variantIds = variantIds;
+    return ref;
+  });
+}
+
+/** The path of a page URL. A URL that does not parse, which the page reader has already reported, has none. */
+function pathOf(url: string, store: URL): string {
+  try {
+    return new URL(url, store).pathname;
+  } catch {
+    return '';
+  }
+}
+
+/** A path segment as text. A malformed escape is a shop's mistake, not a reason to stop the audit, so it is kept as written. */
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
+/** The endpoint URL a protocol option names, when it names one. */
+const endpointUrl = (option: boolean | ProtocolOption | undefined, store: URL): string | undefined =>
+  typeof option === 'object' && option.url !== undefined ? new URL(option.url, store).href : undefined;
+
+/** The agent profile a protocol option names, when it names one. */
+const agentProfile = (option: boolean | ProtocolOption | undefined): string | undefined =>
+  typeof option === 'object' ? option.agentProfile : undefined;
+
 export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promise<AuditResult> {
   const now = deps.now ?? (() => new Date());
   const log = deps.log ?? (() => {});
@@ -143,14 +253,19 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
   }
   if (store.protocol !== 'http:' && store.protocol !== 'https:') throw new ConfigError('store must be an http or https URL');
   store = new URL(store.origin);
-  if (config.checkout && config.platform !== 'woocommerce' && config.platform !== 'auto') {
-    throw new ConfigError('the checkout probe needs platform "woocommerce" in this release');
+  if (config.checkout && config.platform === undefined) {
+    throw new ConfigError('the checkout probe needs a platform: woocommerce, shopify or auto');
   }
   const size = config.sample ?? 25;
 
   const feedUrl = config.feed ? new URL(config.feed, store).href : undefined;
-  const hosts = unique([store.hostname, ...(feedUrl ? [new URL(feedUrl).hostname] : [])]);
-  const fetcher = createFetcher({ ...config.fetch, hosts });
+  const acpFeedUrl = config.acpFeed ? new URL(config.acpFeed, store).href : undefined;
+  const ucpUrl = endpointUrl(config.ucp, store);
+  const mcpUrl = endpointUrl(config.mcp, store);
+  const hosts = unique([store.hostname, ...[feedUrl, acpFeedUrl, ucpUrl, mcpUrl].filter((u): u is string => !!u).map((u) => new URL(u).hostname)]);
+  // Say which version is asking, so a shop's logs can be matched to a release.
+  const userAgent = config.fetch?.userAgent ?? `Regmark/${deps.version ?? DEFAULT_VERSION} (+https://github.com/kairwang01/regmark)`;
+  const fetcher = createFetcher({ ...config.fetch, userAgent, hosts });
   const ctx: CollectContext = { store, fetcher, now, log };
 
   const sightings: Sighting[] = [];
@@ -196,13 +311,19 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
   }
   if (platform) log('info', `catalogue: ${parents.length} products listed, ${chosen.length} sampled`);
 
-  // 2. The feed, read whole (it is one file) and then cut down to the sample.
+  // 2. The feeds, each read whole (it is one file) and then cut down to the sample.
   let feedSightings: Sighting[] = [];
   if (feedUrl) {
-    const feed = await collectFeed(ctx, feedUrl);
+    const feed = await guarded('feed', 'feed', () => collectFeed(ctx, feedUrl));
     issues.push(...feed.issues);
     feedSightings = feed.sightings;
     log('info', `feed: ${feedSightings.length} items`);
+  }
+  if (acpFeedUrl) {
+    const acp = await guarded('acp', 'acp feed', () => collectFeed(ctx, acpFeedUrl, { surface: 'acp' }));
+    issues.push(...acp.issues);
+    feedSightings = [...feedSightings, ...acp.sightings];
+    log('info', `acp feed: ${acp.sightings.length} items`);
   }
 
   // 3. Fix the list of product pages.
@@ -215,17 +336,18 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
     pageUrls = [];
   } else {
     const fromSitemap = await discoverFromSitemap(ctx, new URL(config.sitemap ?? '/sitemap.xml', store).href, issues);
-    const candidates = fromSitemap.length ? fromSitemap : unique(feedSightings.map((s) => s.ids.url).filter((u): u is string => !!u));
+    const candidates = fromSitemap.length ? fromSitemap : unique(feedSightings.filter((s) => !s.withheld).map((s) => s.ids.url).filter((u): u is string => !!u));
     pageUrls = sample(unique(candidates), size, config.seed ?? 1);
   }
   const inSample = new Set(pageUrls.map(key));
 
   // Feed items for a product the platform does not list at all are kept, up
   // to the sample size: either the feed is stale or the catalogue is, and
-  // fetching the page settles which.
+  // fetching the page settles which. A row the feed holds back from buyers
+  // offers nothing, so it is not worth a page.
   if (feedSightings.length) {
     const known = new Set(parents.map((p) => key(p.permalink)));
-    const strays = parents.length ? feedSightings.filter((s) => !known.has(key(s.ids.url))) : [];
+    const strays = parents.length ? feedSightings.filter((s) => !s.withheld && !known.has(key(s.ids.url))) : [];
     const strayUrls = unique(strays.map((s) => s.ids.url).filter((u): u is string => !!u)).slice(0, size);
     for (const url of strayUrls) {
       inSample.add(key(url));
@@ -237,37 +359,83 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
   // 4. The pages themselves.
   if (pageUrls.length) {
     log('info', `pages: reading ${pageUrls.length}`);
-    const pages = await collectPages(ctx, pageUrls, config.page);
+    const pages = await guarded('page', 'pages', () => collectPages(ctx, pageUrls, config.page));
     sightings.push(...pages.sightings);
     issues.push(...pages.issues);
   }
 
-  // 5. The checkout probe: the only step that writes, and only after the
-  //    operator has shown the shop is theirs.
-  if (config.checkout && platform !== 'woocommerce') {
-    issues.push({ surface: 'checkout', code: 'probe-unsupported', message: 'checkout probe skipped: it needs a WooCommerce shop in this release' });
-  } else if (config.checkout) {
+  // 5. The endpoints a shopping agent calls directly: the Y plate. Read-only,
+  //    and asked about the sampled products only.
+  if (config.ucp || config.mcp) {
+    const refs = productRefs(pageUrls, sightings, key, store);
+    // The variant ids in the refs come from this platform's storefront API.
+    const from = platform === 'woocommerce' || platform === 'shopify' ? platform : undefined;
+    if (config.ucp) {
+      const ucp = await guarded('ucp', 'ucp', () => collectUcp(ctx, { url: ucpUrl, agentProfile: agentProfile(config.ucp), platform: from, products: refs }));
+      sightings.push(...ucp.sightings);
+      issues.push(...ucp.issues);
+      log('info', `ucp: ${ucp.sightings.length} statements`);
+    }
+    if (config.mcp) {
+      const mcp = await guarded('mcp', 'mcp', () =>
+        collectMcp(ctx, { url: mcpUrl, agentProfile: agentProfile(config.mcp), platform: from, clientVersion: deps.version ?? DEFAULT_VERSION, products: refs }),
+      );
+      sightings.push(...mcp.sightings);
+      issues.push(...mcp.issues);
+      log('info', `mcp: ${mcp.sightings.length} statements`);
+    }
+  }
+
+  // 6. The steps that act as the shop's owner: the checkout probe, which
+  //    writes, and the cloaking check, which poses as other clients. Neither
+  //    runs until the operator has shown the shop is theirs.
+  if (config.checkout || config.cloaking) {
     const ownership = await verifyOwnership(store, config.ownershipToken, fetcher);
     if (!ownership.verified) {
-      issues.push({ surface: 'checkout', code: 'ownership-not-verified', message: `checkout probe skipped: ${ownership.detail}` });
+      if (config.checkout) issues.push({ surface: 'checkout', code: 'ownership-not-verified', message: `checkout probe skipped: ${ownership.detail}` });
+      if (config.cloaking) issues.push({ surface: 'page', code: 'ownership-not-verified', message: `cloaking check skipped: ${ownership.detail}` });
     } else {
-      fetcher.authorizeWrites();
-      const targets: ProbeTarget[] = sightings
-        .filter((s) => s.surface === 'platform' && s.ids.variantId)
-        .map((s) => ({ variantId: s.ids.variantId!, productId: s.ids.productId, sku: s.ids.sku, url: s.ids.url }));
-      log('info', `checkout: probing ${targets.length} variants`);
-      const probe = await probeWooCheckout(ctx, targets, { shipTo: config.checkout.shipTo });
-      sightings.push(...probe.sightings);
-      issues.push(...probe.issues);
+      fetcher.authorizeWrites(store.origin);
+      if (config.checkout) {
+        const targets: ProbeTarget[] = sightings
+          .filter((s) => s.surface === 'platform' && s.ids.variantId)
+          .map((s) => ({ variantId: s.ids.variantId!, productId: s.ids.productId, sku: s.ids.sku, url: s.ids.url }));
+        if (platform === 'woocommerce' || platform === 'shopify') {
+          log('info', `checkout: probing ${targets.length} variants`);
+          const shipTo = config.checkout.shipTo;
+          const probe = await guarded('checkout', 'checkout probe', () =>
+            platform === 'woocommerce' ? probeWooCheckout(ctx, targets, { shipTo }) : probeShopifyCart(ctx, targets, { shipTo }),
+          );
+          sightings.push(...probe.sightings);
+          issues.push(...probe.issues);
+        } else {
+          issues.push({ surface: 'checkout', code: 'probe-unsupported', message: 'checkout probe skipped: it needs a WooCommerce or Shopify shop' });
+        }
+      }
+      if (config.cloaking) {
+        const read = new Set(sightings.filter((s) => PAGE_SURFACES.has(s.surface)).map((s) => key(s.ids.url)));
+        const urls = pageUrls.filter((u) => read.has(key(u)));
+        const named = typeof config.cloaking === 'object' ? config.cloaking.userAgents : DEFAULT_CLOAKING_PROFILES;
+        const profiles: ClientProfile[] = Object.entries(named).map(([name, userAgent]) => ({ name, userAgent }));
+        log('info', `cloaking: reading ${urls.length} pages as ${profiles.map((p) => p.name).join(', ')}`);
+        const views = await guarded('page', 'cloaking check', () => collectViews(ctx, urls, profiles, config.page));
+        sightings.push(...views.sightings);
+        issues.push(...views.issues);
+      }
     }
   }
 
   const graph = buildGraph(sightings);
   const datum = config.datum ?? [...DEFAULT_DATUM];
-  const run = runRules(graph, rules, { datum, budget: config.budget, now: now() });
+  const maxAgeMs: NonNullable<RuleOptions['maxAgeMs']> = {};
+  for (const [surface, text] of Object.entries(config.maxAge ?? {})) {
+    const ms = parseDuration(text);
+    if (ms !== undefined) maxAgeMs[surface as Surface] = ms;
+  }
+  const run = runRules(graph, rules, { datum, budget: config.budget, now: now(), options: { maxAgeMs } });
   return {
     schema: 'regmark.audit/v0',
-    tool: { name: 'regmark', version: deps.version ?? '0.1.0' },
+    tool: { name: 'regmark', version: deps.version ?? DEFAULT_VERSION },
     store: store.origin,
     startedAt,
     finishedAt: now().toISOString(),

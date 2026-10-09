@@ -151,7 +151,7 @@ test('rules prints one line per rule, including the two named rules', async () =
   const res = await run(['rules']);
   assert.equal(res.code, 0);
   const lines = res.stdout.split('\n').filter((line) => line.length > 0);
-  assert.equal(lines.length, 15);
+  assert.equal(lines.length, 17);
   for (const line of lines) assert.match(line, /^[a-z]+(\.[a-z-]+)+\s/, `dotted id first: ${line}`);
   assert.ok(lines.some((line) => line.startsWith('price.mismatch ')));
   assert.ok(lines.some((line) => line.startsWith('content.instruction-like ')));
@@ -219,6 +219,18 @@ test('--budget with no number exits 2', async () => {
   await failsFast(['audit', target(), '--budget', 'nonsense'], /--budget wants rule=number/);
 });
 
+test('--max-age that is not surface=duration exits 2', async () => {
+  await failsFast(['audit', target(), '--feed', '/feed.xml', '--max-age', '24h'], /--max-age wants surface=duration, such as feed=24h; got "24h"/);
+  await failsFast(['audit', target(), '--feed', '/feed.xml', '--max-age', 'feed='], /--max-age wants surface=duration/);
+  await failsFast(['audit', target(), '--feed', '/feed.xml', '--max-age', 'feed=soon'], /maxAge\.feed must be a duration such as "90m", "24h" or "7d"; got "soon"/);
+  await failsFast(['audit', target(), '--feed', '/feed.xml', '--max-age', 'page=24h'], /unknown maxAge field "page"/);
+});
+
+test('--max-age for a feed the audit does not read exits 2', async () => {
+  await failsFast(['audit', target(), '--max-age', 'feed=24h'], /maxAge\.feed is set, but no feed is read/);
+  await failsFast(['audit', target(), '--feed', '/feed.xml', '--max-age', 'acp=24h'], /maxAge\.acp is set, but no acp is read/);
+});
+
 test('--ship-to with a country name exits 2 (checkout requested)', async () => {
   await failsFast(['audit', target(), '--checkout', '--ship-to', 'USA'], /two-letter country code/);
 });
@@ -260,7 +272,7 @@ test('demo runs the bundled shop and writes an HTML report with no local address
   assert.equal(res.code, 0, res.stderr);
   assert.ok(res.stdout.includes('demo-shop.example'));
   assert.ok(res.stdout.includes('price.mismatch'));
-  assert.ok(res.stdout.includes('12 errors, 9 warnings, 1 note. 7 rules over budget.'));
+  assert.ok(res.stdout.includes('20 errors, 10 warnings, 1 note. 8 rules over budget.'));
   assert.ok(!res.stdout.includes('127.0.0.1'));
 
   const html = await readFile(path.join(dir, 'regmark-demo.html'), 'utf8');
@@ -285,6 +297,20 @@ test('demo --html writes the report to the name given', async () => {
   assert.equal(res.code, 0, res.stderr);
   assert.ok(existsSync(path.join(dir, 'custom.html')));
   assert.ok(!existsSync(path.join(dir, 'regmark-demo.html')));
+});
+
+test('demo writes every report format it is asked for, as an audit does', async () => {
+  const dir = await freshDir();
+  const res = await run(['demo', '--json', 'r.json', '--sarif', 'r.sarif', '--junit', 'r.xml', '--markdown', 'r.md', '--quiet'], { cwd: dir });
+  assert.equal(res.code, 0, res.stderr);
+  assert.equal(res.stdout, '', '--quiet prints nothing');
+  const json = JSON.parse(await readFile(path.join(dir, 'r.json'), 'utf8')) as { store: string; findings: unknown[] };
+  assert.equal(json.store, 'https://demo-shop.example');
+  assert.equal(json.findings.length, 31);
+  for (const file of ['r.sarif', 'r.xml', 'r.md', 'regmark-demo.html']) {
+    const text = await readFile(path.join(dir, file), 'utf8');
+    assert.ok(!text.includes('127.0.0.1'), file);
+  }
 });
 
 test('demo does not crash when its stdout reader closes early', async () => {
@@ -438,4 +464,55 @@ test('--ship-to replaces the destination of a checkout the config file asks for'
   const bad = await withConfig({ ...config, checkout: { shipTo: { country: 'Canada' } } }, ['--quiet']);
   assert.equal(bad.code, 2);
   assert.match(bad.stderr, /checkout\.shipTo\.country must be a two-letter country code/);
+});
+
+test('--max-age reports a feed older than its limit once, and replaces the same surface from the config file', async () => {
+  // The misprinted feed says it was generated nine days before the shop's clock.
+  const config = { store: misprint.origin, feed: '/feeds/google.xml', platform: 'woocommerce', sample: 50, maxAge: { feed: '10d' }, ...local };
+  const stale = (json: Record<string, any>) => (json.findings as Array<{ rule: string; product: string; surface?: string }>).filter((f) => f.rule === 'availability.stale');
+
+  const fromFile = await withConfig(config, ['--json', 'out.json', '--quiet']);
+  assert.equal(fromFile.code, 1, fromFile.stderr);
+  const lenient = await readJson(path.join(fromFile.dir, 'out.json'));
+  assert.deepEqual(stale(lenient), []);
+  assert.equal(lenient.rules.find((r: { id: string }) => r.id === 'availability.stale').skipped, undefined, 'the rule ran');
+
+  const fromFlag = await withConfig(config, ['--max-age', 'feed=24h', '--json', 'out.json', '--quiet']);
+  assert.equal(fromFlag.code, 1, fromFlag.stderr);
+  const strict = await readJson(path.join(fromFlag.dir, 'out.json'));
+  assert.deepEqual(stale(strict).map((f) => [f.product.split('/').pop(), f.surface]), [['canvas-tote', 'feed']]);
+});
+
+test('a maxAge in the config file applies to a feed given on the command line', async () => {
+  // The file is checked before the flags are merged into it, so it must not demand a feed the flags supply.
+  const config = { store: misprint.origin, platform: 'woocommerce', sample: 50, maxAge: { feed: '24h' }, ...local };
+  const res = await withConfig(config, ['--feed', '/feeds/google.xml', '--json', 'out.json', '--quiet']);
+  assert.equal(res.code, 1, res.stderr);
+  const json = await readJson(path.join(res.dir, 'out.json'));
+  assert.ok(json.findings.some((f: { rule: string }) => f.rule === 'availability.stale'));
+  // Without any feed, the merged config is still refused.
+  const none = await withConfig(config, ['--quiet']);
+  assert.equal(none.code, 2);
+  assert.match(none.stderr, /maxAge\.feed is set, but no feed is read/);
+});
+
+test('--acp-feed reads the agent feed as the acp surface, gzipped as published, and the config file can name it too', async () => {
+  const acpFindings = (json: Record<string, any>) =>
+    (json.findings as Array<{ rule: string; variant?: string; surface?: string }>).filter((f) => f.surface === 'acp').map((f) => `${f.rule} ${f.variant}`).sort();
+  const expected = ['availability.mismatch BEANIE-NVY', 'price.mismatch SOCK-M'];
+
+  const out = path.join(await freshDir(), 'acp.json');
+  const flag = await run(
+    ['audit', misprint.origin, '--acp-feed', '/feeds/acp.jsonl.gz', '--platform', 'woocommerce', '--allow-private-network', '--interval', '0', '--sample', '50', '--json', out, '--quiet'],
+  );
+  assert.equal(flag.code, 1, flag.stderr);
+  const json = await readJson(out);
+  assert.ok(json.surfaces.includes('acp'));
+  assert.ok(!json.surfaces.includes('feed'), 'the Google feed was not asked for');
+  assert.deepEqual(acpFindings(json), expected);
+  assert.deepEqual(json.issues, []);
+
+  const fromFile = await withConfig({ store: misprint.origin, acpFeed: '/feeds/acp.jsonl', platform: 'woocommerce', sample: 50, ...local }, ['--json', 'out.json', '--quiet']);
+  assert.equal(fromFile.code, 1, fromFile.stderr);
+  assert.deepEqual(acpFindings(await readJson(path.join(fromFile.dir, 'out.json'))), expected);
 });

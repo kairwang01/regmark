@@ -141,6 +141,26 @@ export type Sighting = {
   landedTotal?: Observation<Money>;
   /** Page only. */
   text?: TextSample[];
+  /**
+   * When the surface says this statement was produced: a feed's
+   * lastBuildDate or updated element, else the response's Last-Modified
+   * header. ISO 8601. Only `availability.stale` reads it.
+   */
+  generatedAt?: Observation<string>;
+  /**
+   * Set when the page was fetched a second time as another kind of client,
+   * for the cloaking check: the name of the client profile, such as "agent".
+   * The graph keeps these sightings out of the offer facts, so no parity rule
+   * compares them; they are gathered in `ProductNode.alternateViews`.
+   */
+  via?: string;
+  /**
+   * Set when the surface lists the variant but keeps it from buyers on
+   * purpose, as an ACP row with is_eligible_search=false does. Such a
+   * sighting states no facts. It still counts as listing the variant, for
+   * variant.missing, but it is no claim that the shop sells it.
+   */
+  withheld?: true;
 };
 
 /** One variant, with every surface's statements gathered per fact. */
@@ -171,6 +191,12 @@ export type ProductNode = {
   /** Product-scope sightings: they describe the product, not one variant. */
   productLevel: Sighting[];
   text: TextSample[];
+  /**
+   * Sightings of this product's page fetched as another client (each has
+   * `via` set), exactly as the page collector produced them. Empty unless the
+   * cloaking check ran. Only `content.cloaking` compares them.
+   */
+  alternateViews: Sighting[];
 };
 
 export type OfferGraph = {
@@ -214,8 +240,19 @@ export type RuleContext = {
   /** The whole graph, for the few rules that have to look across products. */
   graph: OfferGraph;
   now: Date;
+  /** Settings some rules take from the run's configuration. */
+  options: RuleOptions;
   /** Returns the observation from the most trusted surface, if any. */
   pick<T>(observations: readonly Observation<T>[]): Observation<T> | undefined;
+};
+
+/** Per-run settings for the rules that need one. Every field is optional; a rule without its setting is skipped. */
+export type RuleOptions = {
+  /**
+   * The largest age, in milliseconds, a surface's own timestamp may show
+   * before `availability.stale` reports it. Keyed by surface.
+   */
+  maxAgeMs?: Partial<Record<Surface, number>>;
 };
 
 export type Rule = {
@@ -230,6 +267,12 @@ export type Rule = {
   needsAny?: readonly Surface[];
   /** The rule is skipped unless every one of these was collected. */
   needsAll?: readonly Surface[];
+  /**
+   * Checked after needsAny and needsAll. Returns why the rule cannot run in
+   * this context, such as "needs maxAge for feed", or undefined when it can.
+   * For rules that depend on a setting or an opt-in check, not a surface.
+   */
+  requires?(ctx: RuleContext): string | undefined;
   /** Pure: no I/O, no clock other than ctx.now, same input gives same output. */
   check(product: ProductNode, ctx: RuleContext): Finding[];
 };
@@ -285,7 +328,32 @@ export type Fetched = {
   fetchedAt: string;
 };
 
-export type RequestOptions = { headers?: Record<string, string> };
+export type RequestOptions = {
+  headers?: Record<string, string>;
+  /**
+   * A read the operator makes as the shop's owner, after ownership has been
+   * verified: robots.txt (which addresses crawlers, not owners) is not
+   * consulted, and a `user-agent` header may replace Regmark's own. Refused
+   * with `write-not-authorized` when ownership was not verified. Without this
+   * flag a `user-agent` header is refused: Regmark does not pose as another
+   * client on a shop that has not shown it is the operator's.
+   */
+  asOwner?: boolean;
+  /**
+   * The resource may itself be a gzip file, such as products.jsonl.gz, which
+   * a static host serves as application/gzip with no Content-Encoding. A body
+   * that starts with the gzip magic bytes is then decompressed before it is
+   * decoded, and the size limit counts the decompressed bytes. Reads only.
+   */
+  gzipFile?: boolean;
+  /**
+   * For a response that is a server-sent event stream: called with the stream
+   * read so far after each chunk. Once it returns true the response is taken
+   * as complete and the connection is closed, for a server that keeps the
+   * stream open after it has answered. Any other response is read to its end.
+   */
+  complete?: (body: string) => boolean;
+};
 
 /**
  * The only way a collector touches the network. The implementation in
@@ -299,6 +367,14 @@ export interface Fetcher {
    * the shop was verified for this run.
    */
   send(method: 'POST' | 'PUT' | 'DELETE', url: string, options?: RequestOptions & { json?: unknown }): Promise<Fetched>;
+  /**
+   * A POST that only asks: a JSON-RPC call such as an MCP tools/list, or a
+   * catalogue search whose protocol puts the question in the body. It is
+   * paced, checked against robots.txt like a read, and never follows a
+   * redirect. The caller is responsible for sending only requests that
+   * change nothing on the shop; anything that does goes through `send`.
+   */
+  query(url: string, json: unknown, options?: RequestOptions): Promise<Fetched>;
 }
 
 export type CollectContext = {

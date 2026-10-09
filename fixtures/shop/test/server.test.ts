@@ -1,5 +1,6 @@
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { gunzipSync } from 'node:zlib';
 import { startShop } from '../src/server.ts';
 import type { RunningShop } from '../src/server.ts';
 import { OWNERSHIP_TOKEN } from '../src/catalog.ts';
@@ -47,8 +48,45 @@ describe('fixture server', () => {
       expected: unknown[];
     };
     assert.equal(body.mode, 'misprint');
-    assert.equal(body.expected.length, 22);
-    assert.equal(body.defects.length, 19);
+    assert.equal(body.expected.length, 31);
+    assert.equal(body.defects.length, 27);
+  });
+
+  it('serves a page by who the User-Agent says is asking, and records who asked', async () => {
+    const r = await start('misprint');
+    const url = `${r.origin}/product/field-cap/`;
+    const read = async (ua: string) => (await (await fetch(url, { headers: { 'user-agent': ua } })).text()).includes('"price":"19.00"');
+    assert.equal(await read('Regmark/0.1.0 (+https://github.com/kairwang01/regmark)'), false);
+    assert.equal(await read('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'), false);
+    assert.equal(await read('Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot'), true);
+    assert.equal(await read('Mozilla/5.0 (compatible; PerplexityBot/1.0)'), true);
+    assert.deepEqual(r.userAgents.slice(-2), ['Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot', 'Mozilla/5.0 (compatible; PerplexityBot/1.0)']);
+    assert.equal(r.userAgents.length, r.requests.length);
+  });
+
+  it('the clean shop answers an agent exactly as it answers anyone else', async () => {
+    const r = await start('clean');
+    for (const slug of ['field-cap', 'rain-shell']) {
+      const url = `${r.origin}/product/${slug}/`;
+      const person = await (await fetch(url, { headers: { 'user-agent': 'Regmark/0.1.0' } })).text();
+      const agent = await (await fetch(url, { headers: { 'user-agent': 'ChatGPT-User/1.0' } })).text();
+      assert.equal(agent, person, slug);
+    }
+  });
+
+  it('serves the ACP feed as JSON Lines, and as the gzip file OpenAI asks for', async () => {
+    const r = await start('clean');
+    const plain = await fetch(`${r.origin}/feeds/acp.jsonl`);
+    assert.equal(plain.status, 200);
+    assert.equal(plain.headers.get('content-type'), 'application/jsonl; charset=utf-8');
+    const text = await plain.text();
+    assert.equal(text.trim().split('\n').length, 19);
+    const gz = await fetch(`${r.origin}/feeds/acp.jsonl.gz`);
+    assert.equal(gz.status, 200);
+    assert.equal(gz.headers.get('content-type'), 'application/gzip');
+    // A file, not a transfer encoding: the bytes arrive still compressed.
+    assert.equal(gz.headers.get('content-encoding'), null);
+    assert.equal(gunzipSync(Buffer.from(await gz.arrayBuffer())).toString('utf8'), text);
   });
 
   it('lists products over HTTP with the total header', async () => {

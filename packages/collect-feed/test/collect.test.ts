@@ -18,6 +18,9 @@ function fakeFetcher(answer: Fetched | Error): Fetcher {
     async send() {
       throw new Error('send is not used by the feed collector');
     },
+    async query() {
+      throw new Error('query is not used by the feed collector');
+    },
   };
 }
 
