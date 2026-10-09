@@ -33030,6 +33030,9 @@ function artifactUri(locator2) {
   const hash = locator2.indexOf("#");
   return hash === -1 ? locator2 : locator2.slice(0, hash);
 }
+function nothingRead(result) {
+  return result.counts.products === 0;
+}
 
 // packages/report/src/terminal.ts
 var PLATES = ["C", "M", "Y", "K"];
@@ -33134,7 +33137,9 @@ function renderTerminal(result, options = {}) {
   const notes = result.findings.filter((f) => f.severity === "info").length;
   let summary = `${errors2 > 0 ? paint("red", plural(errors2, "error")) : plural(errors2, "error")}, ${warns > 0 ? paint("yellow", plural(warns, "warning")) : plural(warns, "warning")}`;
   if (notes > 0) summary += `, ${plural(notes, "note")}`;
-  if (result.ok) {
+  if (nothingRead(result)) {
+    summary = "No product was read, so nothing was checked.";
+  } else if (result.ok) {
     summary += ". Within budget.";
   } else {
     const over = result.rules.filter((r) => !r.passed).length;
@@ -33425,10 +33430,11 @@ function renderHtml(result, options = {}) {
   const warns = result.findings.filter((f) => f.severity === "warn").length;
   const notes = result.findings.filter((f) => f.severity === "info").length;
   const over = result.rules.filter((r) => !r.passed);
-  const word = result.ok ? "In register" : "Out of register";
+  const empty2 = nothingRead(result);
+  const word = empty2 ? "Nothing read" : result.ok ? "In register" : "Out of register";
   const counts = [plural2(errors2, "error"), plural2(warns, "warning"), ...notes ? [plural2(notes, "note")] : []];
   const where = `${plural2(result.counts.variants, "variant")} of ${plural2(result.counts.products, "product")}`;
-  const sentence = result.ok ? `<b>${counts.join(", ")}</b> across ${where}. Every rule is within its budget.` : `<b>${counts.join(", ")}</b> across ${where}. Over budget: ${over.map((r) => `<a href="#rule-${esc(r.id)}">${esc(r.id)}</a>`).join(", ")}.`;
+  const sentence = empty2 ? `<b>No product could be read from this shop</b>, so no rule had anything to compare.${result.issues.length ? " What got in the way is listed under Collection issues." : ""}` : result.ok ? `<b>${counts.join(", ")}</b> across ${where}. Every rule is within its budget.` : `<b>${counts.join(", ")}</b> across ${where}. Over budget: ${over.map((r) => `<a href="#rule-${esc(r.id)}">${esc(r.id)}</a>`).join(", ")}.`;
   const collected = new Set(result.surfaces);
   const plates = PLATES2.map((plate) => {
     const mine = Object.keys(PLATE_OF).filter((s) => PLATE_OF[s] === plate && collected.has(s));
@@ -33453,7 +33459,7 @@ ${rest > 0 ? `<p class="more">and ${rest} more, in the JSON report.</p>` : ""}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <meta name="color-scheme" content="light dark">
-<title>Regmark: ${esc(host(result.store))} ${result.ok ? "in register" : "out of register"}</title>
+<title>Regmark: ${esc(host(result.store))} ${word.toLowerCase()}</title>
 <style>${CSS}</style>
 </head>
 <body>
@@ -33557,7 +33563,8 @@ function ruleDetails(rule, findings, maxPerRule) {
 function renderMarkdown(result, options = {}) {
   const maxPerRule = Math.max(0, Math.floor(options.maxPerRule ?? DEFAULT_MAX_PER_RULE));
   const sections = [];
-  sections.push(result.ok ? "## Regmark: in register" : "## Regmark: out of register");
+  const empty2 = nothingRead(result);
+  sections.push(empty2 ? "## Regmark: nothing read" : result.ok ? "## Regmark: in register" : "## Regmark: out of register");
   const tally = (severity) => result.findings.filter((f) => f.severity === severity).length;
   const errors2 = tally("error");
   const warnings = tally("warn");
@@ -33567,7 +33574,7 @@ function renderMarkdown(result, options = {}) {
   const overBudget = result.rules.filter((r) => r.skipped === void 0 && !r.passed).length;
   const verdict = result.ok ? "Every rule is within its budget." : `${plural3(overBudget, "rule")} over budget.`;
   sections.push(
-    `**${counts.join(", ")}** across ${plural3(result.counts.variants, "variant")} of ${plural3(result.counts.products, "product")} on ${code(hostOf2(result.store))}. ${verdict}`
+    empty2 ? `No product could be read from ${code(hostOf2(result.store))}, so nothing was checked.` : `**${counts.join(", ")}** across ${plural3(result.counts.variants, "variant")} of ${plural3(result.counts.products, "product")} on ${code(hostOf2(result.store))}. ${verdict}`
   );
   const plates = PLATES3.map((plate) => {
     const mine = result.surfaces.filter((s) => PLATE_OF[s] === plate).map(cell);
@@ -54928,6 +54935,46 @@ var ConfigError = class extends Error {
     this.name = "ConfigError";
   }
 };
+var FIELDS = ["store", "feed", "platform", "checkout", "pages", "sitemap", "page", "sample", "maxVariants", "seed", "datum", "budget", "ownershipToken", "fetch"];
+var PLATFORMS = ["woocommerce", "shopify", "auto"];
+var SURFACES = Object.keys(PLATE_OF);
+function check(config, rules) {
+  const whole = (name, value, min) => {
+    if (value !== void 0 && (!Number.isInteger(value) || value < min)) {
+      throw new ConfigError(`${name} must be a whole number, ${min} or more; got ${JSON.stringify(value)}`);
+    }
+  };
+  for (const field of Object.keys(config)) {
+    if (!FIELDS.includes(field)) throw new ConfigError(`unknown config field "${field}"; the fields are ${FIELDS.join(", ")}`);
+  }
+  const platform = config.platform;
+  if (platform !== void 0 && !PLATFORMS.includes(platform)) {
+    throw new ConfigError(`unknown platform "${String(platform)}"; choose one of ${PLATFORMS.join(", ")}, none`);
+  }
+  whole("sample", config.sample, 1);
+  whole("maxVariants", config.maxVariants, 1);
+  whole("seed", config.seed, 0);
+  if (config.pages !== void 0 && !(Array.isArray(config.pages) && config.pages.every((u) => typeof u === "string"))) {
+    throw new ConfigError("pages must be a list of URLs");
+  }
+  if (config.datum !== void 0) {
+    if (!Array.isArray(config.datum) || config.datum.length === 0) throw new ConfigError("datum must name at least one surface");
+    for (const name of config.datum) {
+      if (!SURFACES.includes(name)) throw new ConfigError(`unknown surface "${String(name)}" in datum; the surfaces are ${SURFACES.join(", ")}`);
+    }
+  }
+  const known = new Set(rules.map((r) => r.id));
+  for (const [id, allowed] of Object.entries(config.budget ?? {})) {
+    if (!known.has(id)) throw new ConfigError(`budget names a rule that does not exist: "${id}"; regmark rules lists them`);
+    if (!Number.isInteger(allowed) || allowed < 0) throw new ConfigError(`the budget for ${id} must be a whole number; got ${JSON.stringify(allowed)}`);
+  }
+  if (config.checkout) {
+    const country = config.checkout.shipTo?.country;
+    if (typeof country !== "string" || !/^[A-Za-z]{2}$/.test(country)) {
+      throw new ConfigError(`checkout.shipTo.country must be a two-letter country code; got ${JSON.stringify(country)}`);
+    }
+  }
+}
 function mulberry32(seed) {
   let a = seed >>> 0;
   return () => {
@@ -54978,6 +55025,8 @@ async function runAudit(config, deps = {}) {
   const log = deps.log ?? (() => {
   });
   const startedAt = now().toISOString();
+  const rules = deps.rules ?? allRules;
+  check(config, rules);
   let store;
   try {
     store = new URL(config.store);
@@ -54990,7 +55039,6 @@ async function runAudit(config, deps = {}) {
     throw new ConfigError('the checkout probe needs platform "woocommerce" in this release');
   }
   const size = config.sample ?? 25;
-  if (!Number.isInteger(size) || size < 1) throw new ConfigError("sample must be a positive whole number");
   const feedUrl = config.feed ? new URL(config.feed, store).href : void 0;
   const hosts = unique([store.hostname, ...feedUrl ? [new URL(feedUrl).hostname] : []]);
   const fetcher = createFetcher({ hosts, ...config.fetch });
@@ -55079,7 +55127,7 @@ async function runAudit(config, deps = {}) {
   }
   const graph = buildGraph(sightings);
   const datum = config.datum ?? [...DEFAULT_DATUM];
-  const run = runRules(graph, deps.rules ?? allRules, { datum, budget: config.budget, now: now() });
+  const run = runRules(graph, rules, { datum, budget: config.budget, now: now() });
   return {
     schema: "regmark.audit/v0",
     tool: { name: "regmark", version: deps.version ?? "0.1.0" },
@@ -55102,6 +55150,7 @@ var USAGE = `regmark: check that what a shop tells machines matches what its che
 
 Usage
   regmark demo                      audit a bundled shop that has 19 defects planted in it
+  regmark demo --clean              the same shop with nothing wrong in it
   regmark audit <store-url>         audit a real shop
   regmark explain <rule>            the usual cause of a finding, and the fix
   regmark rules                     list every rule
@@ -55130,11 +55179,12 @@ Other
   --config <file>           JSON, or a module with a default export; ./regmark.config.json is read if present
   --interval <ms>           gap between requests to one host, default 1000
   --allow-private-network   for a shop on your own machine or network
+  --version   --help
 
 The ownership token is read from REGMARK_OWNERSHIP_TOKEN. Put the line
 regmark-verify=<token> in /.well-known/regmark.txt on the shop.
 
-Exit code: 0 within budget, 1 over budget, 2 the audit could not run.
+Exit code: 0 within budget, 1 over budget, 2 the audit could not run or read no product.
 Documentation: ${DOCS}
 `;
 async function version() {
@@ -55345,23 +55395,25 @@ async function main(argv) {
   const store = target ?? fromFile.store;
   if (!store) throw new ConfigError("which shop? regmark audit <store-url>");
   const platforms = ["woocommerce", "shopify", "auto", "none"];
-  if (values.platform && !platforms.includes(values.platform)) {
-    throw new ConfigError(`unknown platform "${values.platform}"; choose one of ${platforms.join(", ")}`);
-  }
   const platformChoice = values.platform ?? fromFile.platform ?? "auto";
+  if (!platforms.includes(platformChoice)) {
+    throw new ConfigError(`unknown platform "${platformChoice}"; choose one of ${platforms.join(", ")}`);
+  }
   const shipTo = values["ship-to"] ? parseShipTo(values["ship-to"]) : void 0;
+  const checkout = values.checkout || fromFile.checkout !== void 0;
   const config = {
     ...fromFile,
     store,
     platform: platformChoice === "none" ? void 0 : platformChoice,
     ...values.feed ? { feed: values.feed } : {},
-    ...values.checkout ? { checkout: { shipTo: shipTo ?? { country: "US" } } } : {},
+    ...checkout ? { checkout: { shipTo: shipTo ?? fromFile.checkout?.shipTo ?? { country: "US" } } } : {},
     ...values.page?.length ? { pages: values.page } : {},
     ...values.sample ? { sample: wholeNumber2("--sample", values.sample) } : {},
     ...values.seed ? { seed: wholeNumber2("--seed", values.seed) } : {},
     ...values.datum ? { datum: values.datum.split(",").map((s) => s.trim()) } : {},
     ...values.budget?.length ? { budget: { ...fromFile.budget, ...parseBudget(values.budget) } } : {},
-    ownershipToken: process.env.REGMARK_OWNERSHIP_TOKEN ?? fromFile.ownershipToken,
+    // An empty variable is what a CI job passes when the secret is not set; it must not blank out the file's token.
+    ownershipToken: process.env.REGMARK_OWNERSHIP_TOKEN || fromFile.ownershipToken,
     fetch: {
       ...fromFile.fetch,
       ...values.interval ? { minIntervalMs: wholeNumber2("--interval", values.interval) } : {},
@@ -55375,6 +55427,13 @@ async function main(argv) {
 `)) : void 0
   });
   await writeReports(result, values);
+  if (result.counts.products === 0) {
+    if (!values.quiet) out(renderTerminal(result, { color }));
+    note(`regmark: no product could be read from ${new URL(result.store).host}, so nothing was checked
+`);
+    note("  Name a product page with --page <url>, or the platform with --platform, and look at the collection issues.\n");
+    return 2;
+  }
   if (!values.quiet) {
     out(renderTerminal(result, { color }));
     if (result.findings.length > 0) out(`  Usual cause and fix for a rule:  regmark explain ${result.findings[0].rule}

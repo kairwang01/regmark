@@ -1,7 +1,7 @@
 import { styleText } from 'node:util';
 import { PLATE_OF } from '@regmark/core';
 import type { AuditResult, Plate, Severity, Surface } from '@regmark/core';
-import { durationMs, findingSentence, subjectOf } from './shared.ts';
+import { durationMs, findingSentence, nothingRead, subjectOf } from './shared.ts';
 
 export type TerminalOptions = { color?: boolean; maxExamples?: number };
 
@@ -154,7 +154,9 @@ export function renderTerminal(result: AuditResult, options: TerminalOptions = {
     `${warns > 0 ? paint('yellow', plural(warns, 'warning')) : plural(warns, 'warning')}`;
   if (notes > 0) summary += `, ${plural(notes, 'note')}`;
 
-  if (result.ok) {
+  if (nothingRead(result)) {
+    summary = 'No product was read, so nothing was checked.';
+  } else if (result.ok) {
     summary += '. Within budget.';
   } else {
     // The rules are named above, each with its count; here only how many broke their budget.

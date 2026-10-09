@@ -11,7 +11,7 @@
 
 import { PLATE_OF } from '@regmark/core';
 import type { AuditResult, Evidence, Finding, Plate, RuleSummary, Surface } from '@regmark/core';
-import { durationMs, subjectOf } from './shared.ts';
+import { durationMs, nothingRead, subjectOf } from './shared.ts';
 
 const esc = (s: unknown): string =>
   String(s)
@@ -193,13 +193,16 @@ export function renderHtml(result: AuditResult, options: HtmlOptions = {}): stri
   const warns = result.findings.filter((f) => f.severity === 'warn').length;
   const notes = result.findings.filter((f) => f.severity === 'info').length;
   const over = result.rules.filter((r) => !r.passed);
-  const word = result.ok ? 'In register' : 'Out of register';
+  const empty = nothingRead(result);
+  const word = empty ? 'Nothing read' : result.ok ? 'In register' : 'Out of register';
 
   const counts = [plural(errors, 'error'), plural(warns, 'warning'), ...(notes ? [plural(notes, 'note')] : [])];
   const where = `${plural(result.counts.variants, 'variant')} of ${plural(result.counts.products, 'product')}`;
-  const sentence = result.ok
-    ? `<b>${counts.join(', ')}</b> across ${where}. Every rule is within its budget.`
-    : `<b>${counts.join(', ')}</b> across ${where}. Over budget: ${over.map((r) => `<a href="#rule-${esc(r.id)}">${esc(r.id)}</a>`).join(', ')}.`;
+  const sentence = empty
+    ? `<b>No product could be read from this shop</b>, so no rule had anything to compare.${result.issues.length ? ' What got in the way is listed under Collection issues.' : ''}`
+    : result.ok
+      ? `<b>${counts.join(', ')}</b> across ${where}. Every rule is within its budget.`
+      : `<b>${counts.join(', ')}</b> across ${where}. Over budget: ${over.map((r) => `<a href="#rule-${esc(r.id)}">${esc(r.id)}</a>`).join(', ')}.`;
 
   const collected = new Set(result.surfaces);
   const plates = PLATES.map((plate) => {
@@ -236,7 +239,7 @@ ${rest > 0 ? `<p class="more">and ${rest} more, in the JSON report.</p>` : ''}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <meta name="color-scheme" content="light dark">
-<title>Regmark: ${esc(host(result.store))} ${result.ok ? 'in register' : 'out of register'}</title>
+<title>Regmark: ${esc(host(result.store))} ${word.toLowerCase()}</title>
 <style>${CSS}</style>
 </head>
 <body>

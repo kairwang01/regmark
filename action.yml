@@ -13,24 +13,21 @@ inputs:
     description: Product feed URL in Google Merchant format, absolute or relative to the store.
     required: false
   platform:
-    description: woocommerce, shopify, auto or none.
+    description: woocommerce, shopify, auto or none. Left empty, the config file decides, and without one the tool works it out.
     required: false
-    default: auto
   checkout:
     description: Set to true to run the checkout probe (WooCommerce). Needs ownership-token.
     required: false
     default: 'false'
   ship-to:
-    description: Destination for the checkout probe, as CC or CC:postcode.
+    description: Destination for the checkout probe, as CC or CC:postcode. Left empty, the config file decides, and without one it is US.
     required: false
-    default: US
   ownership-token:
     description: The token served at /.well-known/regmark.txt on the shop. Pass it from a secret.
     required: false
   sample:
-    description: How many products to audit.
+    description: How many products to audit. Left empty, the config file decides, and without one it is 25.
     required: false
-    default: '25'
   budget:
     description: Allowed findings per rule, one rule=number per line.
     required: false
@@ -38,7 +35,7 @@ inputs:
     description: Path to a regmark config file in the repository.
     required: false
   report-name:
-    description: Name of the uploaded artifact that holds the HTML, JSON and SARIF reports.
+    description: Name of the uploaded artifact that holds the HTML, JSON, SARIF and Markdown reports.
     required: false
     default: regmark-report
   args:
@@ -56,9 +53,11 @@ outputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-node@v4
+    - uses: actions/setup-node@v7
       with:
         node-version: 22
+        # The tool is one file with no dependencies. Nothing here is worth caching.
+        package-manager-cache: false
 
     - id: audit
       shell: bash
@@ -77,12 +76,16 @@ runs:
         mkdir -p regmark-report
         # Inputs arrive through the environment, never by pasting them into
         # this script, so a value cannot become shell.
-        args=(audit "$INPUT_STORE" --platform "$INPUT_PLATFORM" --sample "$INPUT_SAMPLE" --no-color
+        # An input left empty is not passed at all, so a config file keeps its say.
+        args=(audit "$INPUT_STORE" --no-color
               --html regmark-report/regmark.html --json regmark-report/regmark.json
               --sarif regmark-report/regmark.sarif --markdown regmark-report/regmark.md)
+        [ -n "$INPUT_PLATFORM" ] && args+=(--platform "$INPUT_PLATFORM")
+        [ -n "$INPUT_SAMPLE" ] && args+=(--sample "$INPUT_SAMPLE")
         [ -n "$INPUT_FEED" ] && args+=(--feed "$INPUT_FEED")
         [ -n "$INPUT_CONFIG" ] && args+=(--config "$INPUT_CONFIG")
-        [ "$INPUT_CHECKOUT" = "true" ] && args+=(--checkout --ship-to "$INPUT_SHIP_TO")
+        [ "$INPUT_CHECKOUT" = "true" ] && args+=(--checkout)
+        [ -n "$INPUT_SHIP_TO" ] && args+=(--ship-to "$INPUT_SHIP_TO")
         while IFS= read -r line; do
           line="${line//[[:space:]]/}"
           [ -n "$line" ] && args+=(--budget "$line")
@@ -98,7 +101,7 @@ runs:
         exit "$code"
 
     - if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: ${{ inputs.report-name }}
         path: regmark-report/

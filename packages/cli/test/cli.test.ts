@@ -355,3 +355,69 @@ test('a regmark.config.json in the working directory supplies the store and sett
   assert.equal(res.code, 1, res.stderr);
   assert.equal((await readJson(path.join(dir, 'out.json'))).store, misprint.origin);
 });
+
+// ── Mistakes that must not pass quietly ─────────────────────────────────
+
+/** A config file in a fresh directory, and the audit run from there. */
+async function withConfig(config: Record<string, unknown>, args: string[] = [], env: Record<string, string> = {}): Promise<Result & { dir: string }> {
+  const dir = await freshDir();
+  await writeFile(path.join(dir, 'regmark.config.json'), JSON.stringify(config));
+  return { ...(await run(['audit', ...args], { cwd: dir, env })), dir };
+}
+
+const local = { fetch: { allowPrivateNetwork: true, minIntervalMs: 0 } };
+
+test('a platform in the config file that does not exist exits 2', async () => {
+  const res = await withConfig({ store: misprint.origin, platform: 'magento', ...local });
+  assert.equal(res.code, 2);
+  assert.match(res.stderr, /unknown platform "magento"/);
+});
+
+test('a misspelt field in the config file exits 2 and is named', async () => {
+  const res = await withConfig({ store: misprint.origin, feeds: '/feeds/google.xml', ...local });
+  assert.equal(res.code, 2);
+  assert.match(res.stderr, /unknown config field "feeds"/);
+});
+
+test('a budget for a rule that does not exist exits 2 and says where the rules are listed', async () => {
+  await failsFast(['audit', target(), '--budget', 'price.mismach=3'], /rule that does not exist: "price\.mismach"; regmark rules lists them/);
+  const res = await withConfig({ store: misprint.origin, budget: { 'price.mismatch': 'three' }, ...local });
+  assert.equal(res.code, 2);
+  assert.match(res.stderr, /budget for price\.mismatch must be a whole number/);
+});
+
+test('a surface in --datum that does not exist exits 2', async () => {
+  await failsFast(['audit', target(), '--datum', 'checkout,backend'], /unknown surface "backend" in datum/);
+});
+
+test('an audit that reads no product exits 2 and no report calls it a pass', async () => {
+  const dir = await freshDir();
+  const origin = `http://127.0.0.1:${(counting.address() as AddressInfo).port}`;
+  const res = await run(['audit', origin, '--allow-private-network', '--interval', '0', '--html', 'out.html', '--markdown', 'out.md', '--json', 'out.json'], { cwd: dir });
+  assert.equal(res.code, 2);
+  assert.match(res.stderr, /no product could be read from 127\.0\.0\.1:\d+, so nothing was checked/);
+  assert.match(res.stdout, /No product was read, so nothing was checked\./);
+  assert.doesNotMatch(res.stdout, /Within budget/);
+  const html = await readFile(path.join(dir, 'out.html'), 'utf8');
+  assert.match(html, /Nothing read/);
+  assert.doesNotMatch(html, /In register/);
+  assert.match(await readFile(path.join(dir, 'out.md'), 'utf8'), /^## Regmark: nothing read/);
+  assert.equal((await readJson(path.join(dir, 'out.json'))).counts.products, 0);
+});
+
+test('an empty REGMARK_OWNERSHIP_TOKEN does not blank out the token in the config file', async () => {
+  const config = { store: misprint.origin, platform: 'woocommerce', sample: 3, ownershipToken: OWNERSHIP_TOKEN, checkout: { shipTo: { country: 'US' } }, ...local };
+  const res = await withConfig(config, ['--json', 'out.json', '--quiet'], { REGMARK_OWNERSHIP_TOKEN: '' });
+  assert.notEqual(res.code, 2, res.stderr);
+  assert.ok((await readJson(path.join(res.dir, 'out.json'))).surfaces.includes('checkout'));
+});
+
+test('--ship-to replaces the destination of a checkout the config file asks for', async () => {
+  const config = { store: misprint.origin, platform: 'woocommerce', sample: 3, checkout: { shipTo: { country: 'US' } }, ...local };
+  const res = await withConfig(config, ['--ship-to', 'Canada', '--quiet']);
+  assert.equal(res.code, 2);
+  assert.match(res.stderr, /two-letter country code/);
+  const bad = await withConfig({ ...config, checkout: { shipTo: { country: 'Canada' } } }, ['--quiet']);
+  assert.equal(bad.code, 2);
+  assert.match(bad.stderr, /checkout\.shipTo\.country must be a two-letter country code/);
+});

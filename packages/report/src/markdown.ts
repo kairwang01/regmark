@@ -5,7 +5,7 @@
 
 import { PLATE_OF } from '@regmark/core';
 import type { AuditResult, Evidence, Finding, Plate, RuleSummary, Surface } from '@regmark/core';
-import { durationMs, subjectOf } from './shared.ts';
+import { durationMs, nothingRead, subjectOf } from './shared.ts';
 
 export type MarkdownOptions = {
   /** How many findings to list per rule before summarising the rest. Default 10. */
@@ -110,7 +110,8 @@ export function renderMarkdown(result: AuditResult, options: MarkdownOptions = {
   const maxPerRule = Math.max(0, Math.floor(options.maxPerRule ?? DEFAULT_MAX_PER_RULE));
   const sections: string[] = [];
 
-  sections.push(result.ok ? '## Regmark: in register' : '## Regmark: out of register');
+  const empty = nothingRead(result);
+  sections.push(empty ? '## Regmark: nothing read' : result.ok ? '## Regmark: in register' : '## Regmark: out of register');
 
   const tally = (severity: Finding['severity']): number => result.findings.filter((f) => f.severity === severity).length;
   const errors = tally('error');
@@ -122,8 +123,10 @@ export function renderMarkdown(result: AuditResult, options: MarkdownOptions = {
   const overBudget = result.rules.filter((r) => r.skipped === undefined && !r.passed).length;
   const verdict = result.ok ? 'Every rule is within its budget.' : `${plural(overBudget, 'rule')} over budget.`;
   sections.push(
-    `**${counts.join(', ')}** across ${plural(result.counts.variants, 'variant')} of ` +
-      `${plural(result.counts.products, 'product')} on ${code(hostOf(result.store))}. ${verdict}`,
+    empty
+      ? `No product could be read from ${code(hostOf(result.store))}, so nothing was checked.`
+      : `**${counts.join(', ')}** across ${plural(result.counts.variants, 'variant')} of ` +
+          `${plural(result.counts.products, 'product')} on ${code(hostOf(result.store))}. ${verdict}`,
   );
 
   // An empty plate is printed too: knowing the checkout was never read changes how to read the rest.

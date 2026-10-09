@@ -40,3 +40,8 @@ export function artifactUri(locator: string): string {
   const hash = locator.indexOf('#');
   return hash === -1 ? locator : locator.slice(0, hash);
 }
+
+/** True when the audit read no product at all. "Within budget" is then true and means nothing, so no reporter says it. */
+export function nothingRead(result: AuditResult): boolean {
+  return result.counts.products === 0;
+}

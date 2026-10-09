@@ -14,7 +14,7 @@ import type { PageOptions } from '@regmark/collect-page';
 import { collectShopifyCatalog } from '@regmark/collect-shopify';
 import { collectWooCatalog, probeWooCheckout } from '@regmark/collect-woo';
 import type { ProbeTarget } from '@regmark/collect-woo';
-import { buildGraph, createFetcher, DEFAULT_DATUM, FetchRefused, runRules, urlKey, verifyOwnership } from '@regmark/core';
+import { buildGraph, createFetcher, DEFAULT_DATUM, FetchRefused, PLATE_OF, runRules, urlKey, verifyOwnership } from '@regmark/core';
 import type { AuditResult, CollectContext, CollectIssue, FetchPolicy, Rule, Sighting, Surface } from '@regmark/core';
 import { allRules } from '@regmark/rules';
 import { detectPlatform } from './detect.ts';
@@ -68,6 +68,54 @@ export class ConfigError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'ConfigError';
+  }
+}
+
+const FIELDS = ['store', 'feed', 'platform', 'checkout', 'pages', 'sitemap', 'page', 'sample', 'maxVariants', 'seed', 'datum', 'budget', 'ownershipToken', 'fetch'];
+const PLATFORMS = ['woocommerce', 'shopify', 'auto'];
+const SURFACES = Object.keys(PLATE_OF) as Surface[];
+
+/**
+ * A config file is typed by hand and a flag is typed in a hurry. A mistake in
+ * either must stop the run: a misspelt rule in a budget, or a platform nobody
+ * has heard of, would otherwise give an audit that checks less than was asked
+ * and still reports success.
+ */
+function check(config: AuditConfig, rules: readonly Rule[]): void {
+  const whole = (name: string, value: unknown, min: number): void => {
+    if (value !== undefined && (!Number.isInteger(value) || (value as number) < min)) {
+      throw new ConfigError(`${name} must be a whole number, ${min} or more; got ${JSON.stringify(value)}`);
+    }
+  };
+  for (const field of Object.keys(config)) {
+    if (!FIELDS.includes(field)) throw new ConfigError(`unknown config field "${field}"; the fields are ${FIELDS.join(', ')}`);
+  }
+  const platform: unknown = config.platform;
+  if (platform !== undefined && !PLATFORMS.includes(platform as string)) {
+    throw new ConfigError(`unknown platform "${String(platform)}"; choose one of ${PLATFORMS.join(', ')}, none`);
+  }
+  whole('sample', config.sample, 1);
+  whole('maxVariants', config.maxVariants, 1);
+  whole('seed', config.seed, 0);
+  if (config.pages !== undefined && !(Array.isArray(config.pages) && config.pages.every((u) => typeof u === 'string'))) {
+    throw new ConfigError('pages must be a list of URLs');
+  }
+  if (config.datum !== undefined) {
+    if (!Array.isArray(config.datum) || config.datum.length === 0) throw new ConfigError('datum must name at least one surface');
+    for (const name of config.datum) {
+      if (!SURFACES.includes(name)) throw new ConfigError(`unknown surface "${String(name)}" in datum; the surfaces are ${SURFACES.join(', ')}`);
+    }
+  }
+  const known = new Set(rules.map((r) => r.id));
+  for (const [id, allowed] of Object.entries(config.budget ?? {})) {
+    if (!known.has(id)) throw new ConfigError(`budget names a rule that does not exist: "${id}"; regmark rules lists them`);
+    if (!Number.isInteger(allowed) || allowed < 0) throw new ConfigError(`the budget for ${id} must be a whole number; got ${JSON.stringify(allowed)}`);
+  }
+  if (config.checkout) {
+    const country: unknown = config.checkout.shipTo?.country;
+    if (typeof country !== 'string' || !/^[A-Za-z]{2}$/.test(country)) {
+      throw new ConfigError(`checkout.shipTo.country must be a two-letter country code; got ${JSON.stringify(country)}`);
+    }
   }
 }
 
@@ -135,6 +183,8 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
   const now = deps.now ?? (() => new Date());
   const log = deps.log ?? (() => {});
   const startedAt = now().toISOString();
+  const rules = deps.rules ?? allRules;
+  check(config, rules);
 
   let store: URL;
   try {
@@ -148,7 +198,6 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
     throw new ConfigError('the checkout probe needs platform "woocommerce" in this release');
   }
   const size = config.sample ?? 25;
-  if (!Number.isInteger(size) || size < 1) throw new ConfigError('sample must be a positive whole number');
 
   const feedUrl = config.feed ? new URL(config.feed, store).href : undefined;
   const hosts = unique([store.hostname, ...(feedUrl ? [new URL(feedUrl).hostname] : [])]);
@@ -263,7 +312,7 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
 
   const graph = buildGraph(sightings);
   const datum = config.datum ?? [...DEFAULT_DATUM];
-  const run = runRules(graph, deps.rules ?? allRules, { datum, budget: config.budget, now: now() });
+  const run = runRules(graph, rules, { datum, budget: config.budget, now: now() });
   return {
     schema: 'regmark.audit/v0',
     tool: { name: 'regmark', version: deps.version ?? '0.1.0' },

@@ -23,6 +23,7 @@ const USAGE = `regmark: check that what a shop tells machines matches what its c
 
 Usage
   regmark demo                      audit a bundled shop that has 19 defects planted in it
+  regmark demo --clean              the same shop with nothing wrong in it
   regmark audit <store-url>         audit a real shop
   regmark explain <rule>            the usual cause of a finding, and the fix
   regmark rules                     list every rule
@@ -51,11 +52,12 @@ Other
   --config <file>           JSON, or a module with a default export; ./regmark.config.json is read if present
   --interval <ms>           gap between requests to one host, default 1000
   --allow-private-network   for a shop on your own machine or network
+  --version   --help
 
 The ownership token is read from REGMARK_OWNERSHIP_TOKEN. Put the line
 regmark-verify=<token> in /.well-known/regmark.txt on the shop.
 
-Exit code: 0 within budget, 1 over budget, 2 the audit could not run.
+Exit code: 0 within budget, 1 over budget, 2 the audit could not run or read no product.
 Documentation: ${DOCS}
 `;
 
@@ -272,25 +274,28 @@ async function main(argv: string[]): Promise<number> {
   const store = target ?? fromFile.store;
   if (!store) throw new ConfigError('which shop? regmark audit <store-url>');
   const platforms = ['woocommerce', 'shopify', 'auto', 'none'];
-  if (values.platform && !platforms.includes(values.platform)) {
-    throw new ConfigError(`unknown platform "${values.platform}"; choose one of ${platforms.join(', ')}`);
+  // The file may say "none" too, which the audit itself spells as no platform at all.
+  const platformChoice: string = values.platform ?? fromFile.platform ?? 'auto';
+  if (!platforms.includes(platformChoice)) {
+    throw new ConfigError(`unknown platform "${platformChoice}"; choose one of ${platforms.join(', ')}`);
   }
-  const platformChoice = values.platform ?? fromFile.platform ?? 'auto';
   // Checked even without --checkout: a mistyped flag should not pass silently.
   const shipTo = values['ship-to'] ? parseShipTo(values['ship-to']) : undefined;
+  const checkout = values.checkout || fromFile.checkout !== undefined;
 
   const config: AuditConfig = {
     ...fromFile,
     store,
     platform: platformChoice === 'none' ? undefined : (platformChoice as AuditConfig['platform']),
     ...(values.feed ? { feed: values.feed } : {}),
-    ...(values.checkout ? { checkout: { shipTo: shipTo ?? { country: 'US' } } } : {}),
+    ...(checkout ? { checkout: { shipTo: shipTo ?? fromFile.checkout?.shipTo ?? { country: 'US' } } } : {}),
     ...(values.page?.length ? { pages: values.page } : {}),
     ...(values.sample ? { sample: wholeNumber('--sample', values.sample) } : {}),
     ...(values.seed ? { seed: wholeNumber('--seed', values.seed) } : {}),
     ...(values.datum ? { datum: values.datum.split(',').map((s) => s.trim()) as Surface[] } : {}),
     ...(values.budget?.length ? { budget: { ...fromFile.budget, ...parseBudget(values.budget) } } : {}),
-    ownershipToken: process.env.REGMARK_OWNERSHIP_TOKEN ?? fromFile.ownershipToken,
+    // An empty variable is what a CI job passes when the secret is not set; it must not blank out the file's token.
+    ownershipToken: process.env.REGMARK_OWNERSHIP_TOKEN || fromFile.ownershipToken,
     fetch: {
       ...fromFile.fetch,
       ...(values.interval ? { minIntervalMs: wholeNumber('--interval', values.interval) } : {}),
@@ -308,6 +313,13 @@ async function main(argv: string[]): Promise<number> {
   });
 
   await writeReports(result, values);
+  if (result.counts.products === 0) {
+    // Every rule is within budget when there is nothing to check. Calling that a pass would be a lie.
+    if (!values.quiet) out(renderTerminal(result, { color }));
+    note(`regmark: no product could be read from ${new URL(result.store).host}, so nothing was checked\n`);
+    note('  Name a product page with --page <url>, or the platform with --platform, and look at the collection issues.\n');
+    return 2;
+  }
   if (!values.quiet) {
     out(renderTerminal(result, { color }));
     if (result.findings.length > 0) out(`  Usual cause and fix for a rule:  regmark explain ${result.findings[0]!.rule}\n\n`);
