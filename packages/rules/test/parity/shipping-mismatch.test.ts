@@ -62,3 +62,9 @@ test('the rule is skipped when checkout was not collected', () => {
   assert.ok(result.rules[0]!.skipped);
   assert.deepEqual(result.findings, []);
 });
+
+test("an ACP feed's shipping_price, which names no country, is compared with the checkout's quote", () => {
+  const acp = (cost: string) => variant('acp', { aliases: ['TEE-M'], url: URL }, { shipping: shipping('acp', cost) });
+  assert.deepEqual(brief(run(rule, [checkout('6.20', { country: 'US' }), acp('0.00')])), [{ variant: 'TEE-M', surface: 'acp' }]);
+  assert.deepEqual(run(rule, [checkout('6.20', { country: 'US' }), acp('6.20')]), []);
+});

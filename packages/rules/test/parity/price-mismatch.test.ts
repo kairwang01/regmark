@@ -224,3 +224,20 @@ test('read-only fallback is off when the page is not in the datum order', () => 
   const findings = run(rule, [whole('page', PAGE_URL, { price: price('page', '16.00') }), variant('jsonld', { sku: 'MUG-WHT', url: PAGE_URL }, { price: price('jsonld', '14.00') })], { datum: ['checkout', 'platform'] });
   assert.deepEqual(findings, []);
 });
+
+test('an ACP feed price is checked like any machine-readable surface, by the item id it shares with the SKU', () => {
+  const findings = run(rule, [
+    variant('checkout', { variantId: '101', sku: 'TEE-M', url: URL }, { price: price('checkout', '39.00') }),
+    variant('acp', { aliases: ['TEE-M'], url: `${URL}?attribute_pa_size=m` }, { price: price('acp', '35.00') }),
+  ]);
+  assert.deepEqual(brief(findings), [{ variant: 'TEE-M', surface: 'acp' }]);
+  assert.equal(findings[0]!.message, 'acp says 35.00 USD, checkout charges 39.00 USD');
+});
+
+test('an ACP feed price that agrees with the checkout is silent', () => {
+  const findings = run(rule, [
+    variant('checkout', { variantId: '101', sku: 'TEE-M', url: URL }, { price: price('checkout', '39.00') }),
+    variant('acp', { aliases: ['TEE-M'], url: URL }, { price: price('acp', '39.00') }),
+  ]);
+  assert.deepEqual(findings, []);
+});
