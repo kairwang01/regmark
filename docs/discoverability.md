@@ -6,11 +6,11 @@ Official references were reviewed on 2026-10-09. Recheck platform documentation 
 
 ## GitHub metadata
 
-Use the same meaning in GitHub About, package metadata and the project landing page. Repository files do not automatically update the GitHub About panel; that setting must also be saved through GitHub or its API. The description and 17 topics below were applied to the repository and read back on 2026-10-09.
+Use the same meaning in GitHub About, package metadata and the project landing page. Repository files do not automatically update the GitHub About panel; that setting must also be saved through GitHub or its API. The description and topics below are the recommended values for the 0.2.0 release; the GitHub About panel must be updated by hand.
 
 **Description**
 
-> Catch price, stock and shipping mismatches across product pages, JSON-LD and merchant feeds. Open-source WooCommerce & Shopify auditing with CI reports and optional WooCommerce cart probes.
+> Catch price, stock and shipping mismatches between product pages, JSON-LD, feeds, AI shopping-agent endpoints (UCP, MCP, ACP) and checkout. CLI and GitHub Action for WooCommerce & Shopify.
 
 **Topics**
 
@@ -18,9 +18,10 @@ Use the same meaning in GitHub About, package metadata and the project landing p
 ecommerce woocommerce shopify google-merchant-center product-feed
 json-ld structured-data schema-org data-quality price-parity cli
 github-actions sarif typescript seo agentic-commerce testing
+ucp mcp ai-agents
 ```
 
-These 17 topics describe existing capabilities or the problem domain. `agentic-commerce` describes a use context; the README must continue to state that UCP/ACP/MCP collectors are planned. GitHub supports at most 20 topics, with lowercase letters, numbers and hyphens and at most 50 characters per topic. [GitHub topic documentation](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/classifying-your-repository-with-topics).
+These 20 topics describe existing capabilities or the problem domain. `ucp`, `mcp` and `agentic-commerce` refer to the agent-protocol readers; keep the README explicit about the protocol versions they read and that they only read. GitHub supports at most 20 topics, with lowercase letters, numbers and hyphens and at most 50 characters per topic. [GitHub topic documentation](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/classifying-your-repository-with-topics).
 
 Keep the homepage at `https://opensource.kairwang.cloud/regmark/` while it remains the maintained project site. Verify the deployed page after metadata changes, and link its primary “Try it” action to the current quickstart.
 
@@ -30,9 +31,9 @@ Keep the homepage at `https://opensource.kairwang.cloud/regmark/` while it remai
 |---|---|---|
 | Diagnose a WooCommerce feed price mismatch | README example plus `price.mismatch` rule documentation | One sanitized feed/API/cart discrepancy with the fix |
 | Check JSON-LD prices after a theme update | Quickstart and page extraction configuration | A minimal theme fixture and before/after report |
-| Audit Shopify product structured data | Read-only support section | Public catalogue limitations and supported theme example |
+| Audit Shopify product data and carts | Supported-surface table and the checkout probe | Catalogue, UCP and cart readings with their limits (no tax before checkout) |
 | Add ecommerce checks to GitHub Actions | CI guide | A reproducible workflow, artifact and failure log |
-| Evaluate product data for shopping assistants | Positioning and supported-surface table | Facts checked today, with planned protocols clearly separated |
+| Evaluate product data for shopping assistants | Positioning, the agent endpoints and the cloaking check | What UCP, MCP and ACP feeds tell an agent, compared with the cart |
 
 Use these as editorial topics, not as a mandate to create one page per keyword variation. The documentation should answer a real workflow question and link to the rule, command and reproducible evidence involved.
 

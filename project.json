@@ -2,18 +2,18 @@
   "slug": "regmark",
   "name": "Regmark",
   "codename": true,
-  "tagline": "在发布前，查出商品页、JSON-LD 和 Feed 中的价格与库存冲突。",
-  "pitch": "Regmark 是开源电商数据一致性检查 CLI。支持 WooCommerce 和 Shopify 的公开商品接口，按规格核对页面、结构化数据与 Google Merchant Feed；可选经所有权验证的 WooCommerce 购物车探针核对运费，输出 HTML、JSON、SARIF、JUnit 和 Markdown 报告并接入 CI。",
-  "stage": "0.1.0，可以试用",
+  "tagline": "在发布前，查出商品页、结构化数据、Feed、AI 购物代理接口与结账之间的价格与库存冲突。",
+  "pitch": "Regmark 是开源电商数据一致性检查 CLI 和 GitHub Action。按规格核对商品页、结构化数据、Google 与 ACP 商品 Feed、UCP 目录、店铺 MCP 服务以及 WooCommerce、Shopify 商品接口；经所有权验证后，可用购物车探针核对价格与运费，并检查页面是否对 AI 代理和浏览器给出不同的价格。输出 HTML、JSON、SARIF、JUnit 和 Markdown 报告并接入 CI。",
+  "stage": "0.2.0，可以试用",
   "updated": "2026-10-09",
   "facts": [
     [
       "版本",
-      "0.1.0，可以用 npx 直接运行"
+      "0.2.0，npx regmark 即可运行"
     ],
     [
       "验收",
-      "样板店 19 个预置缺陷对应 22 条报告，对照样板店无发现（非真实店铺准确率）"
+      "样板店 27 处预置缺陷对应 31 条报告，对照样板店无发现（非真实店铺准确率）"
     ],
     [
       "源码",
@@ -25,5 +25,5 @@
     ]
   ],
   "repo": "https://github.com/kairwang01/regmark",
-  "try": "npx --allow-git=all github:kairwang01/regmark demo"
+  "try": "npx regmark demo"
 }

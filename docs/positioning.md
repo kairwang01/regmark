@@ -1,6 +1,6 @@
 # Regmark's positioning
 
-Regmark is an open-source CLI for checking ecommerce product-data consistency. It connects facts about the same product variant across pages, structured data, merchant feeds and supported storefront APIs, then reports conflicting values with their sources. Verified WooCommerce cart probes add checkout observations. The output can be used locally or as a CI regression gate.
+Regmark is an open-source CLI for checking ecommerce product-data consistency. It connects facts about the same product variant across pages, structured data, merchant feeds, the endpoints shopping agents call (UCP, MCP, ACP feeds) and supported storefront APIs, then reports conflicting values with their sources. Verified WooCommerce and Shopify cart probes add checkout observations. The output can be used locally or as a CI regression gate.
 
 This is the project's product direction, grounded in its current implementation. The audience priorities and adoption plan below are hypotheses to validate with users, not measured market share or demand estimates.
 
@@ -18,10 +18,10 @@ Regmark's useful promise is: **find an observable disagreement, identify the pro
 |---|---|---|---|---|
 | First | WooCommerce developer or agency | Theme/plugin/feed release | A small staging audit that catches a regression and identifies the responsible surface | Reproducible defect, accepted fix, rerun and sustained CI use |
 | First | Feed specialist working with an engineering team | Price promotion or stock synchronization change | A shareable report that connects a feed entry to the store value | Time to locate the producer and a confirmed before/after report |
-| Next | Shopify storefront developer | Theme or structured-data app update | Public catalogue/page/feed consistency checks | Supported theme samples and confirmed false-positive rate on reviewed findings |
-| Later | Teams adopting shopping-agent integrations | Adding protocol-specific product data | The same evidence model extended to another surface | Real endpoint fixtures and a maintained collector; currently roadmap |
+| Next | Shopify storefront developer | Theme, structured-data app or agent-channel change | Catalogue, page, feed, UCP/MCP and cart consistency checks | Supported theme samples and confirmed false-positive rate on reviewed findings |
+| Next | Teams adopting shopping-agent channels | Turning on UCP, a storefront MCP server or an ACP feed | Evidence that what agents are told matches the cart, and that pages do not tell agents something else | Reviewed endpoint cases from real shops, and the protocol versions they use |
 
-Lead with WooCommerce release checks because the implementation can observe both public catalogue data and verified cart behavior there. Treat Shopify as a useful but explicitly read-only workflow. Do not market protocol support before a collector exists.
+Lead with WooCommerce and Shopify release checks because the implementation can observe both public catalogue data and verified cart behaviour there; on Shopify the cart gives price, purchasability and shipping but not tax. Present the agent-protocol collectors with the exact protocol versions they read, and keep them read-only.
 
 ## Three high-value workflows
 
@@ -50,7 +50,8 @@ Budgets track counts, not finding identities. A new finding can replace an old o
 | Variant matching across sources | Offer graph, identity evidence and variant-specific fixtures | Avoids comparing one size's price with another size's stock |
 | Explicit baseline | Checkout → platform → page, with configurable `datum` | Makes the comparison explainable and exposes missing authority |
 | Source-backed findings | Raw observations and locators in the report model | Lets a maintainer reproduce and fix a discrepancy |
-| Optional owned-store cart probing | WooCommerce verification and guarded writes | Adds actual cart observations for the sampled item/destination |
+| Optional owned-store cart probing | Ownership verification and guarded writes on WooCommerce and Shopify | Adds actual cart observations for the sampled item/destination |
+| What agents are told | UCP and MCP collectors, ACP feeds, and the owner-verified cloaking check | Checks the channel an assistant quotes from, not only the page a person sees |
 | CI adoption | Per-rule budgets and HTML/JSON/SARIF/JUnit/Markdown outputs | Makes checks repeatable in existing engineering workflows |
 | Small local workflow | One bundled CLI and a local fixture demo | Lets users evaluate the project before connecting a shop |
 
@@ -67,10 +68,11 @@ These are implementation characteristics, not claims that no other tool offers t
 
 | Publishable claim | Supporting evidence | Necessary qualification |
 |---|---|---|
-| 15 rules | [Rule reference](rules.md), `regmark rules` | Some require facts that may be absent or unsupported |
-| 19 seeded defects produce 22 findings | `pnpm bench` and local fixture reports | Synthetic benchmark; not a real-world recall estimate |
+| 17 rules | [Rule reference](rules.md), `regmark rules` | Some require facts that may be absent or unsupported; two are opt-in |
+| 27 seeded defects produce 31 findings | `pnpm bench` and local fixture reports | Synthetic benchmark; not a real-world recall estimate |
 | Read-only by default | No `checkout` config/flag | A config file can enable checkout; review effective configuration |
-| Shopify support | Public catalogue collector and tests | No checkout probe; public endpoint must be accessible |
+| Shopify support | Public catalogue collector, cart probe and tests | The cart probe reads no tax; public endpoints must be accessible |
+| UCP, MCP and ACP support | Collectors, fixture endpoints and tests | Read-only; the versions read are stated in the configuration reference |
 | CI integration | Action, report writers and example workflows | Coverage and collection issues matter alongside rule budgets |
 | No hosted account needed | Local CLI and report generation | Download/install needs network access; live audits contact named hosts |
 

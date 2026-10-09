@@ -160,8 +160,9 @@ disagreement is a finding is the rules' job. A collector takes a
 
 - Keep commands aligned with CLI behavior and distinguish current source from
   released versions, especially for new flags.
-- Explain coverage: read-only defaults, optional WooCommerce cart writes,
-  Shopify read-only support, static HTML and sample limits.
+- Explain coverage: read-only defaults, the owner-verified checks (cart
+  probe on WooCommerce and Shopify, cloaking check), the protocol versions the
+  UCP and MCP readers speak, static HTML and sample limits.
 - Refresh screenshots from actual fixture output; label synthetic examples.
   Use the [demo reproduction guide](docs/demo.md).
 - Check relative links and keep the two READMEs consistent.
