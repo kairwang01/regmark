@@ -3813,14 +3813,22 @@ var readStock = (s) => s.availability && isBuyable(s.availability.value) !== nul
 function contradiction(view, reference, read, agree) {
   const stated = reference.filter((r) => read(r) !== void 0);
   if (stated.length === 0) return void 0;
+  const loose = [];
   for (const v of view) {
     const actual = read(v);
     if (!actual) continue;
     const paired = reference.filter((r) => sameItem(v, r) === true);
-    if (paired.length === 0 && reference.some((r) => sameItem(v, r) === false)) continue;
-    const against = paired.length > 0 ? paired.filter((r) => read(r) !== void 0) : stated;
+    if (paired.length === 0) {
+      if (reference.some((r) => sameItem(v, r) === false)) continue;
+      loose.push(actual);
+      continue;
+    }
+    const against = paired.filter((r) => read(r) !== void 0);
     if (against.length === 0) continue;
     if (!against.some((r) => agree(actual.value, read(r).value))) return { actual, expected: read(against[0]) };
+  }
+  if (loose.length > 0 && !loose.some((a) => stated.some((r) => agree(a.value, read(r).value)))) {
+    return { actual: loose[0], expected: read(stated[0]) };
   }
   return void 0;
 }
@@ -24312,8 +24320,12 @@ function visit(node, ptr, ctx) {
     emitProduct({ node, ptr }, void 0, ctx);
     return;
   }
-  for (const key of Object.keys(node)) visit(node[key], `${ptr}/${escapePointer(key)}`, ctx);
+  for (const key of Object.keys(node)) {
+    if (ELSEWHERE.has(key)) continue;
+    visit(node[key], `${ptr}/${escapePointer(key)}`, ctx);
+  }
 }
+var ELSEWHERE = /* @__PURE__ */ new Set(["itemListElement", "isRelatedTo", "isSimilarTo", "isAccessoryOrSparePartFor", "isConsumableFor"]);
 function emitGroup(group, ctx) {
   for (const variant2 of asList2(group.node.hasVariant, `${group.ptr}/hasVariant`)) {
     emitProduct(variant2, group, ctx);
@@ -24616,7 +24628,7 @@ function extractMicrodata(html3, pageUrl, fetchedAt) {
   const issues = [];
   try {
     const $2 = documentOf(html3);
-    const products = $2("[itemscope]").toArray().filter((el) => isProduct($2, el));
+    const products = $2("[itemscope]").toArray().filter((el) => isProduct($2, el) && !isElsewhere($2, el));
     products.forEach((product3, productIndex) => {
       emitProduct2($2, product3, productIndex, { pageUrl, fetchedAt, out: sightings });
     });
@@ -24671,6 +24683,10 @@ function fromRootOrProduct($2, root2, product3, name, attrs) {
   if (own) return own;
   if (root2 === product3) return void 0;
   return readValue($2, findProp($2, product3, name), attrs);
+}
+var ELSEWHERE2 = /* @__PURE__ */ new Set(["item", "itemlistelement", "isrelatedto", "issimilarto", "isaccessoryorsparepartfor", "isconsumablefor"]);
+function isElsewhere($2, el) {
+  return tokens($2(el).attr("itemprop")).some((t) => ELSEWHERE2.has(t.toLowerCase()));
 }
 function isProduct($2, el) {
   if ($2(el).attr("itemscope") === void 0) return false;
