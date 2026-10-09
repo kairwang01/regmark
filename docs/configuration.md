@@ -6,7 +6,7 @@ a first audit. This reference describes the current source; `--strict` and the
 expanded nested-field validation are new since the `v0.1.0` release. Use the
 reference from your release tag when running a pinned bundle.
 
-[Commands](#command-line) · [Config fields](#fields) · [Sampling](#which-products-get-audited) · [Baseline](#which-surface-is-believed) · [Budgets](#budgets) · [Request policy](#how-requests-are-made) · [Ownership](#writes)
+[Commands](#command-line) · [Config fields](#fields) · [Sampling](#which-products-get-audited) · [Baseline](#which-surface-is-believed) · [Budgets](#budgets) · [Request policy](#how-requests-are-made) · [Ownership](#writes) · [Cloaking check](#the-cloaking-check)
 
 Unknown flags, unknown top-level or nested config fields, invalid field types,
 invalid HTTP(S) URLs and unknown platform, surface or budget rule names stop
@@ -36,6 +36,7 @@ line replaces it.
 | `--feed` | URL, absolute or relative to the store | none | Reads a product feed in Google Merchant format: RSS, Atom or tab-separated text. The file is read once, whole. |
 | `--platform` | `woocommerce`, `shopify`, `auto` or `none` | `auto` | The storefront API to read. `auto` tries WooCommerce, then Shopify. `none` reads no storefront API. The pages, and the feed if one is given, are still read. |
 | `--checkout` | switch | off | Runs the checkout probe. Needs `--platform woocommerce` or `auto`, and a verified ownership token. Any other platform value stops the run with exit 2. With `auto`, a shop that is not WooCommerce gets a `probe-unsupported` issue and no probe. |
+| `--cloaking` | switch | off | Runs the cloaking check: each sampled page that was read is fetched again once per client profile, by default as a desktop browser and as a shopping agent, and `content.cloaking` compares what each was told. Needs a verified ownership token. See [The cloaking check](#the-cloaking-check). |
 | `--ship-to` | `CC` or `CC:postcode` | the config file's `checkout.shipTo`, else `US` | The destination for the probe. The country must be two letters; this is checked even when no probe runs. The text after the colon is sent as the postcode. It takes effect when the probe runs: with `--checkout`, or with `checkout` in the config file. |
 | `--page` | product page URL | none | Reads this page instead of the sampled page list. Repeat the flag for more pages. See [Which products get audited](#which-products-get-audited). |
 
@@ -79,8 +80,8 @@ given. Without a terminal, nothing is printed unless `--verbose` is given.
 
 Audits a fixture shop that ships with the tool. The shop runs on a local port
 for the length of the run. The settings are fixed in code: the WooCommerce
-platform, a feed, the checkout probe and a sample of 50. The config file is
-not read.
+platform, a feed, the checkout probe, the cloaking check and a sample of 50.
+The config file is not read.
 
 | Flag | Default | What it does |
 |---|---|---|
@@ -144,7 +145,7 @@ report calls that run a pass.
 
 | Variable | Read by | Meaning |
 |---|---|---|
-| `REGMARK_OWNERSHIP_TOKEN` | `audit` | The ownership token for the checkout probe. A non-empty value replaces `ownershipToken` from the config file. An empty one is ignored, which is what a CI job passes when the secret is not set. |
+| `REGMARK_OWNERSHIP_TOKEN` | `audit` | The ownership token for the checkout probe and the cloaking check. A non-empty value replaces `ownershipToken` from the config file. An empty one is ignored, which is what a CI job passes when the secret is not set. |
 | `NO_COLOR` | `audit`, `demo` | Turns colour off when set to any non-empty value. |
 | `FORCE_COLOR` | `audit`, `demo` | Turns colour on when stdout is not a terminal, as in a CI log. `NO_COLOR` and `--no-color` win over it. |
 
@@ -194,6 +195,9 @@ A flag replaces the file's value, one field at a time:
   `checkout` key. Its destination is `--ship-to` when that is given, otherwise
   the file's `checkout.shipTo`, otherwise `US`. No flag turns off a probe the
   file asks for.
+- `cloaking`: the check runs when `--cloaking` is given or the file's
+  `cloaking` is `true` or an object. With both, the file's `userAgents` are
+  kept. No flag turns off a check the file asks for.
 - `ownershipToken`: a non-empty `REGMARK_OWNERSHIP_TOKEN` replaces the file's
   value.
 
@@ -215,6 +219,8 @@ exit code 2 and a message naming the mistake.
 | `checkout.shipTo.postcode` | string | none | The postcode. Set by `--ship-to CC:postcode`. |
 | `checkout.shipTo.state` | string | none | Sent as part of the address. The command line does not set it. |
 | `checkout.shipTo.city` | string | none | Sent as part of the address. The command line does not set it. |
+| `cloaking` | `true`, `false` or object: `{ "userAgents": { name: User-Agent } }` | off | Turns on the cloaking check. Same as `--cloaking`. `true` uses the two default profiles. Needs a verified ownership token. |
+| `cloaking.userAgents` | object: profile name to User-Agent string | `browser` and `agent`, below | The clients to pose as, in the order they are read. At least one. A name is lower-case letters, digits and `-`, starting with a letter, at most 32 characters; it appears in findings and issues. A User-Agent is printable ASCII. Name one profile `browser` to make it the reference the others are compared with; without one, each profile is compared with Regmark's own read of the page. The defaults are `DEFAULT_CLOAKING_PROFILES` in `packages/cli/src/config.ts`: `browser`, a desktop Chrome User-Agent, and `agent`, a User-Agent carrying the `ChatGPT-User` token. |
 | `pages` | string[] | none | Product page URLs to read. Replaces the sampled page list. Same as `--page`. |
 | `sitemap` | string | `/sitemap.xml` | The sitemap to read product URLs from. Used only when there is no platform and no `pages`. Relative to `store`. |
 | `page` | object (`PageOptions`) | built-in readers | Options for reading each product page. The fields are listed below. |
@@ -333,6 +339,10 @@ The steps below run in this order. Each one uses the output of the one before.
    platform is not WooCommerce (`probe-unsupported`), or when ownership is not
    verified (`ownership-not-verified`). Otherwise it runs against the sampled
    WooCommerce variants. See [Writes](#writes).
+10. **Cloaking check.** With `--cloaking` or `cloaking`, each page from step 8
+    that was read is fetched again once per client profile. It is skipped, with
+    an `ownership-not-verified` issue on the `page` surface, when ownership is
+    not verified. See [The cloaking check](#the-cloaking-check).
 
 ### What `--page` does
 
@@ -456,7 +466,7 @@ with the refusal code and the URL, for example `foreign-host: https://...`.
 | `too-large` | The response body is larger than 5 MiB. |
 | `timeout` | No complete response within `timeoutMs`. |
 | `too-many-redirects` | More than `maxRedirects` redirects. |
-| `write-not-authorized` | A write was attempted before ownership was verified. The probe never does this. |
+| `write-not-authorized` | A write, or an owner read, was attempted before ownership was verified, or a read set its own User-Agent without being an owner read. The probe and the cloaking check never do this. |
 | `network` | The connection or the decoding failed. |
 
 ### Writes
@@ -471,8 +481,36 @@ has verified that the operator controls the shop, in one of two ways:
   The host is the one in `store`, including any `www.`.
 
 The token is chosen by the operator. It must be 16 to 128 characters: letters,
-digits, `_` and `-`. If neither check succeeds, the probe is skipped and an
-`ownership-not-verified` issue is recorded. A write is never redirected.
+digits, `_` and `-`. If neither check succeeds, the probe and the cloaking
+check are skipped and an `ownership-not-verified` issue is recorded for each.
+A write is never redirected.
 In default mode, the ownership issue does not fail an otherwise passing audit; use current source's `--strict` when that
 missing probe must fail CI. The probe writes cart/session state, attempts
 cleanup after each variant and never places an order or initiates payment.
+
+### The cloaking check
+
+The cloaking check is the only step besides the probe that needs ownership. It
+writes nothing, but it poses as other clients, which Regmark does only on a
+shop the operator has shown is theirs. Its reads are owner reads:
+
+- Each read sends the profile's User-Agent in place of Regmark's own, and
+  `accept: text/html,application/xhtml+xml`.
+- robots.txt is not consulted. It addresses crawlers, and the owner reading
+  their own shop is not one. The host allowlist, private address check, size
+  and time limits and pacing still apply.
+- A redirect to another origin turns the read into an ordinary one there:
+  robots.txt applies again, and the User-Agent and other caller headers are
+  dropped. The answer was then not given to the profile, so it is recorded as
+  a `view-redirected` issue and not compared.
+
+Only pages the ordinary read in step 8 took at least one statement from are
+read again. All of a page's profiles are read one after another before the
+next page, so the readings compared are as close in time as the pacing allows.
+
+The check costs one extra request per page per profile: with the defaults, a
+sample of 25 pages makes 50 more requests, which at the default interval of one
+second per host adds about 50 seconds to the run. A page that fails for one
+profile is a `view-failed` issue naming the profile, and the other profiles are
+still read. What is compared, and when it is reported, is in
+[docs/rules.md](rules.md#contentcloaking-error).
