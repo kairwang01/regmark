@@ -47,8 +47,8 @@ describe('fixture server', () => {
       expected: unknown[];
     };
     assert.equal(body.mode, 'misprint');
-    assert.equal(body.expected.length, 24);
-    assert.equal(body.defects.length, 21);
+    assert.equal(body.expected.length, 28);
+    assert.equal(body.defects.length, 24);
   });
 
   it('serves a page by who the User-Agent says is asking, and records who asked', async () => {

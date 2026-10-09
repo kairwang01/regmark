@@ -59,6 +59,13 @@ export type ProductSays = {
   feed: VariantSays[];
   /** What the storefront API reports. It never carries GTIN, shipping or return policy. */
   platform: VariantSays[];
+  /**
+   * What the UCP catalogue (/.well-known/ucp and its REST endpoint) states.
+   * May list fewer variants than exist. Price, list price, stock and GTIN only.
+   */
+  ucp: VariantSays[];
+  /** What the storefront MCP server's catalogue tools state. Price, list price and stock only. */
+  mcp: VariantSays[];
   checkout: CheckoutTruth[];
   /**
    * What the page tells a client that identifies as a shopping agent, where
@@ -152,6 +159,8 @@ function cleanProduct(p: TruthProduct, now: Date): ProductSays {
     jsonld: p.variants.map((v) => says(v, now)),
     feed: p.variants.map((v) => ({ ...says(v, now), returnDays: null })),
     platform: p.variants.map((v) => ({ ...says(v, now), gtin: null, shipping: null, returnDays: null })),
+    ucp: p.variants.map((v) => ({ ...says(v, now), mpn: null, saleEnds: null, shipping: null, returnDays: null })),
+    mcp: p.variants.map((v) => ({ ...says(v, now), gtin: null, mpn: null, saleEnds: null, shipping: null, returnDays: null })),
     checkout: p.variants.map((v) => ({ sku: v.sku, wooId: v.wooId, price: v.price, refuses: v.inStock ? null : 'out_of_stock' })),
   };
 }
@@ -366,6 +375,34 @@ const DEFECTS: Applied[] = [
     apply(shop) {
       const p = product(shop, 'rain-shell');
       p.agent = { ...p.agent, reviews: [...p.page.reviews, AGENT_ONLY_REVIEW] };
+    },
+  },
+  {
+    id: 'D32',
+    summary: 'The UCP catalogue still states last month’s price for SOCK-M',
+    expected: [{ rule: 'price.mismatch', product: 'trail-socks', variant: 'SOCK-M', surface: 'ucp' }],
+    apply(shop) {
+      variant(product(shop, 'trail-socks').ucp, 'SOCK-M').price = '11.00';
+    },
+  },
+  {
+    id: 'D33',
+    summary: 'The storefront MCP server tells agents BEANIE-NVY is available; it is sold out',
+    expected: [{ rule: 'availability.mismatch', product: 'wool-beanie', variant: 'BEANIE-NVY', surface: 'mcp' }],
+    apply(shop) {
+      variant(product(shop, 'wool-beanie').mcp, 'BEANIE-NVY').stock = 'in_stock';
+    },
+  },
+  {
+    id: 'D34',
+    summary: 'The UCP catalogue lists only the small tee; the medium and large are left out',
+    expected: [
+      { rule: 'variant.missing', product: 'classic-tee', variant: 'TEE-BLU-M', surface: 'ucp' },
+      { rule: 'variant.missing', product: 'classic-tee', variant: 'TEE-BLU-L', surface: 'ucp' },
+    ],
+    apply(shop) {
+      const p = product(shop, 'classic-tee');
+      p.ucp = p.ucp.filter((v) => v.sku === 'TEE-BLU-S');
     },
   },
 ];

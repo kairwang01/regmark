@@ -7,4 +7,6 @@ export type { TruthProduct, TruthVariant } from './catalog.ts';
 export { startShop } from './server.ts';
 export type { RunningShop, StartOptions } from './server.ts';
 export { createStoreApi } from './store-api.ts';
+export { AGENT_PATHS, createAgentApi, UCP_VERSION } from './agent-api.ts';
+export type { AgentApi, AgentRequest, AgentResponse } from './agent-api.ts';
 export type { ApiRequest, ApiResponse, CartSnapshot, StoreApi } from './store-api.ts';
