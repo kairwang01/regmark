@@ -215,9 +215,14 @@ If Regmark reports something on your shop that is not wrong, that is the most
 useful thing you can tell this project:
 [report a false alarm](https://github.com/kairwang01/regmark/issues/new?template=false-alarm.yml).
 
-**Next:** UCP and ACP endpoints as a fourth plate · a Shopify checkout probe ·
-Magento and Medusa · feed freshness · a shopping agent that walks the shop and
-checks that the total it quotes is the total the cart charges.
+**Next:** [UCP, ACP and MCP endpoints as the fourth plate](https://github.com/kairwang01/regmark/issues/2) ·
+[a Shopify checkout probe](https://github.com/kairwang01/regmark/issues/3) · [more platforms](https://github.com/kairwang01/regmark/issues/7) ·
+[feed freshness](https://github.com/kairwang01/regmark/issues/4) · a shopping agent that walks the shop and checks that
+the total it quotes is the total the cart charges.
+
+**Want to help?** [Recognising the visible price on one more theme](https://github.com/kairwang01/regmark/issues/6) is a
+small, separate piece of work, and [what the tool did on your shop](https://github.com/kairwang01/regmark/issues/1) is
+worth more than code right now.
 
 ## Documentation
 

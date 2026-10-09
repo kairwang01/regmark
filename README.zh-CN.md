@@ -165,7 +165,9 @@ jobs:
 
 如果 Regmark 在你的店上报了一条其实没问题的东西，这是你能告诉这个项目的最有用的一件事：[报告一条误报](https://github.com/kairwang01/regmark/issues/new?template=false-alarm.yml)。
 
-**接下来：** 把 UCP 和 ACP 端点接成第四块版；Shopify 的结账探针；Magento 和 Medusa；feed 新鲜度；一个真的把店走一遍的购物代理，核对它报给用户的总价是不是购物车算出来的那个数。
+**接下来：** [把 UCP、ACP、MCP 端点接成第四块版](https://github.com/kairwang01/regmark/issues/2)；[Shopify 的结账探针](https://github.com/kairwang01/regmark/issues/3)；[更多平台](https://github.com/kairwang01/regmark/issues/7)；[feed 新鲜度](https://github.com/kairwang01/regmark/issues/4)；一个真的把店走一遍的购物代理，核对它报给用户的总价是不是购物车算出来的那个数。
+
+**想帮忙：** [让工具多认一个主题的可见价格](https://github.com/kairwang01/regmark/issues/6)是一件小而独立的事；而眼下比代码更有用的，是[它在你的店上跑出了什么](https://github.com/kairwang01/regmark/issues/1)。
 
 ## 文档
 
