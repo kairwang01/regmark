@@ -100,9 +100,11 @@ jobs:
 
 With `comment: 'true'` the Markdown report is posted as one comment on the
 pull request and the same comment is updated on every later run, so a busy pull
-request does not fill up with reports. The job needs `pull-requests: write`. A
-pull request from a fork gets a read-only token; the comment is then skipped
-and the audit's own result still decides the job.
+request does not fill up with reports. Each `report-name` gets a comment of its
+own, so the jobs of a matrix, which each need their own `report-name`, keep
+theirs apart. The job needs `pull-requests: write`. A pull request from a fork
+gets a read-only token; the comment is then skipped and the audit's own result
+still decides the job.
 
 ### Checking what shopping agents are told
 
@@ -214,7 +216,7 @@ points at a file in the repository.
 | `max-age` | no | none | One `surface=age` per line, such as `feed=24h`. Turns on `availability.stale` for that surface. |
 | `config` | no | none | A path to a config file in the repository. Check the repository out first. An input that is set replaces the same field in the file; an input left empty leaves the file's value alone. |
 | `strict` | no | `'false'` | `'true'` makes any collection issue fail with exit 2. A true value in the config also enables it. |
-| `comment` | no | `'false'` | `'true'` posts the Markdown report as one pull request comment, updated on every run. Needs `pull-requests: write`. |
+| `comment` | no | `'false'` | `'true'` posts the Markdown report as one pull request comment per `report-name`, updated on every run. Needs `pull-requests: write`. |
 | `github-token` | no | `github.token` | The token used for the comment. |
 | `upload-report` | no | `'true'` | `'false'` skips the artifact upload. The reports are still written to `regmark-report/`. |
 | `report-name` | no | `regmark-report` | The name of the uploaded artifact. Give each job its own name in a matrix. |

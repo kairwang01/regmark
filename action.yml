@@ -60,7 +60,7 @@ inputs:
     required: false
     default: 'false'
   comment:
-    description: Set to true to post the Markdown report as one pull request comment, updated on every run. Needs pull-requests write permission.
+    description: Set to true to post the Markdown report as one pull request comment per report-name, updated on every run. Needs pull-requests write permission.
     required: false
     default: 'false'
   github-token:
@@ -144,6 +144,9 @@ runs:
         INPUT_STRICT: ${{ inputs.strict }}
         INPUT_ARGS: ${{ inputs.args }}
       run: |
+        # Start empty: a report left by an earlier run in the same job must
+        # not be read back as this run's summary, outputs or comment.
+        rm -rf regmark-report
         mkdir -p regmark-report
         # Inputs arrive through the environment, never by pasting them into
         # this script, so a value cannot become shell.
@@ -203,9 +206,13 @@ runs:
         GH_TOKEN: ${{ inputs.github-token }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         REPOSITORY: ${{ github.repository }}
+        REPORT_NAME: ${{ inputs.report-name }}
       run: |
         [ -f regmark-report/regmark.md ] || exit 0
-        marker='<!-- regmark-report -->'
+        # One comment per report name, so the jobs of a matrix, which each
+        # need their own report-name, do not overwrite each other's comment.
+        name="${REPORT_NAME//[^A-Za-z0-9._-]/_}"
+        if [ "$name" = regmark-report ]; then marker='<!-- regmark-report -->'; else marker="<!-- regmark-report:$name -->"; fi
         report="$(head -c 60000 regmark-report/regmark.md)"
         if [ "$(wc -c < regmark-report/regmark.md)" -gt 60000 ]; then
           report="$report"$'\n\n'"_The report was cut short here. The full report is in the workflow artifact._"

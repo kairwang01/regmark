@@ -173,6 +173,11 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          # GitHub can refuse to let GITHUB_TOKEN move a ref past a commit that
+          # changes workflow files. A RELEASE_TOKEN secret with the workflow
+          # scope avoids that; without one, a refusal is reported below.
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
       - name: Move the major tag
         env:
           TAG: ${{ github.ref_name }}
@@ -181,7 +186,17 @@ jobs:
           # when releases are immutable.
           major="${TAG%%.*}"
           git tag --force "$major" "$GITHUB_SHA"
-          git push --force origin "refs/tags/$major"
+          if ! git push --force origin "refs/tags/$major"; then
+            # npm already has this version; failing here would only hide what is left to do.
+            echo "::warning::$major was not moved; move it by hand: git tag -f $major $TAG && git push -f origin $major"
+            {
+              echo "### Move $major by hand"
+              echo
+              echo '```bash'
+              echo "git fetch --tags && git tag -f $major $TAG && git push -f origin $major"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   publish-release:
     needs: major-tag
