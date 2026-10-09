@@ -30,9 +30,6 @@ export const MCP_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'] as const;
 /** Where a shop's storefront MCP server answers, by the convention Shopify set. */
 export const MCP_PATH = '/api/mcp';
 
-/** The only tools this collector calls. Both read the catalogue and change nothing. */
-export const CATALOGUE_TOOLS: readonly Operation[] = ['lookup_catalog', 'search_catalog'];
-
 const CLIENT = { name: 'regmark', version: '0.1.0' };
 
 /** tools/list may be paged. A catalogue server has a handful of tools; this many pages is plenty. */
