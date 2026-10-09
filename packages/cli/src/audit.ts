@@ -28,6 +28,8 @@ const DEFAULT_VERSION = '0.0.0-dev';
 
 export type ShipTo = { country: string; postcode?: string; state?: string; city?: string };
 
+export type ProtocolOption = { url?: string; agentProfile?: string };
+
 export type AuditConfig = {
   /** The shop's origin, such as https://shop.example */
   store: string;
@@ -54,10 +56,17 @@ export type AuditConfig = {
    * ownership token. `true` uses the default profiles.
    */
   cloaking?: boolean | { userAgents: Record<string, string> };
-  /** Read the shop's UCP catalogue. `true` discovers it at /.well-known/ucp. */
-  ucp?: boolean | { url: string };
-  /** Read the shop's storefront MCP server. `true` uses the platform's usual endpoint. */
-  mcp?: boolean | { url: string };
+  /**
+   * Read the shop's UCP catalogue. `true` discovers it at /.well-known/ucp;
+   * `url` names another profile URL. `agentProfile` replaces the agent
+   * profile sent with each request.
+   */
+  ucp?: boolean | ProtocolOption;
+  /**
+   * Read the shop's storefront MCP server. `true` uses /api/mcp; `url` names
+   * another endpoint. `agentProfile` as for `ucp`.
+   */
+  mcp?: boolean | ProtocolOption;
   /** Product page URLs to audit. Without this the sample comes from the platform, the sitemap or the feed. */
   pages?: string[];
   /** Sitemap to discover product pages from, when there is no platform. Default /sitemap.xml. */
@@ -184,8 +193,12 @@ function decodeSegment(segment: string): string {
 }
 
 /** The endpoint URL a protocol option names, when it names one. */
-const endpointUrl = (option: boolean | { url: string } | undefined, store: URL): string | undefined =>
-  typeof option === 'object' ? new URL(option.url, store).href : undefined;
+const endpointUrl = (option: boolean | ProtocolOption | undefined, store: URL): string | undefined =>
+  typeof option === 'object' && option.url !== undefined ? new URL(option.url, store).href : undefined;
+
+/** The agent profile a protocol option names, when it names one. */
+const agentProfile = (option: boolean | ProtocolOption | undefined): string | undefined =>
+  typeof option === 'object' ? option.agentProfile : undefined;
 
 export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promise<AuditResult> {
   const now = deps.now ?? (() => new Date());
@@ -316,14 +329,16 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
   //    and asked about the sampled products only.
   if (config.ucp || config.mcp) {
     const refs = productRefs(pageUrls, sightings, key);
+    // The variant ids in the refs come from this platform's storefront API.
+    const from = platform === 'woocommerce' || platform === 'shopify' ? platform : undefined;
     if (config.ucp) {
-      const ucp = await collectUcp(ctx, { url: ucpUrl, products: refs });
+      const ucp = await collectUcp(ctx, { url: ucpUrl, agentProfile: agentProfile(config.ucp), platform: from, products: refs });
       sightings.push(...ucp.sightings);
       issues.push(...ucp.issues);
       log('info', `ucp: ${ucp.sightings.length} statements`);
     }
     if (config.mcp) {
-      const mcp = await collectMcp(ctx, { url: mcpUrl, products: refs });
+      const mcp = await collectMcp(ctx, { url: mcpUrl, agentProfile: agentProfile(config.mcp), platform: from, products: refs });
       sightings.push(...mcp.sightings);
       issues.push(...mcp.issues);
       log('info', `mcp: ${mcp.sightings.length} statements`);

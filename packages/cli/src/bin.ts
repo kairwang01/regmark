@@ -209,6 +209,8 @@ async function demo(clean: boolean, html: string | undefined, color: boolean): P
         platform: 'woocommerce',
         checkout: { shipTo: { country: 'US', postcode: '94103' } },
         cloaking: true,
+        ucp: true,
+        mcp: true,
         ownershipToken: OWNERSHIP_TOKEN,
         maxAge: { feed: '24h' },
         sample: 50,

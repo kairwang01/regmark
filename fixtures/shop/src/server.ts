@@ -1,4 +1,5 @@
-// The fixture shop's HTTP server: the page and feed renderers plus the store API.
+// The fixture shop's HTTP server: the page and feed renderers, the store API,
+// and the endpoints agents call (UCP and MCP).
 //
 // The origin written into pages comes from the address the socket actually
 // bound to, never from the request's Host header, so a client cannot make the
@@ -14,6 +15,8 @@ import { renderFeed } from './render-feed.ts';
 import { renderHome, renderProductPage, renderRobots, renderSitemap } from './render-page.ts';
 import { createStoreApi } from './store-api.ts';
 import type { CartSnapshot, StoreApi } from './store-api.ts';
+import { AGENT_PATHS, createAgentApi } from './agent-api.ts';
+import type { AgentApi } from './agent-api.ts';
 
 const STORE_BASE = '/wp-json/wc/store/v1';
 const MAX_BODY_BYTES = 64 * 1024;
@@ -32,19 +35,22 @@ export type RunningShop = {
   /** The User-Agent of every request received, in the same order; empty when none was sent. */
   userAgents: string[];
   carts(): CartSnapshot[];
+  /** Every JSON-RPC request the MCP server received: "initialize", "tools/call lookup_catalog" and so on. */
+  rpcCalls(): string[];
   close(): Promise<void>;
 };
 
 export type StartOptions = { mode: 'clean' | 'misprint'; now?: Date; port?: number; host?: string };
 
-type Env = { shop: Shop; api: StoreApi; origin: string };
+type Env = { shop: Shop; api: StoreApi; agent: AgentApi; origin: string };
 
 export async function startShop(options: StartOptions): Promise<RunningShop> {
   const shop = buildShop(options.mode, options.now);
   const api = createStoreApi(shop);
+  const agent = createAgentApi(shop);
   const requests: string[] = [];
   const userAgents: string[] = [];
-  const env: Env = { shop, api, origin: '' };
+  const env: Env = { shop, api, agent, origin: '' };
 
   const server = createServer(async (req, res) => {
     requests.push(`${req.method} ${req.url}`);
@@ -81,6 +87,7 @@ export async function startShop(options: StartOptions): Promise<RunningShop> {
     requests,
     userAgents,
     carts: () => api.carts(),
+    rpcCalls: () => agent.rpcCalls(),
     close: () =>
       new Promise<void>((resolve, reject) => {
         server.close((err) => (err ? reject(err) : resolve()));
@@ -95,6 +102,7 @@ async function route(req: IncomingMessage, res: ServerResponse, env: Env): Promi
   const path = url.pathname;
 
   if (path === STORE_BASE || path.startsWith(`${STORE_BASE}/`)) return storeRoute(req, res, url, env);
+  if (AGENT_PATHS.has(path)) return agentRoute(req, res, url, env);
 
   if (req.method !== 'GET' && req.method !== 'HEAD') return notFound(res);
   const { shop, origin } = env;
@@ -149,16 +157,11 @@ async function storeRoute(req: IncomingMessage, res: ServerResponse, url: URL, e
     }
   }
 
-  const headers: Record<string, string> = {};
-  for (const [name, value] of Object.entries(req.headers)) {
-    if (value !== undefined) headers[name] = Array.isArray(value) ? value.join(', ') : value;
-  }
-
   const result = env.api.handle({
     method: req.method ?? 'GET',
     path: url.pathname,
     query: url.searchParams,
-    headers,
+    headers: headersOf(req),
     body,
     origin: env.origin,
   });
@@ -166,6 +169,36 @@ async function storeRoute(req: IncomingMessage, res: ServerResponse, url: URL, e
 
   res.writeHead(result.status, { ...result.headers, 'content-type': JSON_TYPE });
   res.end(JSON.stringify(result.json));
+}
+
+async function agentRoute(req: IncomingMessage, res: ServerResponse, url: URL, env: Env): Promise<void> {
+  const { tooLarge, text } = await readBody(req);
+  if (tooLarge) return sendJson(res, 413, { code: 'request_too_large', content: 'Request body is larger than 64 KiB.' });
+  let body: unknown;
+  if (text.length > 0) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      return sendJson(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
+    }
+  }
+  const result = env.agent.handle({ method: req.method ?? 'GET', path: url.pathname, headers: headersOf(req), body, origin: env.origin });
+  if (!result) return notFound(res);
+  if (result.json === undefined) {
+    res.writeHead(result.status, result.headers);
+    res.end();
+    return;
+  }
+  res.writeHead(result.status, { ...result.headers, 'content-type': JSON_TYPE });
+  res.end(JSON.stringify(result.json));
+}
+
+function headersOf(req: IncomingMessage): Record<string, string> {
+  const headers: Record<string, string> = {};
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (value !== undefined) headers[name] = Array.isArray(value) ? value.join(', ') : value;
+  }
+  return headers;
 }
 
 /** Reads the whole body, but keeps draining past the limit so the client receives the 413 instead of a reset. */

@@ -20,5 +20,17 @@ export type ProductRef = {
 export type EndpointOptions = {
   /** The endpoint or discovery URL, when the operator gave one. Otherwise the collector's default for the store. */
   url?: string;
+  /**
+   * The UCP agent profile URL sent with every catalogue request. The shop
+   * fetches it to learn which capabilities the caller understands. Defaults
+   * to `AGENT_PROFILES` for the protocol version spoken.
+   */
+  agentProfile?: string;
+  /**
+   * The platform whose storefront API gave the refs' variant ids. Shopify's
+   * agent endpoints name a variant gid://shopify/ProductVariant/<id>, not by
+   * the bare number its storefront API gives, so the ids are written that way.
+   */
+  platform?: 'woocommerce' | 'shopify';
   products: readonly ProductRef[];
 };

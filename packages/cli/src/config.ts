@@ -80,10 +80,14 @@ export const DEFAULT_CLOAKING_PROFILES: Readonly<Record<string, string>> = {
 
 function endpoint(value: unknown, name: string, store: URL): void {
   if (value === undefined || typeof value === 'boolean') return;
-  fields(value, name, ['url']);
-  // An object that names no URL would otherwise resolve to the store itself.
-  if (typeof value.url !== 'string') throw new ConfigError(`${name}.url must be a URL; use ${name}: true to discover it`);
-  httpUrl(value.url, `${name}.url`, store);
+  fields(value, name, ['url', 'agentProfile']);
+  if (value.url !== undefined) httpUrl(value.url, `${name}.url`, store);
+  // The shop fetches the agent profile, so it must be a public HTTPS URL
+  // written in full; it is never resolved against the store.
+  if (value.agentProfile !== undefined) {
+    const profile = httpUrl(value.agentProfile, `${name}.agentProfile`);
+    if (profile.protocol !== 'https:') throw new ConfigError(`${name}.agentProfile must be an https URL`);
+  }
 }
 
 /**
