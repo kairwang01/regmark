@@ -23,7 +23,7 @@ const DOCS = 'https://github.com/kairwang01/regmark/blob/main/docs';
 const USAGE = `regmark: catch ecommerce product-data mismatches across pages, feeds and store APIs
 
 Usage
-  regmark demo                      audit a bundled shop that has 20 defects planted in it
+  regmark demo                      audit a bundled shop with defects planted in it
   regmark demo --clean              the same shop with nothing wrong in it
   regmark audit <store-url>         audit a real shop
   regmark explain <rule>            the usual cause of a finding, and the fix
@@ -198,6 +198,7 @@ async function writeReports(result: AuditResult, files: Outputs): Promise<void> 
 async function demo(clean: boolean, html: string | undefined, color: boolean): Promise<number> {
   const { OWNERSHIP_TOKEN, startShop } = await import('@regmark/fixture-shop');
   const shop = await startShop({ mode: clean ? 'clean' : 'misprint' });
+  const planted = shop.shop.defects.length;
   let result: AuditResult;
   try {
     result = await runAudit(
@@ -230,7 +231,7 @@ async function demo(clean: boolean, html: string | undefined, color: boolean): P
   out(
     clean
       ? `  That was the same shop with nothing wrong in it: every surface agrees with the checkout.\n`
-      : `  That was a shop bundled with Regmark, with 20 defects planted in it. Each one is a\n  way real shops go wrong; run  regmark explain price.mismatch  to read about one.\n`,
+      : `  That was a shop bundled with Regmark, with ${planted} defects planted in it. Each one is a\n  way real shops go wrong; run  regmark explain price.mismatch  to read about one.\n`,
   );
   out(`\n  The full report is in ${file}\n  Now a real one:  regmark audit https://your-shop.example\n\n`);
   return 0;

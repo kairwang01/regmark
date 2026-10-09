@@ -25095,6 +25095,7 @@ function checkConfig(config, rules) {
 }
 
 // packages/cli/src/audit.ts
+var DEFAULT_VERSION = "0.0.0-dev";
 function mulberry32(seed) {
   let a = seed >>> 0;
   return () => {
@@ -25183,7 +25184,8 @@ async function runAudit(config, deps = {}) {
   const ucpUrl = endpointUrl(config.ucp, store);
   const mcpUrl = endpointUrl(config.mcp, store);
   const hosts = unique([store.hostname, ...[feedUrl, acpFeedUrl, ucpUrl, mcpUrl].filter((u) => !!u).map((u) => new URL(u).hostname)]);
-  const fetcher = createFetcher({ ...config.fetch, hosts });
+  const userAgent = config.fetch?.userAgent ?? `Regmark/${deps.version ?? DEFAULT_VERSION} (+https://github.com/kairwang01/regmark)`;
+  const fetcher = createFetcher({ ...config.fetch, userAgent, hosts });
   const ctx = { store, fetcher, now, log };
   const sightings = [];
   const issues = [];
@@ -25298,7 +25300,7 @@ async function runAudit(config, deps = {}) {
         const read = new Set(sightings.filter((s) => PAGE_SURFACES2.has(s.surface)).map((s) => key(s.ids.url)));
         const urls = pageUrls.filter((u) => read.has(key(u)));
         const named = typeof config.cloaking === "object" ? config.cloaking.userAgents : DEFAULT_CLOAKING_PROFILES;
-        const profiles = Object.entries(named).map(([name, userAgent]) => ({ name, userAgent }));
+        const profiles = Object.entries(named).map(([name, userAgent2]) => ({ name, userAgent: userAgent2 }));
         log("info", `cloaking: reading ${urls.length} pages as ${profiles.map((p) => p.name).join(", ")}`);
         const views = await collectViews(ctx, urls, profiles, config.page);
         sightings.push(...views.sightings);
@@ -25316,7 +25318,7 @@ async function runAudit(config, deps = {}) {
   const run = runRules(graph, rules, { datum, budget: config.budget, now: now(), options: { maxAgeMs } });
   return {
     schema: "regmark.audit/v0",
-    tool: { name: "regmark", version: deps.version ?? "0.1.0" },
+    tool: { name: "regmark", version: deps.version ?? DEFAULT_VERSION },
     store: store.origin,
     startedAt,
     finishedAt: now().toISOString(),
@@ -25335,7 +25337,7 @@ var DOCS = "https://github.com/kairwang01/regmark/blob/main/docs";
 var USAGE = `regmark: catch ecommerce product-data mismatches across pages, feeds and store APIs
 
 Usage
-  regmark demo                      audit a bundled shop that has 20 defects planted in it
+  regmark demo                      audit a bundled shop with defects planted in it
   regmark demo --clean              the same shop with nothing wrong in it
   regmark audit <store-url>         audit a real shop
   regmark explain <rule>            the usual cause of a finding, and the fix
@@ -25504,6 +25506,7 @@ async function writeReports(result, files) {
 async function demo(clean2, html3, color) {
   const { OWNERSHIP_TOKEN: OWNERSHIP_TOKEN2, startShop: startShop2 } = await Promise.resolve().then(() => (init_src(), src_exports));
   const shop = await startShop2({ mode: clean2 ? "clean" : "misprint" });
+  const planted = shop.shop.defects.length;
   let result;
   try {
     result = await runAudit(
@@ -25531,7 +25534,7 @@ async function demo(clean2, html3, color) {
   await writeFile(file, renderHtml(named));
   out(
     clean2 ? `  That was the same shop with nothing wrong in it: every surface agrees with the checkout.
-` : `  That was a shop bundled with Regmark, with 20 defects planted in it. Each one is a
+` : `  That was a shop bundled with Regmark, with ${planted} defects planted in it. Each one is a
   way real shops go wrong; run  regmark explain price.mismatch  to read about one.
 `
   );

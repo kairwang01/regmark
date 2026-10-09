@@ -23,6 +23,9 @@ import { detectPlatform } from './detect.ts';
 import { checkConfig, ConfigError, DEFAULT_CLOAKING_PROFILES, parseDuration } from './config.ts';
 export { ConfigError } from './config.ts';
 
+/** Reported when the caller does not say which version it is, as when the sources run without the bundle. */
+const DEFAULT_VERSION = '0.0.0-dev';
+
 export type ShipTo = { country: string; postcode?: string; state?: string; city?: string };
 
 export type AuditConfig = {
@@ -200,7 +203,9 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
   const ucpUrl = endpointUrl(config.ucp, store);
   const mcpUrl = endpointUrl(config.mcp, store);
   const hosts = unique([store.hostname, ...[feedUrl, acpFeedUrl, ucpUrl, mcpUrl].filter((u): u is string => !!u).map((u) => new URL(u).hostname)]);
-  const fetcher = createFetcher({ ...config.fetch, hosts });
+  // Say which version is asking, so a shop's logs can be matched to a release.
+  const userAgent = config.fetch?.userAgent ?? `Regmark/${deps.version ?? DEFAULT_VERSION} (+https://github.com/kairwang01/regmark)`;
+  const fetcher = createFetcher({ ...config.fetch, userAgent, hosts });
   const ctx: CollectContext = { store, fetcher, now, log };
 
   const sightings: Sighting[] = [];
@@ -364,7 +369,7 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
   const run = runRules(graph, rules, { datum, budget: config.budget, now: now(), options: { maxAgeMs } });
   return {
     schema: 'regmark.audit/v0',
-    tool: { name: 'regmark', version: deps.version ?? '0.1.0' },
+    tool: { name: 'regmark', version: deps.version ?? DEFAULT_VERSION },
     store: store.origin,
     startedAt,
     finishedAt: now().toISOString(),
