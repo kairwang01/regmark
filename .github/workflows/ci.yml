@@ -73,9 +73,14 @@ jobs:
         with:
           store: http://127.0.0.1:4010
           feed: /feeds/google.xml
+          max-age: feed=24h
+          acp-feed: /feeds/acp.jsonl.gz
           platform: woocommerce
+          ucp: 'true'
+          mcp: 'true'
           checkout: 'true'
           ship-to: US:94103
+          cloaking: 'true'
           ownership-token: fixture_0123456789abcdef
           sample: '50'
           report-name: regmark-${{ matrix.mode }}
@@ -94,6 +99,15 @@ jobs:
             test -s "regmark-report/$f" || { echo "missing report: $f" >&2; exit 1; }
           done
           test "$PRODUCTS" -gt 0
+          # Every surface the inputs asked for was read.
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync("regmark-report/regmark.json", "utf8"));
+            const want = ["acp", "checkout", "feed", "jsonld", "mcp", "opengraph", "page", "platform", "ucp"];
+            const missing = want.filter((s) => !r.surfaces.includes(s));
+            if (missing.length) { console.error("surfaces not read: " + missing.join(", ")); process.exit(1); }
+            const skipped = r.rules.filter((x) => x.skipped).map((x) => x.id);
+            if (skipped.length) { console.error("rules skipped: " + skipped.join(", ")); process.exit(1); }
+          '
           if [ "$MODE" = misprint ]; then
             test "$OUTCOME" = failure && test "$OK" = false && test "$EXIT_CODE" = 1 && test "$FINDINGS" -gt 0
           else
