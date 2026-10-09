@@ -165,13 +165,22 @@ function productRefs(pageUrls: readonly string[], sightings: readonly Sighting[]
     const productId = mine.find((s) => s.surface === 'platform' && s.ids.productId)?.ids.productId;
     if (productId) ref.productId = productId;
     const handle = new URL(url).pathname.split('/').filter(Boolean).pop();
-    if (handle) ref.handle = decodeURIComponent(handle);
+    if (handle) ref.handle = decodeSegment(handle);
     const skus = unique(mine.map((s) => s.ids.sku).filter((s): s is string => !!s));
     if (skus.length) ref.skus = skus;
     const variantIds = unique(mine.filter((s) => s.surface === 'platform').map((s) => s.ids.variantId).filter((s): s is string => !!s));
     if (variantIds.length) ref.variantIds = variantIds;
     return ref;
   });
+}
+
+/** A path segment as text. A malformed escape is a shop's mistake, not a reason to stop the audit, so it is kept as written. */
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
 }
 
 /** The endpoint URL a protocol option names, when it names one. */
@@ -330,7 +339,7 @@ export async function runAudit(config: AuditConfig, deps: AuditDeps = {}): Promi
       if (config.checkout) issues.push({ surface: 'checkout', code: 'ownership-not-verified', message: `checkout probe skipped: ${ownership.detail}` });
       if (config.cloaking) issues.push({ surface: 'page', code: 'ownership-not-verified', message: `cloaking check skipped: ${ownership.detail}` });
     } else {
-      fetcher.authorizeWrites();
+      fetcher.authorizeWrites(store.origin);
       if (config.checkout) {
         const targets: ProbeTarget[] = sightings
           .filter((s) => s.surface === 'platform' && s.ids.variantId)

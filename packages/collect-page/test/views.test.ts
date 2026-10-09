@@ -61,17 +61,25 @@ test('each page is fetched once per profile, as the owner, sending that profile�
   }
 });
 
-test('every sighting names its profile and is keyed by the page URL that was asked for', async () => {
+test('every sighting names its profile and keeps the URL it states, as the ordinary read does', async () => {
   const shop = fakeShop(() => ({ body: page('16.00') }));
   const result = await collectViews(shop.ctx, [MUG], [AGENT]);
   assert.deepEqual(result.issues, []);
   assert.deepEqual(result.sightings.map((s) => s.surface), ['page', 'jsonld']);
-  for (const s of result.sightings) {
-    assert.equal(s.via, 'agent');
-    // The JSON-LD states another URL; the graph needs the one this view belongs to.
-    assert.equal(s.ids.url, MUG);
-  }
+  for (const s of result.sightings) assert.equal(s.via, 'agent');
+  // The same statements an ordinary read of the page makes, so the graph
+  // hands each view to the product the ordinary read gave it to.
+  const ordinary = extractPage(page('16.00'), MUG, AT).sightings;
+  assert.deepEqual(result.sightings.map((s) => s.ids.url), ordinary.map((s) => s.ids.url));
   assert.equal(result.sightings[1]!.ids.sku, 'MUG');
+});
+
+test('a related product’s card stays with that product, not the page it appears on', async () => {
+  const card = '<script type="application/ld+json">{"@type":"Product","sku":"CAP","url":"https://shop.example/product/cap/","offers":{"@type":"Offer","price":"22.00","priceCurrency":"USD"}}</script>';
+  const shop = fakeShop(() => ({ body: page('16.00', card) }));
+  const result = await collectViews(shop.ctx, [MUG], [AGENT]);
+  const cap = result.sightings.find((s) => s.ids.sku === 'CAP');
+  assert.equal(cap?.ids.url, CAP);
 });
 
 test('what each client was told is kept as that client’s own reading', async () => {
@@ -120,11 +128,18 @@ test('a page that redirected to another origin was not read as the client, so it
   assert.deepEqual(result.issues, [{ surface: 'page', code: 'view-redirected', message: 'as agent: answered from https://cdn.example/mug.html', locator: MUG }]);
 });
 
+test('a redirect the owner read did not follow is reported as one, not as a failure', async () => {
+  const shop = fakeShop(() => ({ status: 302, headers: { location: 'https://cdn.example/mug.html' }, body: '' }));
+  const result = await collectViews(shop.ctx, [MUG], [AGENT]);
+  assert.deepEqual(result.sightings, []);
+  assert.deepEqual(result.issues, [{ surface: 'page', code: 'view-redirected', message: 'as agent: redirected to https://cdn.example/mug.html', locator: MUG }]);
+});
+
 test('a redirect within the shop is still the client’s view', async () => {
   const shop = fakeShop(() => ({ url: `${MUG}?lang=en`, body: page('16.00') }));
   const result = await collectViews(shop.ctx, [MUG], [AGENT]);
   assert.deepEqual(result.issues, []);
-  assert.ok(result.sightings.every((s) => s.ids.url === MUG));
+  assert.deepEqual(result.sightings.map((s) => s.via), ['agent', 'agent']);
 });
 
 test('problems inside a page are the ordinary read’s to report, not each view’s', async () => {

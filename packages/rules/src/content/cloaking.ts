@@ -65,6 +65,10 @@ function contradiction<T>(
     const actual = read(v);
     if (!actual) continue;
     const paired = reference.filter((r) => sameItem(v, r) === true);
+    // An item the view identifies and the reference identifies as something
+    // else is not one the reference describes: a related product that a
+    // rotating block showed to one client and not the other. Silence.
+    if (paired.length === 0 && reference.some((r) => sameItem(v, r) === false)) continue;
     const against = paired.length > 0 ? paired.filter((r) => read(r) !== undefined) : stated;
     if (against.length === 0) continue;
     if (!against.some((r) => agree(actual.value, read(r)!.value))) return { actual, expected: read(against[0]!)! };

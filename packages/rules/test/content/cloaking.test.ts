@@ -51,6 +51,14 @@ test('a lighter page for bots, leaving facts out, is not telling anyone anything
   assert.deepEqual(run(rule, [...ordinary(), ...view('browser'), ...priceOnly]), []);
 });
 
+test('a related product that a rotating block shows one client and not the other is not a difference', () => {
+  // Cards with no URL of their own stay on the page's product; each names its own SKU.
+  const card = (via: string, sku: string, amount: string) => variant('jsonld', { sku, url: URL }, { price: price('jsonld', amount), via });
+  const browser = [...view('browser'), card('browser', 'BAG-OLV', '58.00')];
+  const agent = [...view('agent'), card('agent', 'MUG-WHT', '16.00')];
+  assert.deepEqual(run(rule, [...ordinary(), ...browser, ...agent]), []);
+});
+
 test('the same facts in another order are the same facts', () => {
   const reordered = view('agent').reverse();
   assert.deepEqual(run(rule, [...ordinary(), ...view('browser'), ...reordered]), []);

@@ -93,3 +93,20 @@ test('malformed cloaking profiles are rejected before any network request', asyn
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+test('an endpoint object must name its URL, and a cloaking check needs a client besides the browser', async () => {
+  const store = 'https://shop.example';
+  const cases: Array<[Partial<AuditConfig>, RegExp]> = [
+    [{ ucp: {} as { url: string } }, /ucp\.url must be a URL; use ucp: true/],
+    [{ mcp: { url: 42 } as unknown as { url: string } }, /mcp\.url must be a URL/],
+    [{ cloaking: { userAgents: { browser: 'Mozilla/5.0' } } }, /needs a client to compare with the browser/],
+    [{ cloaking: { userAgents: { agent: undefined as unknown as string } } }, /cloaking\.userAgents\.agent must be a non-empty string/],
+  ];
+  for (const [extra, message] of cases) {
+    await assert.rejects(runAudit({ store, ...extra }), (err: unknown) => {
+      assert.ok(err instanceof ConfigError, String(err));
+      assert.match(err.message, message);
+      return true;
+    });
+  }
+});

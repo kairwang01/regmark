@@ -40,6 +40,12 @@ export async function collectViews(
           asOwner: true,
           headers: { 'user-agent': profile.userAgent, accept: 'text/html,application/xhtml+xml' },
         });
+        // An owner read does not follow a redirect off the page's origin, so
+        // the redirect itself comes back: this client was sent elsewhere.
+        if (res.status >= 300 && res.status < 400 && res.headers['location']) {
+          issues.push({ surface: 'page', code: 'view-redirected', message: `as ${profile.name}: redirected to ${res.headers['location']}`, locator: url });
+          continue;
+        }
         if (res.status < 200 || res.status > 299) {
           issues.push({ surface: 'page', code: 'view-failed', message: `as ${profile.name}: HTTP ${res.status}`, locator: url });
           continue;
@@ -51,13 +57,14 @@ export async function collectViews(
           issues.push({ surface: 'page', code: 'view-redirected', message: `as ${profile.name}: answered from ${res.url}`, locator: url });
           continue;
         }
-        // Keyed by the URL that was asked for, so the graph hands the view to
-        // the product the ordinary read of the same URL belongs to. The
-        // extractors' own issues are left out: the ordinary read reports them
-        // once, and repeating them per profile would count one broken script
-        // tag several times.
+        // Each statement keeps the URL it names, exactly as in the ordinary
+        // read, so the graph hands it to the same product: the page's own
+        // offers to this product, and a related product's card to that
+        // product, never to this one. The extractors' own issues are left
+        // out: the ordinary read reports them once, and repeating them per
+        // profile would count one broken script tag several times.
         const page = extractPage(res.body, url, res.fetchedAt, options);
-        for (const s of page.sightings) sightings.push({ ...s, ids: { ...s.ids, url }, via: profile.name });
+        for (const s of page.sightings) sightings.push({ ...s, via: profile.name });
       } catch (err) {
         issues.push({ surface: 'page', code: 'view-failed', message: `as ${profile.name}: ${(err as Error).message}`, locator: url });
         ctx.log('warn', `page not read as ${profile.name}: ${url}`);

@@ -468,3 +468,16 @@ test('--max-age reports a feed older than its limit once, and replaces the same 
   const strict = await readJson(path.join(fromFlag.dir, 'out.json'));
   assert.deepEqual(stale(strict).map((f) => [f.product.split('/').pop(), f.surface]), [['canvas-tote', 'feed']]);
 });
+
+test('a maxAge in the config file applies to a feed given on the command line', async () => {
+  // The file is checked before the flags are merged into it, so it must not demand a feed the flags supply.
+  const config = { store: misprint.origin, platform: 'woocommerce', sample: 50, maxAge: { feed: '24h' }, ...local };
+  const res = await withConfig(config, ['--feed', '/feeds/google.xml', '--json', 'out.json', '--quiet']);
+  assert.equal(res.code, 1, res.stderr);
+  const json = await readJson(path.join(res.dir, 'out.json'));
+  assert.ok(json.findings.some((f: { rule: string }) => f.rule === 'availability.stale'));
+  // Without any feed, the merged config is still refused.
+  const none = await withConfig(config, ['--quiet']);
+  assert.equal(none.code, 2);
+  assert.match(none.stderr, /maxAge\.feed is set, but no feed is read/);
+});

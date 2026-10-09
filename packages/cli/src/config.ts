@@ -81,10 +81,17 @@ export const DEFAULT_CLOAKING_PROFILES: Readonly<Record<string, string>> = {
 function endpoint(value: unknown, name: string, store: URL): void {
   if (value === undefined || typeof value === 'boolean') return;
   fields(value, name, ['url']);
+  // An object that names no URL would otherwise resolve to the store itself.
+  if (typeof value.url !== 'string') throw new ConfigError(`${name}.url must be a URL; use ${name}: true to discover it`);
   httpUrl(value.url, `${name}.url`, store);
 }
 
-export function checkConfig(config: AuditConfig, rules: readonly Rule[]): void {
+/**
+ * `partial` is for a config file checked on its own, before the command line
+ * is merged into it: a field the flags may still supply, such as the feed a
+ * maxAge applies to, is not required yet.
+ */
+export function checkConfig(config: AuditConfig, rules: readonly Rule[], { partial = false }: { partial?: boolean } = {}): void {
   fields(config, 'config', [
     'store', 'feed', 'acpFeed', 'platform', 'checkout', 'pages', 'sitemap', 'page', 'sample', 'maxVariants', 'seed', 'strict',
     'datum', 'budget', 'maxAge', 'cloaking', 'ucp', 'mcp', 'ownershipToken', 'fetch',
@@ -110,7 +117,7 @@ export function checkConfig(config: AuditConfig, rules: readonly Rule[]): void {
     for (const [surface, value] of Object.entries(config.maxAge)) {
       if (parseDuration(value) === undefined) throw new ConfigError(`maxAge.${surface} must be a duration such as "90m", "24h" or "7d"; got ${JSON.stringify(value)}`);
       const [field, flag] = source[surface as keyof typeof source];
-      if (config[field] === undefined) throw new ConfigError(`maxAge.${surface} is set, but no ${surface} is read; give ${flag} or the ${field} field`);
+      if (!partial && config[field] === undefined) throw new ConfigError(`maxAge.${surface} is set, but no ${surface} is read; give ${flag} or the ${field} field`);
     }
   }
   if (config.cloaking !== undefined && typeof config.cloaking !== 'boolean') {
@@ -120,9 +127,12 @@ export function checkConfig(config: AuditConfig, rules: readonly Rule[]): void {
     if (profiles.length === 0) throw new ConfigError('cloaking.userAgents must name at least one client');
     for (const [name, ua] of profiles) {
       if (!/^[a-z][a-z0-9-]{0,31}$/.test(name)) throw new ConfigError(`cloaking.userAgents: "${name}" must be a short lower-case name such as "agent"`);
-      text(ua, `cloaking.userAgents.${name}`);
-      if (/[^\x20-\x7e]/.test(ua as string)) throw new ConfigError(`cloaking.userAgents.${name} must contain printable ASCII only`);
+      if (typeof ua !== 'string' || ua.trim() === '') throw new ConfigError(`cloaking.userAgents.${name} must be a non-empty string`);
+      if (/[^\x20-\x7e]/.test(ua)) throw new ConfigError(`cloaking.userAgents.${name} must contain printable ASCII only`);
     }
+    // "browser" is the view the others are held to. On its own it is compared
+    // with nothing, and the check would pass without having looked.
+    if (profiles.every(([name]) => name === 'browser')) throw new ConfigError('cloaking.userAgents needs a client to compare with the browser, such as "agent"');
   }
   endpoint(config.ucp, 'ucp', store);
   endpoint(config.mcp, 'mcp', store);

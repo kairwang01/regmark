@@ -82,7 +82,7 @@ async function loadConfig(file: string): Promise<Partial<AuditConfig>> {
   configObject(value, file);
   // Validate before merging flags: spreading a string or normalizing checkout
   // used to hide malformed safety options from the final validator.
-  checkConfig({ ...value, store: value.store ?? 'https://config.example', platform: value.platform === 'none' ? undefined : value.platform } as AuditConfig, allRules);
+  checkConfig({ ...value, store: value.store ?? 'https://config.example', platform: value.platform === 'none' ? undefined : value.platform } as AuditConfig, allRules, { partial: true });
   return value as Partial<AuditConfig>;
 }
 

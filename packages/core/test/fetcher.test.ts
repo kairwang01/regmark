@@ -175,7 +175,7 @@ test('send() is refused until writes are authorized, and nothing reaches the ser
   const before = hits.length;
   await assert.rejects(f.send('POST', `${origin}/cart`, { json: { id: 1 } }), refusal('write-not-authorized'));
   assert.equal(hits.length, before);
-  f.authorizeWrites();
+  f.authorizeWrites(origin);
   const r = await f.send('POST', `${origin}/cart`, { json: { id: 1 } });
   assert.equal(r.status, 201);
   assert.deepEqual(JSON.parse(r.body), { id: 1 });
@@ -241,7 +241,7 @@ const AGENT_UA = 'Mozilla/5.0; compatible; ChatGPT-User/1.0';
 test('a User-Agent header is refused unless the read is made as the owner, and nothing is sent', async () => {
   const before = hits.length;
   const f = local();
-  f.authorizeWrites();
+  f.authorizeWrites(origin);
   await assert.rejects(f.get(`${origin}/ua`, { headers: { 'user-agent': AGENT_UA } }), refusal('write-not-authorized'));
   // Header names are case-insensitive, and so is the check.
   await assert.rejects(f.get(`${origin}/ua`, { headers: { 'User-Agent': AGENT_UA } }), refusal('write-not-authorized'));
@@ -258,7 +258,7 @@ test('an owner read is refused until ownership has been verified, and nothing is
   await assert.rejects(f.get(`${origin}/ua`, { asOwner: true, headers: { 'user-agent': AGENT_UA } }), refusal('write-not-authorized'));
   await assert.rejects(f.query(`${origin}/ua`, {}, { asOwner: true }), refusal('write-not-authorized'));
   assert.equal(hits.length, before);
-  f.authorizeWrites();
+  f.authorizeWrites(origin);
   assert.equal((await f.get(`${origin}/ua`, { asOwner: true, headers: { 'user-agent': AGENT_UA } })).body, AGENT_UA);
   // Without a User-Agent of its own, an owner read still says it is Regmark.
   assert.match((await f.get(`${origin}/ua`, { asOwner: true })).body, /^Regmark\//);
@@ -270,7 +270,7 @@ test('an owner read does not consult robots.txt, which speaks to crawlers', asyn
     await assert.rejects(shop.fetcher().get(`${shop.base}/product`), refusal('robots'));
     shop.seen.length = 0;
     const owner = shop.fetcher();
-    owner.authorizeWrites();
+    owner.authorizeWrites(shop.base);
     const r = await owner.get(`${shop.base}/product`, { asOwner: true, headers: { 'user-agent': AGENT_UA } });
     assert.equal(r.status, 200);
     assert.equal(r.body, AGENT_UA);
@@ -284,20 +284,39 @@ test('an owner read does not consult robots.txt, which speaks to crawlers', asyn
   }
 });
 
-test('an owner read redirected to another origin is an ordinary read there', async () => {
+test('an owner read does not follow a redirect to another origin', async () => {
   const shop = await closedShop();
   try {
-    const f = shop.fetcher();
-    f.authorizeWrites();
-    // localhost's robots.txt shuts crawlers out; the owner of 127.0.0.1 is one there.
-    await assert.rejects(f.get(`${shop.base}/hop`, { asOwner: true, headers: { 'user-agent': AGENT_UA } }), refusal('robots'));
-    assert.deepEqual(shop.seen, [`GET 127.0.0.1/hop ${AGENT_UA}`, `GET localhost/robots.txt ${DEFAULT_POLICY.userAgent}`]);
-    // Where robots.txt allows it, the read goes ahead as Regmark, not as the client it was posing as.
-    const open = shop.fetcher({ respectRobots: false });
-    open.authorizeWrites();
-    const landed = await open.get(`${shop.base}/hop`, { asOwner: true, headers: { 'user-agent': AGENT_UA } });
-    assert.equal(new URL(landed.url).hostname, 'localhost');
-    assert.equal(landed.body, DEFAULT_POLICY.userAgent);
+    const f = shop.fetcher({ respectRobots: false });
+    f.authorizeWrites(shop.base);
+    // Whatever answers at localhost was never asked as the owner, so the
+    // redirect comes back to the caller instead of a page fetched as Regmark.
+    const r = await f.get(`${shop.base}/hop`, { asOwner: true, headers: { 'user-agent': AGENT_UA } });
+    assert.equal(r.status, 302);
+    assert.equal(new URL(r.url).hostname, '127.0.0.1');
+    assert.deepEqual(shop.seen, [`GET 127.0.0.1/hop ${AGENT_UA}`]);
+    // An ordinary read still follows it, as Regmark.
+    const plain = await f.get(`${shop.base}/hop`);
+    assert.equal(new URL(plain.url).hostname, 'localhost');
+    assert.equal(plain.body, DEFAULT_POLICY.userAgent);
+  } finally {
+    await shop.close();
+  }
+});
+
+test('ownership shown for one host gives no standing on another host of the run', async () => {
+  const shop = await closedShop();
+  try {
+    const f = shop.fetcher({ respectRobots: false });
+    f.authorizeWrites(shop.base);
+    const other = shop.base.replace('127.0.0.1', 'localhost');
+    shop.seen.length = 0;
+    await assert.rejects(f.get(`${other}/product`, { asOwner: true, headers: { 'user-agent': AGENT_UA } }), refusal('write-not-authorized'));
+    await assert.rejects(f.query(`${other}/mcp`, {}, { asOwner: true }), refusal('write-not-authorized'));
+    await assert.rejects(f.send('POST', `${other}/cart`, { json: {} }), refusal('write-not-authorized'));
+    assert.deepEqual(shop.seen, [], 'nothing reached the other host');
+    // The verified host itself is unaffected.
+    assert.equal((await f.get(`${shop.base}/product`, { asOwner: true, headers: { 'user-agent': AGENT_UA } })).body, AGENT_UA);
   } finally {
     await shop.close();
   }
@@ -313,7 +332,7 @@ test('query() posts JSON, is checked against robots.txt like a read, and needs n
     assert.deepEqual(JSON.parse(r.body), { asked: { method: 'tools/list' }, type: 'application/json' });
     // As the owner, it skips robots.txt the way an owner read does.
     const owner = shop.fetcher();
-    owner.authorizeWrites();
+    owner.authorizeWrites(shop.base);
     assert.equal((await owner.query(`${shop.base}/mcp`, { method: 'tools/list' }, { asOwner: true })).status, 200);
   } finally {
     await shop.close();

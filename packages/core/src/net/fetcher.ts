@@ -77,8 +77,13 @@ export class FetchRefused extends Error {
 }
 
 export type GuardedFetcher = Fetcher & {
-  /** Called once ownership has been verified. There is no way to call it from the command line. */
-  authorizeWrites(): void;
+  /**
+   * Called once ownership of `origin` has been verified. Writes and owner
+   * reads are then allowed to that shop's host, and to no other host on the
+   * allowlist: a feed host or an endpoint host has shown nothing. There is no
+   * way to call it from the command line.
+   */
+  authorizeWrites(origin: string): void;
   readonly stats: { requests: number };
 };
 
@@ -109,7 +114,9 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
   const nextSlot = new Map<string, number>();
   const robotsCache = new Map<string, Promise<Robots | 'allow-all' | 'deny-all'>>();
   const stats = { requests: 0 };
-  let writesAuthorized = false;
+  /** hostKey of the shop whose ownership was verified; undefined until then. */
+  let ownedHost: string | undefined;
+  const isOwned = (u: URL) => ownedHost !== undefined && hostKey(u.hostname) === ownedHost;
 
   function parse(url: string): URL {
     let u: URL;
@@ -262,7 +269,7 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
     const headers = init.headers ?? {};
     const posing = Object.keys(headers).some((name) => name.toLowerCase() === 'user-agent');
     if (posing && !init.asOwner) throw new FetchRefused('write-not-authorized', u.href, 'a different User-Agent needs an owner read');
-    if (init.asOwner && !writesAuthorized) throw new FetchRefused('write-not-authorized', u.href, 'ownership of this shop has not been verified');
+    if (init.asOwner && !isOwned(u)) throw new FetchRefused('write-not-authorized', u.href, 'ownership of this host has not been verified');
     return headers;
   }
 
@@ -276,14 +283,14 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
 
   return {
     stats,
-    authorizeWrites() {
-      writesAuthorized = true;
+    authorizeWrites(origin: string) {
+      ownedHost = hostKey(new URL(origin).hostname);
     },
 
     async get(url: string, init: RequestOptions = {}): Promise<Fetched> {
       let u = parse(url);
       let headers = callerHeaders(u, init);
-      let owner = init.asOwner === true;
+      const owner = init.asOwner === true;
       for (let hop = 0; ; hop++) {
         assertAllowedHost(u);
         // robots.txt speaks to crawlers. The owner reading their own shop is not one.
@@ -300,16 +307,15 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
         }
         // A redirect that leaves the allowlist is the caller's to interpret, not ours to follow.
         if ((next.protocol !== 'http:' && next.protocol !== 'https:') || !allowed.has(hostKey(next.hostname))) return finish(u, raw);
+        // Nor is one that takes an owner read to another origin. What answers
+        // there was never asked as the owner, and following it would hand
+        // the caller a page fetched as somebody else, even when a later hop
+        // comes back to the shop.
+        if (owner && next.origin !== u.origin) return finish(u, raw);
         if (hop >= policy.maxRedirects) throw new FetchRefused('too-many-redirects', url);
         // An allowlisted feed host is not entitled to a shop's credentials or
         // cart token. Only same-origin redirects may inherit caller headers.
-        // Nor is it the shop whose ownership was shown, so an owner read
-        // becomes an ordinary one there: robots.txt applies again, and the
-        // User-Agent is Regmark's own.
-        if (next.origin !== u.origin) {
-          headers = {};
-          owner = false;
-        }
+        if (next.origin !== u.origin) headers = {};
         u = next;
       }
     },
@@ -328,7 +334,7 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
     async send(method, url, init = {}): Promise<Fetched> {
       const u = parse(url);
       assertAllowedHost(u);
-      if (!writesAuthorized) throw new FetchRefused('write-not-authorized', u.href, 'ownership of this shop has not been verified');
+      if (!isOwned(u)) throw new FetchRefused('write-not-authorized', u.href, 'ownership of this host has not been verified');
       await pace(u);
       const body = init.json === undefined ? undefined : Buffer.from(JSON.stringify(init.json));
       // A write is always made as the owner, so it may set its own User-Agent.
