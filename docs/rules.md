@@ -1,0 +1,293 @@
+# Rule catalogue
+
+Every rule is a pure function from one product in the offer graph to a list of
+findings. This page defines, for each rule, exactly when it fires. The
+definitions lean towards silence: a rule that cannot be sure says nothing,
+because a check that cries wolf gets removed from the pipeline it was added to.
+
+## Words used below
+
+- **Surface**: where a statement was read from. See `Surface` in
+  `packages/core/src/types.ts`.
+- **Datum**: the surface that is believed, chosen per fact by
+  `ctx.pick(observations)`, which returns the observation from the first
+  surface in the run's datum order (default `checkout`, `platform`, `page`)
+  that has one. No observation from any datum surface means there is no datum
+  for that fact, and the rule says nothing about it.
+- **Checked surfaces**: `jsonld`, `microdata`, `opengraph`, `feed`, `ucp`,
+  `acp`, `mcp`, and also `page` whenever the datum for that fact came from
+  `checkout` or `platform`. A surface is never checked against itself.
+- **Variant**: an `Offer` in `product.variants`.
+- **Product-level sighting**: an entry of `product.productLevel`. It states one
+  thing for the whole product (a page's headline price, an og:price tag), so it
+  cannot be compared with one variant. It is compared with the set of all the
+  product's variants instead: it is wrong only if it agrees with none of them.
+- **Buyable**: `isBuyable(availability)` from core. `in_stock`, `preorder` and
+  `backorder` are buyable; `out_of_stock` and `discontinued` are not; `unknown`
+  is no statement at all.
+
+A finding always carries `product` (the `ProductNode.key`). It carries
+`variant` (the `Offer.key`) when it is about one variant, `surface` when one
+surface is at fault, and `expected` and `actual` evidence when there are two
+values to show. Build evidence with `evidence()` or `moneyEvidence()` from
+core. The runner overwrites `rule` and `severity`, so a rule may put anything
+there.
+
+## Parity rules
+
+### `price.mismatch` (error)
+*A surface states a price the datum does not back up.*
+
+For each variant with a price datum `d`: every other price observation `o` on a
+checked surface fires when `o.value.currency` is null or equals
+`d.value.currency`, and `sameMoney(o.value, d.value)` is false. One finding per
+`(variant, surface)`. `expected` is `d`, `actual` is `o`.
+
+Observations whose currency differs from the datum's are skipped here; that is
+`price.currency-ambiguous`.
+
+For each product-level sighting `s` with a price, on a checked surface: collect
+the price datum of every variant that has one. If that list is empty, say
+nothing. Among the datum prices whose currency is compatible with `s.price`
+(either side null, or equal): if there is at least one and `s.price` equals none
+of them, fire once, without `variant`, with `expected` set to the first
+variant's datum.
+
+**When no backend was read.** If no variant of the product has a price datum
+and the page is in the datum order, the page's own headline price becomes the
+datum for the product. A page states one price for the whole product, so the
+comparison is an any-match: for each of `jsonld`, `microdata`, `opengraph`,
+`feed`, `ucp`, `acp`, `mcp`, gather every price that surface states for the
+product, variant-level and product-level alike, keep those whose currency is
+compatible with the page's, and fire once, without `variant`, when there is at
+least one and none equals the page price. `expected` is the page observation.
+
+### `price.currency-ambiguous` (error)
+*A machine-readable price with no currency, or with a different currency from
+the one the shop charges in.*
+
+For each variant with a price datum `d` whose currency is known: every price
+observation `o` on `jsonld`, `microdata`, `opengraph`, `feed`, `ucp`, `acp` or
+`mcp` fires when `o.value.currency` is null, or is not `d.value.currency`. The
+`page` surface is exempt: a person reading "$39" has context a parser lacks.
+One finding per `(variant, surface)`.
+
+For each product-level sighting with a price on one of those surfaces: fire
+once, without `variant`, when its currency is null or differs from the currency
+of every variant's price datum. If no variant has a price datum with a known
+currency, say nothing.
+
+### `price.tax-basis` (warn)
+*Two surfaces state prices exactly one tax rate apart: one includes tax and the
+other does not.*
+
+Wherever `price.mismatch` would compare two amounts and find them different,
+the pair is first tested against the standard VAT and GST rates. If the larger
+is the smaller plus one of those rates, to within a hundredth of a major unit,
+this rule fires instead of `price.mismatch`, with the same `variant`, `surface`
+and evidence. The test is skipped, and the difference stays a mismatch, when
+the currency is USD or CAD: shops there quote prices before tax.
+
+A shop that shows a visitor abroad a price without tax while its storefront
+API quotes it with tax is not wrong on either surface, but an agent reading
+one and paying the other sees two prices. That is worth knowing and is not an
+error.
+
+### `price.sale-expired` (warn)
+*A surface says the price stopped applying on a date already past, yet it is
+still the price.*
+
+For each variant and each `priceValidUntil` observation `u` on a checked
+surface: find the price observation `p` from the same surface. Fire when
+`Date.parse(u.value)` is a valid time earlier than the start of the UTC day of
+`ctx.now`, and `p` exists, and the variant has a price datum `d`, and
+`sameMoney(p.value, d.value)`. A date given without a time counts as the end of
+that day, so a sale ending today has not expired. One finding per `(variant,
+surface)`; `actual` is `u`.
+
+If the stated price no longer matches the datum, `price.mismatch` reports it and
+this rule stays silent.
+
+### `availability.mismatch` (error)
+*A surface says an item can be bought when it cannot, or the reverse.*
+
+The datum here is `ctx.pick(variant.availability)`. Note that the checkout
+contributes `purchasable`, not `availability`, so in practice this datum comes
+from `platform`.
+
+For each variant whose datum `d` is buyable or not buyable (not `unknown`):
+every other availability observation `o` on a checked surface fires when
+`isBuyable(o.value)` is not null and differs from `isBuyable(d.value)`. One
+finding per `(variant, surface)`.
+
+For each product-level sighting with an availability that is not `unknown`, on
+a checked surface: collect `isBuyable` of every variant's datum, dropping
+nulls. If the list is non-empty and does not contain the sighting's
+buyability, fire once, without `variant`.
+
+**When no backend was read.** The same fallback as `price.mismatch`: if no
+variant has an availability datum and the page is in the datum order, each
+machine-readable surface is held to what the page shows, and fires once,
+without `variant`, when it states at least one known availability and none has
+the page's buyability.
+
+### `variant.missing` (error)
+*A surface lists some of a product's variants and leaves others out.*
+
+Considered surfaces: `jsonld`, `microdata`, `ucp`, `acp`, `mcp`. Feeds are
+exempt, because leaving variants out of a feed is often deliberate.
+
+Call a variant *real* when its `surfaces` include `platform` or `checkout`. For
+each considered surface `S`: if at least one real variant has `S` in its
+`surfaces` and at least one real variant does not, fire once for each real
+variant that does not. `surface` is `S`.
+
+A surface that names no variant of this product at all is not partial, and does
+not fire. Needs `platform` or `checkout` to have been collected.
+
+### `variant.unpurchasable` (error)
+*Everything says the variant can be bought, and the cart refuses it.*
+
+For each variant with a `purchasable` observation from `checkout` whose value is
+false: fire once (no `surface`; `actual` is the checkout observation) when both
+hold:
+- the `platform` availability, if there is one, is buyable. A platform that
+  already says "out of stock" is consistent with the refusal, and any surface
+  that disagrees is `availability.mismatch`'s to report;
+- at least one availability observation on some surface other than `checkout`
+  is buyable.
+
+Needs `checkout`.
+
+### `shipping.mismatch` (error)
+*A surface states a shipping cost the checkout does not charge.*
+
+For each variant with a `shipping` observation `d` from `checkout` that has a
+non-null `cost`: every shipping observation `o` on a checked surface fires
+when all hold:
+- `o.value.country` is undefined, or `d.value.country` is undefined, or they
+  are equal (compare uppercased);
+- `o.value.conditional` is not true;
+- either `o.value.cost` is non-null and `sameMoney(o.value.cost, d.value.cost)`
+  is false, or `o.value.cost` is null and `o.value.free` is true while
+  `d.value.cost.units` is greater than 0.
+
+One finding per `(variant, surface)`. Needs `checkout`.
+
+### `shipping.undisclosed` (warn)
+*A buyer cannot learn the shipping cost before checkout.*
+
+For each variant with a `shipping` observation from `checkout` whose cost is
+greater than zero: fire once (no `surface`) when the variant has no shipping
+observation from any other surface. `actual` is the checkout observation.
+Needs `checkout`.
+
+### `identity.unmatched` (warn)
+*Something a surface lists cannot be tied to anything the shop sells.*
+
+Applies only when `platform` or `checkout` was collected.
+
+- A product none of whose variants is real (see `variant.missing`), and which
+  has no product-level sighting from `page`: fire once for the product, without
+  `variant`. `surface` is the product's only surface when it has exactly one,
+  otherwise undefined.
+- Otherwise, each variant that is not real, in a product that has at least one
+  real variant: fire once, with `variant`; `surface` is that variant's only
+  surface when it has exactly one.
+
+### `identity.gtin-invalid` (warn)
+*A GTIN that fails its check digit, has an impossible length, or is given to
+two different variants.*
+
+For each variant and each of its `sightings` that has `ids.gtin`:
+- if `normalizeGtin` returns null, or `isValidGtin` is false, fire for that
+  `(variant, surface)`;
+- otherwise, if the same GTIN (compare with `gtinKey`) appears on the same
+  surface for a different variant anywhere in `ctx.graph`, fire for that
+  `(variant, surface)`.
+
+At most one finding per `(variant, surface)`. Build the per-surface GTIN index
+once per graph, not once per product (cache it in a `WeakMap` keyed by
+`ctx.graph`).
+
+### `policy.return-missing` (info)
+*No surface gives a return policy for the product in a form a machine can read.*
+
+For each product with at least one real variant: fire once (no `variant`, no
+`surface`) when no variant has any `returnPolicy` observation with
+`value.present` true and no product-level sighting has one either.
+
+## Content hygiene rules
+
+These read `product.text`, a list of `TextSample`. All of them produce
+product-level findings with `surface: 'page'`. `actual` evidence: `value` is the
+offending text cut to 120 characters, `raw` the same, `locator` the sample's
+locator.
+
+### `content.hidden-text` (warn)
+*Text kept in the page but deliberately kept from the eye.*
+
+Most hidden text on a real shop is honest, so this rule is narrow on purpose.
+For each sample where `hidden` is true and the trimmed text has at least 20
+characters:
+
+- `hiddenReason` of `a11y-class`, `alt-attribute` or `html-comment`: never
+  fires. Accessibility helpers, image descriptions and editor comments are
+  hidden for good reasons.
+- `hiddenReason` of `font-size:0`, `color:transparent`,
+  `color-matches-background`, `offscreen`, `zero-size` or `clipped`: fires.
+  An interface has no ordinary use for these.
+- any other reason (`display:none`, `visibility:hidden`, `opacity:0`,
+  `hidden-attribute`): fires only when the text reads as keyword stuffing: at
+  least eight words of four letters or more, among which a word from the
+  product's own title occurs at least four times and makes up at least a fifth
+  of them. When the product has no title the bar is six times and three
+  tenths, for any word. Carousels, accordions, size guides and modals hide
+  their content this way and are not reported.
+
+### `content.instruction-like` (error)
+*Product text addressed to a language model rather than to a shopper.*
+
+Fire once per sample, hidden or not, including the exempt reasons above, whose
+text matches any pattern in the rule's list. The list must stay short and
+specific, because this is an error-level rule; each pattern needs a test with
+a real-looking positive and a near-miss negative. It must include, case
+insensitively:
+
+- `ignore`/`disregard`/`forget` followed within a few words by
+  `previous`/`prior`/`above`/`earlier`/`all` and
+  `instructions`/`prompts`/`directions`/`rules`
+- direct address to a model: `AI assistant(s)`, `language model(s)`, `LLM(s)`,
+  `chatbot(s)`, `AI agent(s)`, `shopping agent(s)`, `assistant:` at the start
+  of a sentence, when followed within the same sentence by an imperative such
+  as `recommend`, `tell`, `say`, `rank`, `always`, `must`, `should`, `ignore`,
+  `do not`
+- `system prompt`, `you are now`, `new instructions:`
+- `tell the user`/`tell the customer`/`tell the shopper` followed by `that` or
+  `to`
+- the Chinese equivalents: `忽略`/`无视` followed by
+  `之前`/`以上`/`前面`/`先前` and `指令`/`提示`/`要求`/`规则`; `AI 助手`/`智能助手`/`大模型`
+  followed in the same sentence by `请`/`必须`/`务必`/`应当`
+
+Ordinary sales copy ("We recommend washing cold", "Our assistant will contact
+you", "Ignore the cold in this jacket") must not fire.
+
+### `content.invisible-chars` (warn)
+*Characters that render as nothing and can carry text a person never sees.*
+
+Fire once per sample when either holds:
+- it contains a Unicode tag character, U+E0020 to U+E007E, that is not part of
+  an emoji flag sequence (a run of tag characters directly after U+1F3F4 and
+  ending in U+E007F);
+- it contains three or more of U+200B, U+2060, U+FEFF in total. U+200C and
+  U+200D are not counted: they are ordinary in Persian, Indic scripts and
+  emoji.
+
+`value` in the evidence should name what was found, for example
+`7 tag characters, 3 zero-width spaces`, not echo the invisible text.
+
+## Not in this release
+
+`availability.stale` and `content.cloaking` are planned. They need information
+the collectors do not gather yet: feed export timestamps, and a second fetch
+with a different user agent.

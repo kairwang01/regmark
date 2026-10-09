@@ -1,0 +1,12 @@
+{
+  "name": "@regmark/fixture-shop",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Two tiny shops for testing Regmark: one with seeded defects, one clean.",
+  "license": "Apache-2.0",
+  "author": "Kair Wang",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

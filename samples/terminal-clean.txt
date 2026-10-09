@@ -1,0 +1,8 @@
+
+  shop.example    19 variants    0s
+  C page jsonld opengraph    M feed    Y –    K platform checkout
+
+  ✓ 15 rules passed
+
+  0 errors, 0 warnings. Within budget.
+

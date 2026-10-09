@@ -1,0 +1,12 @@
+{
+  "name": "@regmark/core",
+  "version": "0.0.1",
+  "description": "Offer graph, identity resolution, rule runner and the guarded fetcher.",
+  "license": "Apache-2.0",
+  "author": "Kair Wang",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {}
+}

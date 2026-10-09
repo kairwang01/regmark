@@ -1,0 +1,22 @@
+{
+  "name": "regmark-workspace",
+  "private": true,
+  "type": "module",
+  "description": "Regmark: check that what a shop tells machines matches what its checkout charges.",
+  "license": "Apache-2.0",
+  "author": "Kair Wang",
+  "packageManager": "pnpm@11.23.0",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "test": "node --test \"packages/*/test/**/*.test.ts\" \"fixtures/*/test/**/*.test.ts\"",
+    "bench": "node --test \"e2e/**/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json",
+    "regmark": "node packages/cli/src/bin.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "typescript": "^5.9.2"
+  }
+}

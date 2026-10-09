@@ -1,0 +1,73 @@
+---
+title: Regmark
+slug: ""
+nav: 总览
+summary: 让 AI 购物代理读到的商品事实，和结账时实际收的对得上。
+---
+
+## 这是什么
+
+Regmark 是一个开源的命令行测试工具。一家店会从好几个出口向机器报价：商品页、结构化数据、商品 feed、代理协议端点。Regmark 把这些出口上的价格、库存、运费逐项拿去和结账实算的结果比对，对不上就报出来，并且可以让 CI 失败。
+
+它要回答三个问题：
+
+1. **各处说的是不是同一个数？** 这是套准，也是首期的重点。原型已经做了。
+2. **照着读到的信息去买，买不买得成？** 这是探店，让一个代理真的走一遍。还没开始。
+3. **商品内容里有没有会带偏代理的东西？** 这是内容卫生。原型已经做了。
+
+## 一个例子
+
+下面是同一件 T 恤在四个出口上的样子。价格、库存、运费各有一处对不上，单看任何一个出口都发现不了。
+
+<!-- figure:plates -->
+
+| 版 | 出口 | 价格 | 库存 | 运费 |
+|---|---|---|---|---|
+| C | 商品页的 JSON-LD | 35.00 | 有货 | 没提 |
+| M | 商品 feed | 39.00 | 有货 | 包邮 |
+| Y | UCP 目录接口 | 39.00 | 缺货 | 没提 |
+| K | 结账实算 | 39.00 | 可下单 | 6.20 |
+
+Regmark 对这件商品会报三条：JSON-LD 的价格是促销结束后没改回来的旧值，UCP 的库存状态是错的，feed 里的「包邮」在结账时并不成立。每一条都带着两边的原始取值和出处。下面用 feed 来演示同样的三条，因为协议端点的采集器还没写。
+
+```terminal
+$ regmark audit https://shop.example --feed /feeds/google.xml --platform woocommerce --checkout
+
+  shop.example    48 variants    2m 41s
+  C page jsonld opengraph    M feed    Y –    K platform checkout
+
+  ✗ price.mismatch           1 finding
+      TEE-BLU-M   C jsonld 35.00 USD  ≠  K checkout 39.00 USD
+                  https://shop.example/p/tee-blue/#jsonld[0]/offers/2/price
+  ✗ availability.mismatch    1 finding
+      TEE-BLU-M   M feed in_stock  ≠  K platform out_of_stock
+                  https://shop.example/feeds/google.xml#item[id="TEE-BLU-M"]/availability
+  ✗ shipping.mismatch        1 finding
+      TEE-BLU-M   M feed free  ≠  K checkout 6.20 USD
+                  https://shop.example/feeds/google.xml#item[id="TEE-BLU-M"]/shipping
+  ✓ 12 rules passed
+
+  3 errors, 0 warnings. 3 rules over budget.
+```
+
+这段是照上面那张表排的示意，格式和工具的真实输出一致。对样板店跑出来的原件，以及工具写出的 HTML 报告，在[原型与实测](06-prototype.md)一章。
+
+## 名字的来历
+
+印刷时各色版要逐张对齐，纸边印的那个十字圆圈叫套准标，英文是 registration mark，行话叫 reg mark。黑版是其余色版对齐的基准，所以它的代号是 K，取自 key。
+
+在这个项目里，结账就是那块黑版。商品页、feed、协议端点都得向它对齐，因为用户最后付的是结账算出来的那个数。
+
+Regmark 目前是工作代号。npm 上这个包名还空着，GitHub 上的同名账号已经被人注册，正式定名之前还要查商标。
+
+## 现在的状态
+
+| 项 | 内容 |
+|---|---|
+| 阶段 | 原型已经能跑，版本 0.0.1，还没有发布 |
+| 已经有的 | 商品页、feed、WooCommerce 三类采集，结账探针，15 条规则，五种报告 |
+| 还没有的 | 协议端点的采集，探店代理，GitHub Action |
+| 验收 | 606 项测试通过。样板店里 22 条预置缺陷全部查出，对照店零误报 |
+| 实现语言 | TypeScript，要求 Node 22.18 及以上，不需要构建 |
+| 许可证 | 代码 Apache-2.0，文档 CC BY 4.0 |
+| 更新 | 2026 年 10 月 9 日 |

@@ -1,0 +1,12 @@
+{
+  "name": "@regmark/rules",
+  "version": "0.0.1",
+  "description": "The rule catalogue: parity rules and content hygiene rules.",
+  "license": "Apache-2.0",
+  "author": "Kair Wang",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": { "@regmark/core": "workspace:*" }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@regmark/collect-woo",
+  "version": "0.0.1",
+  "description": "Reads the WooCommerce Store API and runs the checkout probe.",
+  "license": "Apache-2.0",
+  "author": "Kair Wang",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": { "@regmark/core": "workspace:*" }
+}

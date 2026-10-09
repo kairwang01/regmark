@@ -1,0 +1,12 @@
+{
+  "name": "@regmark/report",
+  "version": "0.0.1",
+  "description": "Reporters: terminal, JSON, SARIF, JUnit.",
+  "license": "Apache-2.0",
+  "author": "Kair Wang",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": { "@regmark/core": "workspace:*" }
+}

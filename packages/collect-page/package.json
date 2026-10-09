@@ -1,0 +1,12 @@
+{
+  "name": "@regmark/collect-page",
+  "version": "0.0.1",
+  "description": "Reads product pages: visible price, JSON-LD, microdata, Open Graph.",
+  "license": "Apache-2.0",
+  "author": "Kair Wang",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": { "@regmark/core": "workspace:*", "cheerio": "^1.1.2" }
+}

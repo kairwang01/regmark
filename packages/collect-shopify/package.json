@@ -1,0 +1,14 @@
+{
+  "name": "@regmark/collect-shopify",
+  "version": "0.0.1",
+  "description": "Reads a Shopify shop's public catalogue endpoint.",
+  "license": "Apache-2.0",
+  "author": "Kair Wang",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@regmark/core": "workspace:*"
+  }
+}
