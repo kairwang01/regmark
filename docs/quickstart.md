@@ -57,7 +57,7 @@ regmark audit https://shop.example --feed /feeds/google.xml \
 
 A relative feed URL is resolved against the shop's origin. An absolute feed URL on another host is allowed because you explicitly named it. `--feed` expects a URL, not a local filesystem path.
 
-Regmark tries WooCommerce, then Shopify. It reads the public catalogue when available, and the server-returned HTML for each sampled product. It does not execute JavaScript. The default baseline is the platform API, falling back to the visible page. Actual cart observations are only read when a verified checkout probe runs.
+Regmark tries WooCommerce, then Shopify. It reads the public catalogue when available, and the server-returned HTML for each sampled product. It does not execute JavaScript. The default baseline is the platform API, falling back to the visible page. What a real cart charges is only read when a verified checkout probe runs, on WooCommerce or Shopify.
 
 Add the surfaces shopping agents read when the shop has them. They are read-only too:
 
@@ -122,6 +122,8 @@ Use a staging shop you control. Create a token containing 16–128 letters, digi
 regmark audit https://staging.shop.example --feed /feeds/google.xml \
   --checkout --ship-to US:94103 --cloaking --html report.html
 ```
+
+On a Shopify shop, use `--platform shopify`.
 
 The probe creates cart/session state, adds one unit per tested variant, sets the destination, reads the price, shipping and (on WooCommerce) the total, and empties the cart after each variant. It does not place an order or pay. On Shopify, tax is only known at checkout, so the probe reads the line price, whether the cart accepts the variant, and the shipping estimate. The cloaking check fetches each sampled page again as a browser and as a shopping agent and reports a page that tells them different prices or stock levels; it costs one extra request per page per client. Verify that the report includes checkout observations and review any cleanup or ownership issue. [Verification details](configuration.md#writes).
 

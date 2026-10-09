@@ -36,6 +36,15 @@ because a check that cries wolf gets removed from the pipeline it was added to.
 - **Buyable**: `isBuyable(availability)` from core. `in_stock`, `preorder` and
   `backorder` are buyable; `out_of_stock` and `discontinued` are not; `unknown`
   is no statement at all.
+- **Checkout**: what a real cart said, read by the
+  [checkout probe](configuration.md#the-checkout-probe) on WooCommerce or
+  Shopify: whether one unit could be added (`purchasable`), its price, and
+  shipping to the probe destination. On Shopify the price is the line's
+  `final_price`, after any automatic discount on the line, so a discount that
+  only the cart applies is a `price.mismatch` on the surfaces that do not show
+  it. Only WooCommerce gives a landed total: Shopify works out tax at
+  checkout, which the probe never reaches. A run without the probe skips the
+  rules that need `checkout`.
 
 A finding always carries `product` (the `ProductNode.key`). It carries
 `variant` (the `Offer.key`) when it is about one variant, `surface` when one
@@ -232,6 +241,14 @@ hold:
 
 Needs `checkout`.
 
+A refusal is the cart's own answer about the product. On WooCommerce it is the
+Store API's error code; on Shopify it is a `422` `Cart Error` from `add.js`,
+and `actual.raw` is its text, such as
+`The product 'Classic Tee' is already sold out.` A challenge from the shop's
+bot protection, a redirect or a page where the cart's answer should be is not
+a refusal: the probe records a `probe-failed` issue and stops, and no
+`purchasable` observation is made for this rule to read.
+
 ### `shipping.mismatch` (error)
 *A surface states a shipping cost the checkout does not charge.*
 
@@ -247,6 +264,10 @@ when all hold:
 
 One finding per `(variant, surface)`. Needs `checkout`.
 
+The checkout quote `d` is the cart's shipping total for the probe destination
+on WooCommerce, and the cheapest rate the cart offers for it on Shopify. Its
+country is the destination's.
+
 An ACP feed's `shipping_price` names no country, so it is compared with the
 checkout's quote whatever the destination; its four-position `shipping` tuple
 names one.
@@ -261,7 +282,7 @@ for a different country does not count as disclosure; an unspecified country
 is compatible, and country codes are compared without regard to case. An
 empty shipping object with neither a cost nor free shipping is not a disclosed
 cost. `actual` is the checkout observation.
-Needs `checkout`.
+Needs `checkout`. The checkout quote is the one `shipping.mismatch` uses.
 
 ### `identity.unmatched` (warn)
 *Something a surface lists cannot be tied to anything the shop sells.*

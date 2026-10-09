@@ -5,7 +5,7 @@ with the defaults the code sets. Start with the [quickstart](quickstart.md) for
 a first audit. This reference describes the current release; when you run a
 pinned older version, read the reference from that release's tag.
 
-[Commands](#command-line) · [Config fields](#fields) · [ACP feed](#the-acp-feed) · [Sampling](#which-products-get-audited) · [Baseline](#which-surface-is-believed) · [Budgets](#budgets) · [Request policy](#how-requests-are-made) · [Ownership](#writes) · [Cloaking check](#the-cloaking-check) · [Agent endpoints](#the-agent-endpoints)
+[Commands](#command-line) · [Config fields](#fields) · [ACP feed](#the-acp-feed) · [Checkout probe](#the-checkout-probe) · [Sampling](#which-products-get-audited) · [Baseline](#which-surface-is-believed) · [Budgets](#budgets) · [Request policy](#how-requests-are-made) · [Ownership](#writes) · [Cloaking check](#the-cloaking-check) · [Agent endpoints](#the-agent-endpoints)
 
 Unknown flags, unknown top-level or nested config fields, invalid field types,
 invalid HTTP(S) URLs and unknown platform, surface or budget rule names stop
@@ -35,7 +35,7 @@ line replaces it.
 | `--feed` | URL, absolute or relative to the store | none | Reads a product feed in Google Merchant format: RSS, Atom or tab-separated text. The file is read once, whole. A file published gzipped, such as `feed.xml.gz`, is unpacked. |
 | `--acp-feed` | URL, absolute or relative to the store | none | Reads an Agentic Commerce Protocol product feed, the catalogue a shopping agent sells from, as the `acp` surface. See [The ACP feed](#the-acp-feed). The file is read once, whole, and unpacked when it is gzipped. |
 | `--platform` | `woocommerce`, `shopify`, `auto` or `none` | `auto` | The storefront API to read. `auto` tries WooCommerce, then Shopify. `none` reads no storefront API. The pages, and the feed if one is given, are still read. |
-| `--checkout` | switch | off | Runs the checkout probe. Needs `--platform woocommerce` or `auto`, and a verified ownership token. Any other platform value stops the run with exit 2. With `auto`, a shop that is not WooCommerce gets a `probe-unsupported` issue and no probe. |
+| `--checkout` | switch | off | Runs the checkout probe. See [The checkout probe](#the-checkout-probe). Needs `--platform woocommerce`, `shopify` or `auto`, and a verified ownership token. `--platform none` stops the run with exit 2. With `auto`, a shop that is neither WooCommerce nor Shopify gets a `probe-unsupported` issue and no probe. |
 | `--cloaking` | switch | off | Runs the cloaking check: each sampled page that was read is fetched again once per client profile, by default as a desktop browser and as a shopping agent, and `content.cloaking` compares what each was told. Needs a verified ownership token. See [The cloaking check](#the-cloaking-check). |
 | `--ucp` | switch | off | Reads the shop's UCP catalogue: the business profile at `/.well-known/ucp`, then a catalogue lookup of the sampled products. UCP `2026-08-25` and `2026-04-08`. Read-only. See [The agent endpoints](#the-agent-endpoints). |
 | `--mcp` | switch | off | Reads the shop's storefront MCP server at `/api/mcp`: the MCP handshake, `tools/list`, then UCP's catalogue tools for the sampled products. MCP `2025-11-25`, `2025-06-18` and `2025-03-26`. Never calls a cart, checkout or order tool. See [The agent endpoints](#the-agent-endpoints). |
@@ -225,11 +225,11 @@ exit code 2 and a message naming the mistake.
 | `acpFeed` | string | none | An Agentic Commerce Protocol feed URL, absolute or relative to `store`. Same as `--acp-feed`. Its host is added to the host allowlist. |
 | `platform` | `"woocommerce"`, `"shopify"`, `"auto"` or `"none"` | `auto` when neither the flag nor the file sets it | The storefront API to read. `"none"` reads no API. Same as `--platform`. |
 | `checkout` | object: `{ "shipTo": ShipTo }` | off | Turns on the checkout probe. The key's presence in the file is enough. |
-| `checkout.shipTo` | `ShipTo` | `{ "country": "US" }` from `--checkout`. Required in the file. | The destination for the probe. Sent to the shop as the shipping and billing address. |
+| `checkout.shipTo` | `ShipTo` | `{ "country": "US" }` from `--checkout`. Required in the file. | The destination for the probe. WooCommerce gets it as the shipping and billing address. Shopify gets the postcode, country and state as the address to quote shipping rates for. |
 | `checkout.shipTo.country` | string, two letters | `US` from the flag | The ISO 3166-1 alpha-2 country code. |
 | `checkout.shipTo.postcode` | string | none | The postcode. Set by `--ship-to CC:postcode`. |
-| `checkout.shipTo.state` | string | none | Sent as part of the address. The command line does not set it. |
-| `checkout.shipTo.city` | string | none | Sent as part of the address. The command line does not set it. |
+| `checkout.shipTo.state` | string | none | Sent as part of the address, and to Shopify as the province, as written. The command line does not set it. |
+| `checkout.shipTo.city` | string | none | Sent as part of the address to WooCommerce. Shopify's rate endpoints take no city, so it is not sent there. The command line does not set it. |
 | `cloaking` | `true`, `false` or object: `{ "userAgents": { name: User-Agent } }` | off | Turns on the cloaking check. Same as `--cloaking`. `true` uses the two default profiles. Needs a verified ownership token. |
 | `cloaking.userAgents` | object: profile name to User-Agent string | `browser` and `agent`, below | The clients to pose as, in the order they are read. At least one. A name is lower-case letters, digits and `-`, starting with a letter, at most 32 characters; it appears in findings and issues. A User-Agent is printable ASCII. Name one profile `browser` to make it the reference the others are compared with; without one, each profile is compared with Regmark's own read of the page. The defaults are `DEFAULT_CLOAKING_PROFILES` in `packages/cli/src/config.ts`: `browser`, a desktop Chrome User-Agent, and `agent`, a User-Agent carrying the `ChatGPT-User` token. |
 | `ucp` | `true`, `false` or object: `{ "url"?: string, "agentProfile"?: string }` | off | Reads the shop's UCP catalogue. Same as `--ucp`. `true` reads the profile at `/.well-known/ucp`. |
@@ -351,6 +351,106 @@ No ACP format states when the file was generated, so for
 [`--max-age acp=...`](#scope) an ACP feed is dated only by the
 `Last-Modified` header of the response.
 
+## The checkout probe
+
+`--checkout` puts one unit of each sampled variant in a real cart, reads what
+the cart says about it, and empties the cart again. It is the only part of
+Regmark that writes to a shop, so it runs only after the shop's ownership is
+verified (see [Writes](#writes)). It never goes further than the cart: no
+checkout is started, no order is placed, nothing is paid.
+
+What it reads is the `checkout` surface, which comes first in the default
+datum. Where the probe ran, the price in the cart is the one every other
+surface is held to.
+
+| Reading | WooCommerce | Shopify |
+|---|---|---|
+| Can it be bought (`purchasable`) | `add-item` accepts the unit, or refuses it with an error code, which is kept | `add.js` accepts the unit, or refuses it with a `422` `Cart Error`, whose text is kept |
+| Price | the cart line's price, once the destination is set | the added line's `final_price`: the unit price after any automatic discount on the line |
+| Shipping | the cart's shipping total for the destination | the cheapest rate offered for the destination |
+| Landed total | the cart's total, with tax as the shop works it out for the destination | not read: see **Tax** below |
+
+### On WooCommerce
+
+The probe uses the Store API at `/wp-json/wc/store/v1`. `GET /cart` gives it a
+cart token. For each variant it then calls `POST /cart/add-item`,
+`POST /cart/update-customer` with `checkout.shipTo` as the shipping and
+billing address, and `DELETE /cart/items`. A last `GET /cart` confirms that
+the cart is empty.
+
+### On Shopify
+
+The probe uses the cart endpoints of the shop's online store, the ones its
+theme calls, which Shopify documents as the
+[Ajax Cart API](https://shopify.dev/docs/api/ajax/reference/cart). A headless
+shop, with no online store theme, has none of them; the probe then records
+`probe-failed` and writes nothing.
+
+1. `GET /cart.js` opens a cart for the session, and shows that it is empty and
+   which currency it is in.
+2. For each sampled variant:
+   - `POST /cart/add.js` with one unit.
+   - `POST /cart/prepare_shipping_rates.json`, then
+     `GET /cart/async_shipping_rates.json` until the rates are ready, at most
+     four times. Both carry the destination as `shipping_address[zip]`,
+     `shipping_address[country]` and `shipping_address[province]`, taken from
+     the postcode, country and state of `checkout.shipTo`. A line that ships
+     nothing, such as a gift card, skips this step.
+   - `POST /cart/clear.js`, whose answer must show an empty cart.
+3. `GET /cart.js` again, to confirm the cart is empty.
+
+That is two requests for a variant the cart refuses, and four or more for
+one it accepts, spaced like every other request.
+
+- **Session.** A Shopify cart belongs to the browser session that made it,
+  not to a token. The probe keeps the cookies the shop sets and sends them
+  back, to the shop's own origin only, for the length of the run.
+- **robots.txt.** Shopify's robots.txt disallows `/cart` for crawlers. The
+  probe's reads of the cart are made as the owner, after ownership is
+  verified, so robots.txt is not consulted for them.
+- **Amounts.** Shopify states every cart amount in hundredths of the
+  currency's unit, whatever the currency: 1000 yen is `100000`. The probe
+  divides by 100 for every currency, so a yen price is not read as a hundred
+  times too high. For a currency with three decimals, such as KWD, Shopify's
+  documentation does not say how it states amounts, so the price is left out
+  with a `probe-failed` issue. A rate's price is decimal text, such as `6.20`,
+  and is read as written. A rate that states no currency is taken to be in
+  the cart's currency.
+- **Currency.** The probe asks for the shop's own URLs, with no market or
+  language prefix, and records the currency the cart states. It does not
+  choose a market.
+- **Discounts.** `final_price` includes automatic discounts that apply to the
+  line. A shop that takes 10% off in the cart, while its structured data and
+  feed show the full price, gets `price.mismatch` on those surfaces. Discounts
+  on the whole order are not included.
+- **Tax.** Shopify works out tax at checkout, and no storefront endpoint
+  states it before then. The probe never reaches checkout, so it records no
+  landed total.
+- **What stops it.** A challenge from the shop's bot protection (HTTP 429, 403
+  or 430, or a `cf-mitigated` header), a redirect such as a storefront
+  password page, a 401, or a page where the cart's JSON should be is not the
+  shop's answer about a product. The probe records one `probe-failed` issue,
+  empties the cart if an item may be in it, and stops. It does not retry.
+  Shopify challenges automated cart traffic, more often from hosting and VPN
+  networks, which is where CI runners are, so a probe run from CI can be
+  stopped this way.
+- **Refusals.** Only a `422` with the message `Cart Error` from `add.js`
+  counts as the cart refusing a product: sold out, no more stock to add, not
+  sold in this market, or not published to the online store
+  (`Cannot find variant`). Any other error is a `probe-failed` issue for that
+  variant, and the probe goes on to the next.
+- **Shipping.** Rates that are still not ready after four checks, or that
+  Shopify fails to calculate, give `probe-failed`. No rate for the
+  destination, or an address the shop refuses, such as a postcode that is not
+  valid for the country, gives `no-shipping-rate` with the shop's message.
+  Neither shows that the shop does not ship there.
+- **Cleanup.** When `clear.js` does not answer with an empty cart, the probe
+  records `cart-not-emptied` and probes no further variant, so that none is
+  added to a cart that still holds one. A cart left behind is anonymous and
+  tied to cookies the run discards. Shopify
+  [holds stock](https://help.shopify.com/en/manual/checkout-settings) only
+  once a buyer submits payment details, so such a cart holds none.
+
 ## Which products get audited
 
 This is a sampled audit, not a full crawler. Pages are parsed from the server
@@ -412,9 +512,10 @@ The steps below run in this order. Each one uses the output of the one before.
    [The agent endpoints](#the-agent-endpoints).
 10. **Checkout probe.** The probe runs only when the config has `checkout` or
    `--checkout` is given. It is skipped, and an issue is recorded, when the
-   platform is not WooCommerce (`probe-unsupported`), or when ownership is not
-   verified (`ownership-not-verified`). Otherwise it runs against the sampled
-   WooCommerce variants. See [Writes](#writes).
+   platform is neither WooCommerce nor Shopify (`probe-unsupported`), or when
+   ownership is not verified (`ownership-not-verified`). Otherwise it runs
+   against the sampled variants. See [The checkout probe](#the-checkout-probe)
+   and [Writes](#writes).
 11. **Cloaking check.** With `--cloaking` or `cloaking`, each page from step 8
     that was read is fetched again once per client profile. It is skipped, with
     an `ownership-not-verified` issue on the `page` surface, when ownership is
