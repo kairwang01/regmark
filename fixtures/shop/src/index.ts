@@ -1,7 +1,7 @@
 // The fixture shop's public surface: the data, the two shop modes, and the servers.
 
-export { buildShop } from './shop.ts';
-export type { Shop, ProductSays, VariantSays, CheckoutTruth, FeedGhost, ExpectedFinding, Defect, Stock } from './shop.ts';
+export { AGENT_ONLY_REVIEW, AGENT_TOKENS, buildShop, clientOf } from './shop.ts';
+export type { Client, Shop, ProductSays, VariantSays, CheckoutTruth, FeedGhost, ExpectedFinding, Defect, Stock } from './shop.ts';
 export { CATALOG, CURRENCY, OWNERSHIP_TOKEN, RETURN_DAYS, SHIPPING } from './catalog.ts';
 export type { TruthProduct, TruthVariant } from './catalog.ts';
 export { startShop } from './server.ts';

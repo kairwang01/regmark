@@ -6,7 +6,7 @@
 
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { buildShop } from './shop.ts';
+import { buildShop, clientOf } from './shop.ts';
 import type { Shop } from './shop.ts';
 import { renderFeed } from './render-feed.ts';
 import { renderHome, renderProductPage, renderRobots, renderSitemap } from './render-page.ts';
@@ -26,6 +26,8 @@ export type RunningShop = {
   shop: Shop;
   /** "METHOD /path?query" for every request received, in order. */
   requests: string[];
+  /** The User-Agent of every request received, in the same order; empty when none was sent. */
+  userAgents: string[];
   carts(): CartSnapshot[];
   close(): Promise<void>;
 };
@@ -38,10 +40,12 @@ export async function startShop(options: StartOptions): Promise<RunningShop> {
   const shop = buildShop(options.mode, options.now);
   const api = createStoreApi(shop);
   const requests: string[] = [];
+  const userAgents: string[] = [];
   const env: Env = { shop, api, origin: '' };
 
   const server = createServer(async (req, res) => {
     requests.push(`${req.method} ${req.url}`);
+    userAgents.push(req.headers['user-agent'] ?? '');
     try {
       await route(req, res, env);
     } catch {
@@ -72,6 +76,7 @@ export async function startShop(options: StartOptions): Promise<RunningShop> {
     origin: env.origin,
     shop,
     requests,
+    userAgents,
     carts: () => api.carts(),
     close: () =>
       new Promise<void>((resolve, reject) => {
@@ -103,7 +108,9 @@ async function route(req: IncomingMessage, res: ServerResponse, env: Env): Promi
 
   const page = /^\/product\/([^/]+)\/$/.exec(path);
   if (page) {
-    const body = renderProductPage(shop, page[1]!, origin);
+    // The page is the one place the shop looks at who is asking. A clean
+    // product answers everyone the same; one with an agent override does not.
+    const body = renderProductPage(shop, page[1]!, origin, clientOf(req.headers['user-agent']));
     return body === null ? notFound(res) : send(res, 200, HTML, body);
   }
   const bare = /^\/product\/([^/]+)$/.exec(path);

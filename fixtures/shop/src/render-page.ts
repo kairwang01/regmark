@@ -3,7 +3,7 @@
 // robots.txt. Pure functions of the Shop data: no state, no defects of
 // their own.
 
-import type { ProductSays, Shop, VariantSays } from './shop.ts';
+import type { Client, ProductSays, Shop, VariantSays } from './shop.ts';
 
 const SITE = 'Northfold';
 const CONTEXT = 'https://schema.org';
@@ -180,11 +180,17 @@ function relatedSection(shop: Shop, index: number, origin: string): string {
   return `<section class="related products"><h2>Related products</h2><ul class="products">${items.join('')}</ul></section>`;
 }
 
+/** The product as its page states it to this client. Only a page with an `agent` override tells agents anything else. */
+function asSeenBy(p: ProductSays, client: Client): ProductSays {
+  if (client !== 'agent' || !p.agent) return p;
+  return { ...p, jsonld: p.agent.jsonld ?? p.jsonld, page: { ...p.page, reviews: p.agent.reviews ?? p.page.reviews } };
+}
+
 /** The product page, or null when the shop has no such product (the server answers 404). */
-export function renderProductPage(shop: Shop, slug: string, origin: string): string | null {
+export function renderProductPage(shop: Shop, slug: string, origin: string, client: Client = 'person'): string | null {
   const index = shop.products.findIndex((x) => x.slug === slug);
   if (index === -1) return null;
-  const p = shop.products[index]!;
+  const p = asSeenBy(shop.products[index]!, client);
   const url = productUrl(origin, p.slug);
   const ld = embedJson(jsonLd(shop, p, origin));
   const inStock = p.page.stock === 'in_stock';
