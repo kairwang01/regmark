@@ -1,222 +1,228 @@
+<p align="center">
+  <img src="docs/assets/hero.png" alt="Regmark: does your shop agree with itself? Four surfaces printing four different prices, out of register; then all of them matching the checkout, in register." width="100%">
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="Apache-2.0" src="https://img.shields.io/badge/licence-Apache--2.0-21355c"></a>
+  <img alt="Node 22 or later" src="https://img.shields.io/badge/node-%E2%89%A5%2022-21355c">
+  <img alt="15 rules" src="https://img.shields.io/badge/rules-15-21355c">
+  <a href="README.zh-CN.md"><img alt="中文说明" src="https://img.shields.io/badge/README-%E4%B8%AD%E6%96%87-c2256e"></a>
+</p>
+
 # Regmark
 
-Check that what a shop tells machines matches what its checkout charges.
+**Check that what your shop tells machines matches what its checkout charges.**
 
 A shop states the same fact in several places: the product page, the JSON-LD
 inside it, the Open Graph tags, the merchant feed, the storefront API. A person
-only ever sees one of them. A shopping agent, a search engine or a price
-comparison site reads the others, and nothing keeps them in step. Regmark reads
-each of them for the same products, lines them up, and reports every place
-where they disagree with the one that decides what the buyer pays.
+sees one of them. Google, price comparison sites and AI shopping agents read
+the others, and nothing keeps them in step. Regmark reads every one of them for
+the same products, lines them up variant by variant, and reports each place
+where one disagrees with the surface that decides what the buyer pays.
 
-```
-$ regmark audit https://shop.example --feed /feeds/google.xml --platform woocommerce --checkout
+No account, no API key, no server. It reads your shop and prints what it found.
 
-  shop.example    20 variants    41s
-  C page jsonld opengraph    M feed    Y –    K platform checkout
+## See it in ten seconds
 
-  ✗ price.mismatch              3 findings
-      TOTE-NAT     M feed 22.00 USD  ≠  K checkout 24.00 USD
-                   https://shop.example/feeds/google.xml#item[id="TOTE-NAT"]/price
-      TEE-BLU-M    C jsonld 45.00 USD  ≠  K checkout 39.00 USD
-                   https://shop.example/product/classic-tee/#jsonld[0]/hasVariant/1/offers/price
-      enamel-mug   C opengraph 14.00 USD  ≠  K checkout 16.00 USD
-                   https://shop.example/product/enamel-mug/#meta[property="product:price:amount"]
-  ✗ shipping.mismatch           1 finding
-      TEE-BLU-S    M feed free  ≠  K checkout 6.20 USD
-                   https://shop.example/feeds/google.xml#item[id="TEE-BLU-S"]/shipping
-  …
-  12 errors, 9 warnings, 1 note. 7 rules over budget.
+```bash
+npx github:kairwang01/regmark demo
 ```
 
-This is not a new problem waiting for AI agents. Google Merchant Center
-already compares a feed's price with the landing page and its structured data,
-requires them to match exactly, and disapproves products that do not; it warns
-or suspends accounts whose checkout shows a higher price than the product
-page. Merchants learn about it from Google, after the fact. Regmark runs the
-same kind of comparison first, across every surface, in CI.
+That audits a small shop bundled with the tool, in which 19 defects have been
+planted: a feed with last week's price, JSON-LD that lists one size out of
+three, a "free shipping" claim the cart does not honour.
 
-The name is a printer's word. A registration mark is the small cross printed
-in the margin of a sheet to show whether the colour plates line up. The black
-plate is the one the others are aligned to, which is why it is called K, for
-key. Here the checkout is the key plate.
+<p align="center"><img src="docs/assets/terminal.png" alt="Terminal output of regmark demo: price.mismatch with three findings, each showing the surface's value, the checkout's value and where the wrong value lives" width="880"></p>
 
-## Status
+It also writes `regmark-demo.html`, one self-contained file you can open or
+send to someone. The headline is the verdict: when the surfaces disagree it
+prints out of register, the way a misaligned press sheet does.
 
-A working prototype, version 0.0.1. Not yet published to npm.
+<p align="center">
+  <img src="docs/assets/report-out-of-register.png" alt="HTML report headed Out of register, the words doubled in cyan, magenta and yellow" width="49%">
+  <img src="docs/assets/report-in-register.png" alt="HTML report headed In register, printed clean" width="49%">
+</p>
 
-- 606 unit tests, a type check, and an end-to-end benchmark, all passing.
-- The benchmark runs the tool against two small shops that ship with this
-  repository. One has 19 seeded defects that should produce 22 findings; the
-  tool reports 22 of 22 and nothing else. The other has none; the tool reports
-  nothing.
-- It has been run read-only against a small sample of public WooCommerce
-  shops. See [what the first real run showed](#what-the-first-real-run-showed).
+## Audit your own shop
 
-## What it reads
+```bash
+npx github:kairwang01/regmark audit https://your-shop.example
+```
 
-Surfaces are grouped the way a press sheet is separated into plates.
+With no flags it works out what the shop runs on, samples 25 products, reads
+their pages and the storefront API, and compares. It only reads, it obeys
+robots.txt, and it makes one request a second.
 
-| Plate | Surface | In this release |
+Give it more to compare and it finds more:
+
+```bash
+# the merchant feed, the surface that goes stale most often
+regmark audit https://your-shop.example --feed /feeds/google.xml
+
+# real cart totals, so shipping and tax are checked too (WooCommerce)
+REGMARK_OWNERSHIP_TOKEN=… regmark audit https://your-shop.example --feed /feeds/google.xml --checkout
+
+# keep a report
+regmark audit https://your-shop.example --html report.html
+```
+
+`regmark explain <rule>` tells you what usually causes a finding and where to
+fix it. [Every flag and config field](docs/configuration.md).
+
+## Why
+
+Google Merchant Center already runs this comparison on you. It checks the price
+in your feed against your landing page and its structured data, requires them
+to [match exactly](https://support.google.com/merchants/answer/12159029), and
+disapproves the products that do not. It [warns or suspends
+accounts](https://support.google.com/merchants/answer/10330822) whose checkout
+shows a higher price than the product page. You find out from Google, after the
+fact, one product at a time.
+
+Now more readers are arriving. An AI shopping agent quotes whatever your
+structured data says, and its user pays whatever your checkout says. If those
+are two numbers, that sale and that shopper's trust are gone, and no dashboard
+will tell you why.
+
+Regmark runs the comparison first, across every surface at once, and can fail
+a build when it finds a difference.
+
+## What it catches
+
+| Rule | | Catches |
 |---|---|---|
-| C | Product page: visible price and stock, JSON-LD, microdata, Open Graph | yes |
-| M | Merchant feed in Google's format: RSS, Atom or tab-separated | yes |
-| Y | Agent protocol endpoints: UCP, ACP, MCP | not yet |
-| K | The shop itself: storefront API, and totals from a real cart | WooCommerce; Shopify catalogue, read-only |
-
-Which surface is believed is explicit: checkout first, then the storefront
-API, then the visible page. JSON-LD, feeds and protocol endpoints are never
-believed. They are what gets checked.
-
-## What it reports
-
-Fifteen rules. [docs/rules.md](docs/rules.md) defines exactly when each fires.
-
-| Rule | Level | Catches |
-|---|---|---|
-| `price.mismatch` | error | A surface states a price the datum does not back up |
+| `price.mismatch` | error | A surface states a price the checkout does not charge |
 | `price.currency-ambiguous` | error | A machine-readable price with no currency, or the wrong one |
-| `price.tax-basis` | warn | Two prices exactly one tax rate apart |
-| `price.sale-expired` | warn | A sale end date in the past on a price still charged |
-| `availability.mismatch` | error | In stock on one surface, sold out on the datum, or the reverse |
-| `variant.missing` | error | A surface lists some variants of a product and omits others |
-| `variant.unpurchasable` | error | Everything says buyable; the cart refuses |
+| `price.tax-basis` | warn | Two prices exactly one VAT or GST rate apart |
+| `price.sale-expired` | warn | A sale end date in the past on a price still being charged |
+| `availability.mismatch` | error | In stock on one surface, sold out on the shop, or the reverse |
+| `variant.missing` | error | Structured data that lists some variants and omits others |
+| `variant.unpurchasable` | error | Everything says it can be bought; the cart refuses |
 | `shipping.mismatch` | error | A stated shipping cost the checkout does not charge |
-| `shipping.undisclosed` | warn | Shipping cost only discoverable at checkout |
-| `identity.unmatched` | warn | A listed product or variant the shop does not sell |
+| `shipping.undisclosed` | warn | Shipping cost that only appears at checkout |
+| `identity.unmatched` | warn | A feed entry for something the shop no longer sells |
 | `identity.gtin-invalid` | warn | A GTIN with a bad check digit, or shared by two variants |
 | `policy.return-missing` | info | No machine-readable return policy |
 | `content.hidden-text` | warn | Text kept in the page but deliberately kept from the eye |
-| `content.instruction-like` | error | Product text addressed to a language model |
+| `content.instruction-like` | error | Product text written to a language model, not to a shopper |
 | `content.invisible-chars` | warn | Zero-width and Unicode tag characters carrying unseen text |
 
-Each rule has a budget. An error rule fails the run on its first finding;
-warnings and notes never do. Set a rule's budget to its current count and
-lower it from there: `--budget price.mismatch=3`.
+[docs/rules.md](docs/rules.md) says exactly when each one fires and, with as
+much care, when it stays silent.
 
-## Running it
+## What it reads
 
-Requires Node 22.18 or later. From a clone:
+Surfaces are grouped the way a press sheet is separated into plates. The black
+plate is the one the others are aligned to, which is why printers call it K,
+for key. Here the checkout is the key plate.
 
-```bash
-pnpm install
-node packages/cli/src/bin.ts audit https://your-shop.example \
-  --feed /feeds/google.xml \
-  --platform woocommerce \
-  --html report.html --sarif regmark.sarif
+| Plate | Surface | Supported |
+|---|---|---|
+| **C** | The product page: visible price and stock, JSON-LD, microdata, Open Graph | yes |
+| **M** | The merchant feed, in Google's format: RSS, Atom or tab-separated | yes |
+| **Y** | Agent protocol endpoints: UCP, ACP, MCP | planned |
+| **K** | The shop itself: the storefront API, and totals from a real cart | WooCommerce in full; Shopify catalogue, read-only |
+
+Which surface is believed is explicit: the checkout first, then the storefront
+API, then the visible page. JSON-LD, feeds and protocol endpoints are never
+believed. They are what gets checked.
+
+## In CI
+
+```yaml
+# .github/workflows/regmark.yml
+on: pull_request
+jobs:
+  regmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: kairwang01/regmark@v0.1.0
+        with:
+          store: https://staging.your-shop.example
+          feed: /feeds/google.xml
 ```
 
-There is no build step: Node runs the TypeScript sources directly.
+The job fails when a rule goes over its budget. The findings appear in the job
+summary, and the HTML, JSON and SARIF reports are kept as an artifact. An error
+rule fails on its first finding; warnings never fail a build. For a shop that
+already has findings, set each rule's budget to today's count and lower it from
+there. [CI guide](docs/ci.md), including GitLab and SARIF upload.
 
-Reports: a summary on the terminal, and any of `--json`, `--sarif`, `--junit`,
-`--html`. The HTML report is one self-contained file with no scripts and no
-external requests. The exit code is 0 within budget, 1 over budget, 2 if the
-audit could not run.
+Reports come as a terminal summary and any of `--html`, `--json`, `--sarif`,
+`--junit` and `--markdown`. Exit code 0 within budget, 1 over, 2 if the audit
+could not run.
 
-### The checkout probe
+## The checkout probe
 
-Reading public pages needs no permission. The checkout probe is different: it
-puts one unit in a cart, sets a destination, reads the total, and empties the
-cart. That writes to the shop, so it only runs after you show the shop is
-yours.
+Reading public pages needs nobody's permission. The checkout probe is
+different: it puts one unit in a cart, sets a destination, reads the total and
+empties the cart. That writes to the shop, so it runs only after you show the
+shop is yours.
 
-1. Choose a token of 16 or more letters, digits, `_` or `-`.
+1. Choose a token of 16 or more letters and digits.
 2. Serve the line `regmark-verify=<token>` at `/.well-known/regmark.txt`, or
    publish it as a TXT record at `_regmark.<your-domain>`.
 3. Run with `REGMARK_OWNERSHIP_TOKEN=<token>` and `--checkout`.
 
 There is no flag that skips this. The probe never reaches a payment step,
-empties the cart after every item, and reports loudly if it could not.
+empties the cart after every item, and says so loudly if it could not.
 
-## How it behaves on someone's site
+## How it behaves on a site
 
-- Only the hosts you name are contacted. A redirect or a link elsewhere is
-  not followed.
-- robots.txt is obeyed.
-- Requests to one host are spaced a second apart by default.
-- A host that resolves to a private address is refused, so pointing the tool
-  at a hostile shop from inside a network cannot be turned into requests
-  against that network.
-- Responses are capped in size, counted after decompression.
-- Everything read from the shop is treated as untrusted in every report format.
+- It contacts only the hosts you name. A redirect or a link elsewhere is not followed.
+- It obeys robots.txt and spaces its requests a second apart.
+- It refuses any host that resolves to a private address, so a hostile shop
+  cannot turn an audit run inside your network into requests against it.
+- It caps response size, counted after decompression.
+- It treats everything it reads as untrusted in every report format.
+- It sends nothing anywhere. There is no telemetry.
 
-## What the first real run showed
+## How it compares
 
-On 9 October 2026 the tool was run read-only against public WooCommerce shops:
-their storefront API and five product pages each. No feed, no cart.
-
-Sixteen shops were tried. Five could not be read: two answered with rate
-limiting or a block, one with a server error, one redirected to another host,
-and one disallows the API in robots.txt. The tool stopped at each.
-
-For the other 11 shops, 55 products and 125 variants:
-
-| Finding | Count | Shops |
+| | Checks | Does not check |
 |---|---|---|
-| Stock status contradicted between a page tag and the storefront API | 2 | 2 |
-| JSON-LD price with no usable currency (malformed `priceSpecification`) | 2 | 1 |
-| Page and JSON-LD price exactly one GST rate below the API price | 10 | 1 |
-| No machine-readable return policy | 55 of 55 products | 11 of 11 |
+| Google Merchant Center diagnostics | Your feed against your page, for products in your feed | Before you publish; other surfaces; your CI |
+| Rich Results Test, schema validators | That one page's markup is well formed | Whether its values are true |
+| UCP and feed validators | That an endpoint or a file has the right shape | Whether its values match anything else |
+| Page-level "AI readiness" scores | What a machine can read from one page | Whether that agrees with your feed or your checkout |
+| **Regmark** | That every surface agrees with the checkout, per variant | Markup validity beyond what it needs to read; ranking or visibility |
 
-This is a small convenience sample and says nothing about how common these
-problems are in general. It could only look at the page side: feeds are not
-public and the checkout probe needs the owner. Those are the two plates where
-disagreement is most expected and they cannot be measured from outside. What
-the run did do is find three classes of false alarm in the tool itself, all
-since fixed and covered by tests: a tax difference read as a price difference,
-a backend id written as a SKU, and carousel slides read as hidden text.
+## Status
 
-Shopify shops could not be sampled from the machine this was run on: Shopify's
-edge answers a data-centre address with HTTP 429, and the tool does not work
-around a refusal.
+Version 0.1.0. It works, it is young, and its rules have met few real shops.
 
-## Layout
+- 677 unit tests and a type check.
+- A benchmark that runs the tool against the two shops in this repository. One
+  has 19 seeded defects that should give 22 findings; the tool reports those 22
+  and nothing else. The other has none; the tool reports nothing.
+- A first read-only run against 11 public WooCommerce shops found three classes
+  of false alarm in the tool itself. All three are fixed.
+  [What that run showed, and what it could not](plan/06-prototype.md).
 
-```
-packages/
-  core/            types, money, identifiers, the offer graph, the rule runner,
-                   the guarded fetcher, ownership verification
-  collect-page/    visible price and stock, JSON-LD, microdata, Open Graph, text
-  collect-feed/    Google Merchant feeds
-  collect-woo/     WooCommerce Store API and the checkout probe
-  collect-shopify/ Shopify public catalogue, read-only
-  rules/           the fifteen rules
-  report/          terminal, JSON, SARIF, JUnit, HTML
-  cli/             the command line and the audit itself
-fixtures/shop/     the two test shops: one misprinted, one clean
-e2e/               the benchmark
-docs/rules.md      what each rule means
-```
+If Regmark reports something on your shop that is not wrong, that is the most
+useful thing you can tell this project:
+[report a false alarm](https://github.com/kairwang01/regmark/issues/new?template=false-alarm.yml).
 
-Dependencies only point one way: `core` knows no collector, collectors know
-no rule, rules know no reporter.
+**Next:** UCP and ACP endpoints as a fourth plate · a Shopify checkout probe ·
+Magento and Medusa · feed freshness · a shopping agent that walks the shop and
+checks that the total it quotes is the total the cart charges.
 
-## Developing
+## Documentation
 
-```bash
-pnpm test        # unit tests
-pnpm bench       # the benchmark against the two fixture shops
-pnpm typecheck
-node fixtures/shop/src/serve.ts --mode misprint --port 4010   # a broken shop to poke at
-```
-
-A new rule starts as a new defect in `fixtures/shop/src/shop.ts`, with the
-finding it should produce. The benchmark then fails until the rule finds it,
-and fails again if the rule also fires on the clean shop.
-
-## 中文简介
-
-Regmark 检查一家店对机器说的话，和它结账时实际收的钱，是不是一回事。它把商品页、JSON-LD、Open Graph、商品 feed、店铺后台接口上的价格、库存、运费读出来，按商品对齐，逐项和结账实算的结果比对，对不上就报出来，并且可以让 CI 失败。
-
-项目背景、设计取舍和路线图见 <https://opensource.kairwang.cloud/regmark/>。
+- [Configuration and every flag](docs/configuration.md)
+- [Running it in CI](docs/ci.md)
+- [What each rule means](docs/rules.md)
+- [The JSON report](docs/report-format.md)
+- [Contributing](CONTRIBUTING.md): a new rule starts as a defect planted in the fixture shop
+- [Design notes and roadmap](https://opensource.kairwang.cloud/regmark/), in Chinese
 
 ## Hosting
 
-The project site, <https://opensource.kairwang.cloud/regmark/>, runs on Tencent Cloud.
+The project site runs on Tencent Cloud.
 
 <a href="https://www.tencentcloud.com/"><img src="docs/assets/tencent-cloud.svg" alt="Tencent Cloud" height="22"></a>
 
 ## Licence
 
-Apache-2.0. The Tencent Cloud logo is a trademark of Tencent and is not
-covered by this licence; it appears here only to credit the hosting provider.
+Apache-2.0. The Tencent Cloud logo is a trademark of Tencent and is not covered
+by this licence; it appears here only to credit the hosting provider.

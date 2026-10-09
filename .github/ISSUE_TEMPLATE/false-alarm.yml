@@ -1,0 +1,77 @@
+name: False alarm
+description: Regmark reported a disagreement that is not there.
+title: "[False alarm]: "
+labels: ["false-alarm"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Give the rule id, both values from the report, and what the shop
+        actually charges. A maintainer checks the claim against the shop before
+        a rule is changed.
+  - type: input
+    id: rule
+    attributes:
+      label: Rule id
+      description: The id of the rule that fired, for example price.mismatch.
+      placeholder: price.mismatch
+    validations:
+      required: true
+  - type: textarea
+    id: reported
+    attributes:
+      label: What Regmark reported
+      description: Paste the finding from the terminal or the JSON report. Include both values and both locators.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What is actually true on the shop
+      description: What the checkout charges, or what the statement really says, and how you checked it. Include the date.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - WooCommerce
+        - Shopify
+        - Magento
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: surfaces
+    attributes:
+      label: Surfaces involved
+      description: Tick each surface that the finding depends on.
+      options:
+        - label: page
+        - label: jsonld
+        - label: microdata
+        - label: opengraph
+        - label: feed
+        - label: platform
+        - label: checkout
+  - type: textarea
+    id: snippet
+    attributes:
+      label: Snippet
+      description: The part of the page or feed that shows the statement. Remove anything private. You may leave out the shop's name if you include this.
+      render: html
+  - type: input
+    id: shop
+    attributes:
+      label: Shop address (optional)
+      description: Leave this out if you prefer. A snippet can stand in for it.
+      placeholder: https://shop.example
+  - type: input
+    id: version
+    attributes:
+      label: Regmark version
+      description: The output of node packages/cli/src/bin.ts --version
+    validations:
+      required: true

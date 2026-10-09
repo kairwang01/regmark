@@ -1,0 +1,60 @@
+name: Missed defect
+description: Two surfaces of a shop disagree, and Regmark did not report it.
+title: "[Missed defect]: "
+labels: ["missed-defect"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Say what disagreed and where each value was read. A missed defect is
+        only useful when a maintainer can find the same two values on the shop.
+  - type: textarea
+    id: disagreement
+    attributes:
+      label: What disagreed on the shop
+      description: The values that disagree, and which of them the checkout charges or the stock actually allows.
+    validations:
+      required: true
+  - type: textarea
+    id: locations
+    attributes:
+      label: Where each value was read
+      description: For each value, the page URL and the JSON-LD path, the feed item, the meta tag or the API field it came from.
+    validations:
+      required: true
+  - type: input
+    id: rule
+    attributes:
+      label: Rule you expected
+      description: The rule id you expected to fire, if you know it. For example price.mismatch.
+      placeholder: price.mismatch
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - WooCommerce
+        - Shopify
+        - Magento
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: snippet
+    attributes:
+      label: Snippet
+      description: The part of the page or feed that shows the statement. Remove anything private. You may leave out the shop's name if you include this.
+      render: html
+  - type: input
+    id: shop
+    attributes:
+      label: Shop address (optional)
+      description: Leave this out if you prefer. A snippet can stand in for it.
+      placeholder: https://shop.example
+  - type: input
+    id: version
+    attributes:
+      label: Regmark version
+      description: The output of node packages/cli/src/bin.ts --version
+    validations:
+      required: true

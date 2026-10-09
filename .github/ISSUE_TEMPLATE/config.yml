@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: What each rule means
+    url: https://github.com/kairwang01/regmark/blob/main/docs/rules.md
+    about: The definition of every rule, including when it stays silent.
+  - name: Report a security problem
+    url: https://github.com/kairwang01/regmark/security/advisories/new
+    about: A private report. Do not open a public issue for a vulnerability.

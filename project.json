@@ -4,12 +4,12 @@
   "codename": true,
   "tagline": "让 AI 购物代理读到的商品事实，和结账时实际收的对得上。",
   "pitch": "一个开源的命令行测试工具。它把商品页、结构化数据、商品 feed、店铺后台接口上的价格、库存、运费，逐项拿去和结账实算的结果比对，对不上就让 CI 失败。",
-  "stage": "原型可运行",
+  "stage": "0.1.0，可以试用",
   "updated": "2026-10-09",
   "facts": [
     [
-      "阶段",
-      "原型已经能跑，版本 0.0.1，还没有发布到 npm"
+      "版本",
+      "0.1.0，可以用 npx 直接运行"
     ],
     [
       "验收",
@@ -24,5 +24,6 @@
       "Apache-2.0"
     ]
   ],
-  "repo": "https://github.com/kairwang01/regmark"
+  "repo": "https://github.com/kairwang01/regmark",
+  "try": "npx github:kairwang01/regmark demo"
 }

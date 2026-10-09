@@ -1,0 +1,64 @@
+name: New rule
+description: Propose a rule that would catch a disagreement Regmark does not check.
+title: "[Rule]: "
+labels: ["rule-proposal"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Read docs/rules.md first, since many disagreements are already covered.
+        A rule is only accepted when it has a real example and a clear list of
+        cases where it must stay silent.
+  - type: textarea
+    id: disagreement
+    attributes:
+      label: The disagreement it would catch
+      description: Which surfaces disagree, and which one the checkout or the stock says is right.
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: A real example
+      description: A shop, a page or feed entry, and the values. An invented example is not enough.
+    validations:
+      required: true
+  - type: textarea
+    id: silent
+    attributes:
+      label: When it must stay silent
+      description: The ordinary cases that must not fire. A rule that cries wolf gets removed, so this matters as much as the example.
+    validations:
+      required: true
+  - type: input
+    id: rule-id
+    attributes:
+      label: Proposed rule id
+      description: Dotted and lower case, for example price.tax-basis.
+      placeholder: price.example
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Proposed severity
+      description: An error rule fails the run on its first finding. Use warn or info when the finding can be ordinary.
+      options:
+        - error
+        - warn
+        - info
+    validations:
+      required: true
+  - type: checkboxes
+    id: surfaces
+    attributes:
+      label: Surfaces it needs
+      description: Tick each surface the rule reads. If it needs a surface that is not collected yet, say so below.
+      options:
+        - label: page
+        - label: jsonld
+        - label: microdata
+        - label: opengraph
+        - label: feed
+        - label: platform
+        - label: checkout

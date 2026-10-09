@@ -95,23 +95,23 @@ WooCommerce 这边，一家做 feed 插件的公司早在 2018 年就专门写�
 | 给 WooCommerce、Magento 做协议适配器 | 需求真实，但 WordPress 插件目录里已经有好几个 UCP 适配插件，Saleor 官方也在做[\[16\]][s16]。协议每个季度都变，适配器要跟着返工，而且是在和平台方正面竞争 |
 | 用模型给商品数据补属性 | 商业产品很多，效果又难以验证。它是「修」，而修之前得先有「测」 |
 
-[s1]: 07-sources.md#ref-1
-[s2]: 07-sources.md#ref-2
-[s3]: 07-sources.md#ref-3
-[s4]: 07-sources.md#ref-4
-[s5]: 07-sources.md#ref-5
-[s6]: 07-sources.md#ref-6
-[s7]: 07-sources.md#ref-7
-[s8]: 07-sources.md#ref-8
-[s9]: 07-sources.md#ref-9
-[s10]: 07-sources.md#ref-10
-[s11]: 07-sources.md#ref-11
-[s12]: 07-sources.md#ref-12
-[s13]: 07-sources.md#ref-13
-[s14]: 07-sources.md#ref-14
-[s16]: 07-sources.md#ref-16
-[s17]: 07-sources.md#ref-17
-[s18]: 07-sources.md#ref-18
-[s19]: 07-sources.md#ref-19
-[s20]: 07-sources.md#ref-20
-[s21]: 07-sources.md#ref-21
+[s1]: 08-sources.md#ref-1
+[s2]: 08-sources.md#ref-2
+[s3]: 08-sources.md#ref-3
+[s4]: 08-sources.md#ref-4
+[s5]: 08-sources.md#ref-5
+[s6]: 08-sources.md#ref-6
+[s7]: 08-sources.md#ref-7
+[s8]: 08-sources.md#ref-8
+[s9]: 08-sources.md#ref-9
+[s10]: 08-sources.md#ref-10
+[s11]: 08-sources.md#ref-11
+[s12]: 08-sources.md#ref-12
+[s13]: 08-sources.md#ref-13
+[s14]: 08-sources.md#ref-14
+[s16]: 08-sources.md#ref-16
+[s17]: 08-sources.md#ref-17
+[s18]: 08-sources.md#ref-18
+[s19]: 08-sources.md#ref-19
+[s20]: 08-sources.md#ref-20
+[s21]: 08-sources.md#ref-21

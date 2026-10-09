@@ -1,0 +1,54 @@
+name: Platform
+description: Ask for a shop platform to be supported, or describe what its storefront exposes.
+title: "[Platform]: "
+labels: ["platform"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The storefront API is read from a public endpoint. The checkout probe
+        is implemented for WooCommerce only in this release. Shopify is read
+        only. Describe what the platform exposes.
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: The name of the platform, and the version of its storefront if it has one.
+      placeholder: Magento 2.4
+    validations:
+      required: true
+  - type: dropdown
+    id: public-api
+    attributes:
+      label: Does it have a public storefront API?
+      options:
+        - "Yes"
+        - "No"
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: docs
+    attributes:
+      label: Documentation link
+      description: A link to the documentation for that API, if there is one.
+  - type: dropdown
+    id: cart
+    attributes:
+      label: Can a cart be created without logging in?
+      description: The checkout probe needs this to work without an account.
+      options:
+        - "Yes"
+        - "No"
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: test-shop
+    attributes:
+      label: Can you help test against a shop you control?
+      options:
+        - "Yes"
+        - "No"
+    validations:
+      required: true

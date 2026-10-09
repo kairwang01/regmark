@@ -1,0 +1,56 @@
+name: Bug
+description: Regmark crashed, hung, or did something other than what it documents.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+      description: What you saw. Include the exit code if there was one.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: What you thought Regmark would do, and where you read that. The README or docs/rules.md are good sources.
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: The command you ran
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: The terminal output, or the stderr from the run. Use --verbose for progress.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: The output of node --version. Regmark needs 22.18 or later.
+      placeholder: v22.23.3
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Ubuntu 24.04
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Regmark version
+      description: The output of node packages/cli/src/bin.ts --version
+    validations:
+      required: true
