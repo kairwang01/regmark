@@ -43,3 +43,29 @@ test('the cloaking check reads, as each configured profile, only the pages the o
     await shop.close();
   }
 });
+
+test('the protocol collectors ask about the sampled product only, by the storefront API’s variant ids', async () => {
+  const shop = await startShop({ mode: 'misprint' });
+  try {
+    const result = await runAudit({
+      store: shop.origin,
+      platform: 'woocommerce',
+      sample: 1,
+      seed: 4,
+      ucp: { agentProfile: 'https://agent.example/profile.json' },
+      mcp: { url: '/api/mcp' },
+      fetch: { allowPrivateNetwork: true, minIntervalMs: 0 },
+    });
+    assert.equal(result.counts.products, 1);
+    assert.equal(result.counts.variants, 3, 'the UCP and MCP statements joined the three sock variants, adding none');
+    assert.deepEqual(result.issues, []);
+    // One lookup on each endpoint holds every variant of the one sampled product.
+    assert.deepEqual(shop.requests.filter((r) => r.includes('/ucp')), ['GET /.well-known/ucp', 'POST /ucp/v1/catalog/lookup']);
+    assert.deepEqual(shop.rpcCalls(), ['initialize', 'notifications/initialized', 'tools/list', 'tools/call lookup_catalog']);
+    // D32: the UCP catalogue's stale sock price, tied to its variant by the backend id.
+    const agentFindings = result.findings.filter((f) => f.surface === 'ucp' || f.surface === 'mcp');
+    assert.deepEqual(agentFindings.map((f) => [f.rule, f.variant, f.surface]), [['price.mismatch', 'SOCK-M', 'ucp']]);
+  } finally {
+    await shop.close();
+  }
+});

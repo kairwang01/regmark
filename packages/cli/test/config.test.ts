@@ -72,3 +72,32 @@ test('malformed cloaking profiles are rejected before any network request', asyn
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+test('malformed ucp and mcp options are rejected before any network request', async () => {
+  let requests = 0;
+  const server = createServer((_req, res) => { requests++; res.end(''); });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const store = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const cases: Array<[Record<string, unknown>, RegExp]> = [
+    [{ ucp: 'yes' }, /ucp must be an object/],
+    [{ ucp: { endpoint: '/ucp' } }, /unknown ucp field "endpoint"/],
+    [{ ucp: { url: 'ftp://shop.example/.well-known/ucp' } }, /ucp.url must be an http or https URL/],
+    [{ mcp: { url: '' } }, /mcp.url must be a non-empty string/],
+    // The shop fetches the agent profile itself, so it must be a full public HTTPS URL.
+    [{ ucp: { agentProfile: 'http://agent.example/profile.json' } }, /ucp.agentProfile must be an https URL/],
+    [{ mcp: { agentProfile: '/profile.json' } }, /mcp.agentProfile is not a URL/],
+    [{ mcp: { agentProfile: 'https://user:secret@agent.example/p.json' } }, /URL credentials/],
+  ];
+  try {
+    for (const [invalid, message] of cases) {
+      await assert.rejects(runAudit({ store, platform: 'auto', fetch: { allowPrivateNetwork: true, minIntervalMs: 0 }, ...invalid } as AuditConfig), (err: unknown) => {
+        assert.ok(err instanceof ConfigError, String(err));
+        assert.match(err.message, message);
+        return true;
+      });
+    }
+    assert.equal(requests, 0);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
