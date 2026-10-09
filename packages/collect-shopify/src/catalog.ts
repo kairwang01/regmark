@@ -12,6 +12,7 @@ import type {
   Sighting,
   VariantIds,
 } from '@regmark/core';
+import { errorText, isOk, isRecord, nonEmptyString, parseJson } from './http.ts';
 
 export type ShopifyParent = { id: number; handle: string; url: string; variantCount: number };
 
@@ -208,31 +209,6 @@ function fetchIssue(err: unknown, url: string): CollectIssue {
   return issue('fetch-failed', errorText(err), url);
 }
 
-function isOk(status: number): boolean {
-  return status >= 200 && status < 300;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function isId(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
-}
-
-function nonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim() !== '';
-}
-
-/** Wrapped so that a body that parses to JSON null is not mistaken for one that does not parse. */
-function parseJson(text: string): { value: unknown } | undefined {
-  try {
-    return { value: JSON.parse(text) as unknown };
-  } catch {
-    return undefined;
-  }
-}
-
-function errorText(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
