@@ -3261,9 +3261,9 @@ function renderTerminal(result, options = {}) {
   const issueLines = [];
   if (result.issues.length > 0) {
     issueLines.push(`${LABEL_INDENT}${plural(result.issues.length, "collection issue")}`);
-    for (const issue3 of result.issues.slice(0, max)) {
-      issueLines.push(`${INDENT}${untrusted(issue3.surface)} ${untrusted(issue3.code)}: ${untrusted(issue3.message)}`);
-      if (issue3.locator) issueLines.push(`${INDENT}  ${paint("dim", untrusted(issue3.locator))}`);
+    for (const issue4 of result.issues.slice(0, max)) {
+      issueLines.push(`${INDENT}${untrusted(issue4.surface)} ${untrusted(issue4.code)}: ${untrusted(issue4.message)}`);
+      if (issue4.locator) issueLines.push(`${INDENT}  ${paint("dim", untrusted(issue4.locator))}`);
     }
     const rest = result.issues.length - Math.min(max, result.issues.length);
     if (rest > 0) issueLines.push(`${INDENT}\u2026 and ${rest} more`);
@@ -3301,11 +3301,11 @@ function renderJson(result) {
 var INFORMATION_URI = "https://opensource.kairwang.cloud/regmark/";
 function renderSarif(result) {
   const collection = collectionFailure(result);
-  const notifications = result.issues.map((issue3) => ({
-    descriptor: { id: issue3.code },
+  const notifications = result.issues.map((issue4) => ({
+    descriptor: { id: issue4.code },
     level: collection ? "error" : "warning",
-    message: { text: `${issue3.surface}: ${issue3.message}` },
-    properties: { surface: issue3.surface, ...issue3.locator ? { locator: issue3.locator } : {} }
+    message: { text: `${issue4.surface}: ${issue4.message}` },
+    properties: { surface: issue4.surface, ...issue4.locator ? { locator: issue4.locator } : {} }
   }));
   const rules = result.rules.map((rule) => ({
     id: rule.id,
@@ -3421,7 +3421,7 @@ function renderJUnit(result) {
   }
   const collection = collectionFailure(result);
   const diagnostics = result.issues.map(
-    (issue3) => `${issue3.surface} ${issue3.code}: ${issue3.message}${issue3.locator ? ` (${issue3.locator})` : ""}`
+    (issue4) => `${issue4.surface} ${issue4.code}: ${issue4.message}${issue4.locator ? ` (${issue4.locator})` : ""}`
   ).join("\n");
   if (collection) {
     cases.push(
@@ -3778,9 +3778,9 @@ function renderMarkdown(result, options = {}) {
   }
   if (result.issues.length > 0) {
     const lines = ["### Collection issues", ""];
-    for (const issue3 of result.issues.slice(0, MAX_ISSUES)) {
-      let line = `- ${code(`${issue3.surface} ${issue3.code}`)} ${code(issue3.message)}`;
-      if (issue3.locator) line += ` ${code(issue3.locator)}`;
+    for (const issue4 of result.issues.slice(0, MAX_ISSUES)) {
+      let line = `- ${code(`${issue4.surface} ${issue4.code}`)} ${code(issue4.message)}`;
+      if (issue4.locator) line += ` ${code(issue4.locator)}`;
       lines.push(line);
     }
     const rest = result.issues.length - MAX_ISSUES;
@@ -3810,12 +3810,12 @@ function sameItem(a, b) {
 }
 var readPrice = (s) => s.price;
 var readStock = (s) => s.availability && isBuyable(s.availability.value) !== null ? s.availability : void 0;
-function contradiction(view, reference, read, agree) {
-  const stated = reference.filter((r) => read(r) !== void 0);
+function contradiction(view, reference, read2, agree) {
+  const stated = reference.filter((r) => read2(r) !== void 0);
   if (stated.length === 0) return void 0;
   const loose = [];
   for (const v of view) {
-    const actual = read(v);
+    const actual = read2(v);
     if (!actual) continue;
     const paired = reference.filter((r) => sameItem(v, r) === true);
     if (paired.length === 0) {
@@ -3823,12 +3823,12 @@ function contradiction(view, reference, read, agree) {
       loose.push(actual);
       continue;
     }
-    const against = paired.filter((r) => read(r) !== void 0);
+    const against = paired.filter((r) => read2(r) !== void 0);
     if (against.length === 0) continue;
-    if (!against.some((r) => agree(actual.value, read(r).value))) return { actual, expected: read(against[0]) };
+    if (!against.some((r) => agree(actual.value, read2(r).value))) return { actual, expected: read2(against[0]) };
   }
-  if (loose.length > 0 && !loose.some((a) => stated.some((r) => agree(a.value, read(r).value)))) {
-    return { actual: loose[0], expected: read(stated[0]) };
+  if (loose.length > 0 && !loose.some((a) => stated.some((r) => agree(a.value, read2(r).value)))) {
+    return { actual: loose[0], expected: read2(stated[0]) };
   }
   return void 0;
 }
@@ -4966,7 +4966,7 @@ function mapItem(item, position, ctx) {
     issues.push({ surface: "feed", code: "feed-item-incomplete", message: `item "${id}" has no link`, locator: at });
     return { issues };
   }
-  const observe5 = (value, raw, field) => ({
+  const observe6 = (value, raw, field) => ({
     value,
     raw,
     surface: "feed",
@@ -5012,21 +5012,21 @@ function mapItem(item, position, ctx) {
   if (sale && saleText) {
     const interval = saleWindow(f("sale_price_effective_date"), ctx.now);
     if (interval.active) {
-      sighting.price = observe5(sale, saleText, "sale_price");
-      if (regular && regularText) sighting.listPrice = observe5(regular, regularText, "price");
+      sighting.price = observe6(sale, saleText, "sale_price");
+      if (regular && regularText) sighting.listPrice = observe6(regular, regularText, "price");
       if (interval.until) {
-        sighting.priceValidUntil = observe5(interval.until, interval.until, "sale_price_effective_date");
+        sighting.priceValidUntil = observe6(interval.until, interval.until, "sale_price_effective_date");
       }
     } else if (regular && regularText) {
-      sighting.price = observe5(regular, regularText, "price");
+      sighting.price = observe6(regular, regularText, "price");
     }
   } else if (regular && regularText) {
-    sighting.price = observe5(regular, regularText, "price");
+    sighting.price = observe6(regular, regularText, "price");
   }
   const availabilityText = f("availability");
   if (availabilityText) {
     const value = AVAILABILITY.get(availabilityText.toLowerCase().replace(/\s+/g, "_"));
-    if (value) sighting.availability = observe5(value, availabilityText, "availability");
+    if (value) sighting.availability = observe6(value, availabilityText, "availability");
   }
   const entry = item.shipping[0];
   if (entry) {
@@ -5035,7 +5035,7 @@ function mapItem(item, position, ctx) {
       const country = entry.country?.toUpperCase();
       const quote = { free: cost.units === 0, cost };
       if (country && /^[A-Z]{2}$/.test(country)) quote.country = country;
-      sighting.shipping = observe5(quote, entry.raw, "shipping");
+      sighting.shipping = observe6(quote, entry.raw, "shipping");
     }
   }
   return { sighting, issues };
@@ -5623,13 +5623,13 @@ function mapProduct(record3, ctx) {
 
 // packages/collect-feed/src/acp/index.ts
 function parseAcp(text7, ctx) {
-  const read = readAcp(text7, ctx.feedUrl);
-  if ("error" in read) return read;
+  const read2 = readAcp(text7, ctx.feedUrl);
+  if ("error" in read2) return read2;
   const sightings = [];
-  const issues = [...read.issues];
-  for (const record3 of read.records) {
+  const issues = [...read2.issues];
+  for (const record3 of read2.records) {
     if (record3.kind === "flat") {
-      const mapped = mapFlat(record3, read.profile, ctx);
+      const mapped = mapFlat(record3, read2.profile, ctx);
       if (mapped.sighting) sightings.push(mapped.sighting);
       issues.push(...mapped.issues);
     } else {
@@ -9867,10 +9867,10 @@ function parseGoogle(text7, ctx) {
   let dates = [];
   const detected = text7.trimStart();
   if (detected.startsWith("<")) {
-    const read = readXml(detected);
-    if ("error" in read) return read;
-    items = read.items;
-    dates = read.dates;
+    const read2 = readXml(detected);
+    if ("error" in read2) return read2;
+    items = read2.items;
+    dates = read2.dates;
   } else {
     try {
       items = readTsv(text7);
@@ -25080,13 +25080,13 @@ function extractVisible(html3, pageUrl, fetchedAt, options = {}) {
   const hint = { currency: options.currency };
   const obs3 = (value, raw, selector) => ({ value, raw, surface: "page", locator: `${pageUrl}#css(${selector})`, fetchedAt });
   const heading = productTitle($2, options.titleSelector);
-  const read = readPrice4($2, options, hint, obs3);
-  const availability = readAvailability3($2, options, obs3, read.soldOut);
-  if (!read.price && !availability) return { sightings: [], issues: [] };
+  const read2 = readPrice4($2, options, hint, obs3);
+  const availability = readAvailability3($2, options, obs3, read2.soldOut);
+  if (!read2.price && !availability) return { sightings: [], issues: [] };
   const sighting = { surface: "page", scope: "product", ids: { url: pageUrl } };
   if (heading) sighting.title = heading.text;
-  if (read.price) sighting.price = read.price;
-  if (read.listPrice) sighting.listPrice = read.listPrice;
+  if (read2.price) sighting.price = read2.price;
+  if (read2.listPrice) sighting.listPrice = read2.listPrice;
   if (availability) sighting.availability = availability;
   return { sightings: [sighting], issues: [] };
 }
@@ -25335,7 +25335,7 @@ function backendId(id) {
 }
 async function readCatalogue(ask, options) {
   const { surface, refs } = options;
-  const read = [];
+  const read2 = [];
   const issues = [];
   const owner = /* @__PURE__ */ new Map();
   const skipped = /* @__PURE__ */ new Set();
@@ -25379,7 +25379,7 @@ async function readCatalogue(ask, options) {
           const label = `lookup_catalog[id=${JSON.stringify(inputs[0].id)}]`;
           const at = `${answer2.url}#${label}${answer2.pointer}/products/${p}/variants/${v}`;
           const one = toSighting(surface, refs[index2], product3, variant2, at, answer2.fetchedAt, scope);
-          read.push({ index: index2, sighting: one.sighting });
+          read2.push({ index: index2, sighting: one.sighting });
           issues.push(...one.issues);
           found.add(index2);
         }
@@ -25406,7 +25406,7 @@ async function readCatalogue(ask, options) {
         if (!isRecord(variant2)) return;
         const at = `${answer2.url}#${label}${answer2.pointer}/products/${p}/variants/${v}`;
         const one = toSighting(surface, ref, product3, variant2, at, answer2.fetchedAt, "variant");
-        read.push({ index: index2, sighting: one.sighting });
+        read2.push({ index: index2, sighting: one.sighting });
         issues.push(...one.issues);
         found.add(index2);
       });
@@ -25418,7 +25418,7 @@ async function readCatalogue(ask, options) {
       issues.push(issueOf(surface, "not-found", "the catalogue has no product for this page", ref.url));
     }
   }
-  return { sightings: read.filter((r) => !unanswered.has(r.index)).map((r) => r.sighting), issues };
+  return { sightings: read2.filter((r) => !unanswered.has(r.index)).map((r) => r.sighting), issues };
 }
 var withFilter = (request, options) => options.includeUnavailable ? { ...request, filters: { available: false } } : request;
 function checked(answer2, surface, operation) {
@@ -25474,21 +25474,21 @@ function toSighting(surface, ref, product3, variant2, at, fetchedAt, scope) {
   if (alias) ids.aliases = [alias];
   const sighting = { surface, scope, ids };
   if (nonEmptyString(product3.title)) sighting.title = product3.title;
-  const observe5 = (value, raw, field) => ({ value, raw, surface, locator: `${at}/${field}`, fetchedAt });
+  const observe6 = (value, raw, field) => ({ value, raw, surface, locator: `${at}/${field}`, fetchedAt });
   if (perItem(variant2.quantity_unit)) {
     const price2 = readPrice5(variant2.price);
     if (price2 === "unreadable") {
       issues.push(issueOf(surface, "field-unreadable", "price is not a whole number of minor units with a currency code", `${at}/price`));
     } else if (price2) {
-      sighting.price = observe5(price2.money, price2.raw, "price");
+      sighting.price = observe6(price2.money, price2.raw, "price");
       const list = readPrice5(variant2.list_price);
       if (list && list !== "unreadable" && list.money.currency === price2.money.currency && list.money.units > price2.money.units) {
-        sighting.listPrice = observe5(list.money, list.raw, "list_price");
+        sighting.listPrice = observe6(list.money, list.raw, "list_price");
       }
     }
   }
   const availability = readAvailability4(variant2.availability);
-  if (availability) sighting.availability = observe5(availability, JSON.stringify(variant2.availability), "availability");
+  if (availability) sighting.availability = observe6(availability, JSON.stringify(variant2.availability), "availability");
   return { sighting, issues };
 }
 function readPrice5(value) {
@@ -25858,6 +25858,30 @@ function takesAvailableFilter(tool) {
   return schemaProperty(filters2, "available") !== void 0;
 }
 
+// packages/collect-shopify/src/http.ts
+function isOk2(status) {
+  return status >= 200 && status < 300;
+}
+function isRecord2(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function nonEmptyString2(value) {
+  return typeof value === "string" && value.trim() !== "";
+}
+function parseJson2(text7) {
+  try {
+    return { value: JSON.parse(text7) };
+  } catch {
+    return void 0;
+  }
+}
+function errorText2(err) {
+  return err instanceof Error ? err.message : String(err);
+}
+function isOwnershipRefusal(err) {
+  return err instanceof FetchRefused && err.code === "write-not-authorized";
+}
+
 // packages/collect-shopify/src/catalog.ts
 var PAGE_SIZE = 250;
 var MAX_PAGES = 20;
@@ -25878,17 +25902,17 @@ async function readCatalog(ctx, options) {
   const listed = [];
   for (let page = 1; page <= MAX_PAGES && listed.length < maxProducts; page++) {
     const pageUrl = `${origin}/products.json?limit=${PAGE_SIZE}&page=${page}`;
-    const read = await readPage(ctx, pageUrl);
-    if (!read.ok) {
-      if (page === 1) return { sightings: [], issues: [read.issue], parents: [] };
-      issues.push(read.issue);
+    const read2 = await readPage(ctx, pageUrl);
+    if (!read2.ok) {
+      if (page === 1) return { sightings: [], issues: [read2.issue], parents: [] };
+      issues.push(read2.issue);
       break;
     }
-    for (let index2 = 0; index2 < read.items.length && listed.length < maxProducts; index2++) {
-      const entry = readProduct(origin, read.items[index2], pageUrl, index2, read.fetchedAt);
+    for (let index2 = 0; index2 < read2.items.length && listed.length < maxProducts; index2++) {
+      const entry = readProduct(origin, read2.items[index2], pageUrl, index2, read2.fetchedAt);
       if (entry) listed.push(entry);
     }
-    if (read.items.length < PAGE_SIZE) break;
+    if (read2.items.length < PAGE_SIZE) break;
   }
   const sightings = [];
   for (const entry of listed) {
@@ -25993,33 +26017,346 @@ function fetchIssue(err, url) {
   if (err instanceof FetchRefused && err.code === "robots") return issue2("robots-disallowed", err.message, url);
   return issue2("fetch-failed", errorText2(err), url);
 }
-function isOk2(status) {
-  return status >= 200 && status < 300;
-}
-function isRecord2(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 function isId(value) {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
-function nonEmptyString2(value) {
-  return typeof value === "string" && value.trim() !== "";
-}
-function parseJson2(text7) {
-  try {
-    return { value: JSON.parse(text7) };
-  } catch {
-    return void 0;
+
+// packages/collect-shopify/src/cookies.ts
+var NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+var VALUE = /^(?:"[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]*"|[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]*)$/;
+function keepCookies(jar, setCookie, now) {
+  if (setCookie === void 0) return;
+  for (const line of setCookie.split("\n")) {
+    const [pair = "", ...attributes2] = line.split(";");
+    const eq2 = pair.indexOf("=");
+    if (eq2 <= 0) continue;
+    const name = pair.slice(0, eq2).trim();
+    const value = pair.slice(eq2 + 1).trim();
+    if (!NAME.test(name) || !VALUE.test(value)) continue;
+    if (expired(attributes2, now)) jar.delete(name);
+    else jar.set(name, value);
   }
 }
-function errorText2(err) {
-  return err instanceof Error ? err.message : String(err);
+function cookieHeader(jar) {
+  if (jar.size === 0) return void 0;
+  return [...jar].map(([name, value]) => `${name}=${value}`).join("; ");
+}
+function expired(attributes2, now) {
+  let expires;
+  for (const attribute of attributes2) {
+    const eq2 = attribute.indexOf("=");
+    if (eq2 < 0) continue;
+    const key = attribute.slice(0, eq2).trim().toLowerCase();
+    const value = attribute.slice(eq2 + 1).trim();
+    if (key === "max-age" && /^-?\d+$/.test(value)) return Number(value) <= 0;
+    if (key === "expires") expires = value;
+  }
+  if (expires === void 0) return false;
+  const at = Date.parse(expires);
+  return !Number.isNaN(at) && at <= now.getTime();
 }
 
 // packages/collect-shopify/src/probe.ts
-async function probeShopifyCart(_ctx, targets, _options) {
+var NotTheCart = class extends Error {
+};
+var CHALLENGE_STATUSES = /* @__PURE__ */ new Set([403, 429, 430]);
+var RATE_CHECKS = 4;
+async function probeShopifyCart(ctx, targets, options) {
   if (targets.length === 0) return { sightings: [], issues: [] };
-  return { sightings: [], issues: [{ surface: "checkout", code: "probe-unsupported", message: "the Shopify checkout probe is not built yet" }] };
+  const run = {
+    ctx,
+    origin: ctx.store.origin,
+    shipTo: options.shipTo,
+    cookies: /* @__PURE__ */ new Map(),
+    currency: null,
+    dirty: false,
+    sightings: [],
+    issues: []
+  };
+  try {
+    await runProbe(run, targets);
+  } catch (err) {
+    if (isOwnershipRefusal(err)) return { sightings: [], issues: [ownershipIssue()] };
+    run.issues.push(issue3("probe-failed", errorText2(err)));
+  }
+  return { sightings: run.sightings, issues: run.issues };
+}
+async function runProbe(run, targets) {
+  if (!await openCart(run)) return;
+  for (const target of targets) {
+    let stopped = false;
+    try {
+      await probeTarget(run, target);
+    } catch (err) {
+      if (isOwnershipRefusal(err)) throw err;
+      stopped = err instanceof NotTheCart;
+      run.issues.push(issue3("probe-failed", `${target.variantId}: ${errorText2(err)}${stopped ? "; the probe stopped" : ""}`));
+    }
+    const emptied = !run.dirty || await emptyCart(run, target.variantId);
+    if (stopped) return;
+    if (!emptied) break;
+  }
+  await confirmEmpty(run);
+}
+async function openCart(run) {
+  let problem;
+  try {
+    const cart = cartBody(await read(run, `${run.origin}/cart.js`), "cart.js");
+    if (cart.items.length === 0) {
+      run.currency = currencyCode(cart.currency);
+      return true;
+    }
+    problem = "the new cart already holds items";
+  } catch (err) {
+    if (isOwnershipRefusal(err)) throw err;
+    problem = errorText2(err);
+  }
+  run.issues.push(issue3("probe-failed", `could not open a cart: ${problem}`));
+  return false;
+}
+async function probeTarget(run, target) {
+  if (!/^\d+$/.test(target.variantId)) throw new Error(`not a variant id: ${target.variantId}`);
+  const addUrl = `${run.origin}/cart/add.js`;
+  run.dirty = true;
+  const added = await write(run, addUrl, { items: [{ id: Number(target.variantId), quantity: 1 }] });
+  const refused = notFromTheCart(added, "add.js");
+  if (refused !== void 0) {
+    if (added.status >= 300 && added.status < 500) run.dirty = false;
+    throw new NotTheCart(refused);
+  }
+  const body = parseJson2(added.body)?.value;
+  if (isOk2(added.status)) {
+    await addedToCart(run, target, added, body);
+    return;
+  }
+  const refusal = cartRefusal(added.status, body);
+  if (refusal !== void 0) {
+    run.sightings.push({
+      surface: "checkout",
+      scope: "variant",
+      ids: idsOf2(target),
+      purchasable: observe4(false, refusal, addUrl, added.fetchedAt)
+    });
+    return;
+  }
+  throw new Error(`add.js returned HTTP ${added.status}`);
+}
+async function addedToCart(run, target, added, body) {
+  const addUrl = `${run.origin}/cart/add.js`;
+  const picked = pickLine(body, target.variantId);
+  if (!picked) throw new Error("add.js response does not contain the requested variant");
+  const sighting = {
+    surface: "checkout",
+    scope: "variant",
+    ids: idsOf2(target),
+    purchasable: observe4(true, "added", addUrl, added.fetchedAt)
+  };
+  run.sightings.push(sighting);
+  const price2 = linePrice(picked.line, run.currency);
+  if ("problem" in price2) {
+    run.issues.push(issue3("probe-failed", `${target.variantId}: ${price2.problem}`));
+  } else {
+    sighting.price = observe4(price2.value, price2.raw, `${addUrl}#${picked.pointer}/${price2.field}`, added.fetchedAt);
+  }
+  if (picked.line.requires_shipping === false) return;
+  if (picked.line.quantity !== 1) throw new Error("the cart holds more than the one unit added, so shipping was not estimated");
+  try {
+    await estimateShipping(run, target, sighting);
+  } catch (err) {
+    if (isOwnershipRefusal(err) || err instanceof NotTheCart) throw err;
+    run.issues.push(issue3("probe-failed", `${target.variantId}: shipping estimate failed: ${errorText2(err)}`));
+  }
+}
+async function estimateShipping(run, target, sighting) {
+  const query = shippingQuery(run.shipTo);
+  const prepared = await write(run, `${run.origin}/cart/prepare_shipping_rates.json?${query}`);
+  let answer2 = rateAnswer(prepared, "prepare_shipping_rates.json");
+  for (let check = 0; answer2.kind === "pending" && check < RATE_CHECKS; check++) {
+    answer2 = rateAnswer(await read(run, `${run.origin}/cart/async_shipping_rates.json?${query}`), "async_shipping_rates.json");
+  }
+  const country = run.shipTo.country.trim().toUpperCase();
+  if (answer2.kind === "pending") throw new Error(`the rates were not ready after ${RATE_CHECKS} checks`);
+  if (answer2.kind === "refused") {
+    run.issues.push(rateRefusal(answer2.body, answer2.status, country, target));
+    return;
+  }
+  if (answer2.rates.length === 0) {
+    run.issues.push(issue3("no-shipping-rate", `no shipping rate for ${country} on ${labelOf(target)}`));
+    return;
+  }
+  const cheapest = cheapestRate(answer2.rates, run.currency);
+  if (!cheapest) throw new Error("no shipping rate has a price that can be read");
+  const quote = { free: cheapest.cost.units === 0, cost: cheapest.cost, country };
+  sighting.shipping = observe4(quote, cheapest.raw, `${answer2.res.url}#/shipping_rates/${cheapest.index}/price`, answer2.res.fetchedAt);
+}
+function rateAnswer(res, step) {
+  const refused = turnedAway(res, step);
+  if (refused !== void 0) throw new NotTheCart(refused);
+  const parsed = res.body.trim() === "" ? { value: null } : parseJson2(res.body);
+  if (!parsed) throw new Error(`${step} answered with a page, not JSON (HTTP ${res.status})`);
+  const body = parsed.value;
+  if (isOk2(res.status)) {
+    if (isRecord2(body) && Array.isArray(body.shipping_rates)) return { kind: "ready", rates: body.shipping_rates, res };
+    if (body === null || step === "prepare_shipping_rates.json") return { kind: "pending" };
+    throw new Error(`${step} answered with something other than rates`);
+  }
+  if (res.status < 500 && isRecord2(body)) return { kind: "refused", body, status: res.status };
+  throw new Error(`${step} returned HTTP ${res.status}`);
+}
+function rateRefusal(body, status, country, target) {
+  const general = [];
+  const fields2 = [];
+  for (const [key, value] of Object.entries(body)) {
+    const texts = (Array.isArray(value) ? value : [value]).filter(nonEmptyString2);
+    if (key === "error" || key === "errors") general.push(...texts);
+    else fields2.push(...texts.map((text7) => `${key} ${text7}`));
+  }
+  if (fields2.length > 0) return issue3("no-shipping-rate", `no shipping rate for ${country} on ${labelOf(target)}: ${fields2.join("; ")}`);
+  const detail = general.length > 0 ? general.join("; ") : `HTTP ${status}`;
+  return issue3("probe-failed", `${target.variantId}: the shop could not calculate shipping rates: ${detail}`);
+}
+function cheapestRate(rates, cartCurrency) {
+  let best;
+  rates.forEach((rate, index2) => {
+    if (!isRecord2(rate)) return;
+    const raw = typeof rate.price === "string" ? rate.price.trim() : typeof rate.price === "number" ? String(rate.price) : "";
+    if (!/^\d+(?:\.\d+)?$/.test(raw)) return;
+    const cost = money(raw, currencyCode(rate.currency) ?? cartCurrency);
+    if (!best || cost.units < best.cost.units) best = { index: index2, cost, raw };
+  });
+  return best;
+}
+function shippingQuery(shipTo) {
+  const params = new URLSearchParams();
+  if (nonEmptyString2(shipTo.postcode)) params.set("shipping_address[zip]", shipTo.postcode.trim());
+  params.set("shipping_address[country]", shipTo.country.trim().toUpperCase());
+  if (nonEmptyString2(shipTo.state)) params.set("shipping_address[province]", shipTo.state.trim());
+  return params.toString();
+}
+async function emptyCart(run, variantId) {
+  let reason;
+  try {
+    const res = await write(run, `${run.origin}/cart/clear.js`);
+    if (isOk2(res.status) && isEmptyCart(parseJson2(res.body)?.value)) {
+      run.dirty = false;
+      return true;
+    }
+    reason = notFromTheCart(res, "clear.js") ?? (isOk2(res.status) ? "the cart it returned is not empty" : `HTTP ${res.status}`);
+  } catch (err) {
+    if (isOwnershipRefusal(err)) throw err;
+    reason = errorText2(err);
+  }
+  run.issues.push(issue3("cart-not-emptied", `could not empty the probe cart after ${variantId} (${reason}); no further target was added to it`));
+  return false;
+}
+async function confirmEmpty(run) {
+  let cart;
+  try {
+    const res = await read(run, `${run.origin}/cart.js`);
+    cart = isOk2(res.status) ? parseJson2(res.body)?.value : void 0;
+  } catch (err) {
+    if (isOwnershipRefusal(err)) throw err;
+    cart = void 0;
+  }
+  if (!isRecord2(cart) || !Array.isArray(cart.items)) {
+    run.issues.push(issue3("cart-not-emptied", "could not read the probe cart to confirm it is empty"));
+    return;
+  }
+  if (!isEmptyCart(cart)) run.issues.push(issue3("cart-not-emptied", "the probe cart still holds items"));
+}
+async function read(run, url) {
+  const res = await run.ctx.fetcher.get(url, { asOwner: true, headers: headersFor(run) });
+  keepCookies(run.cookies, res.headers["set-cookie"], run.ctx.now());
+  return res;
+}
+async function write(run, url, json) {
+  const headers = headersFor(run);
+  const res = await run.ctx.fetcher.send("POST", url, json === void 0 ? { headers } : { headers, json });
+  keepCookies(run.cookies, res.headers["set-cookie"], run.ctx.now());
+  return res;
+}
+function headersFor(run) {
+  const cookie = cookieHeader(run.cookies);
+  return cookie === void 0 ? { accept: "application/json" } : { accept: "application/json", cookie };
+}
+function turnedAway(res, step) {
+  if (CHALLENGE_STATUSES.has(res.status) || res.headers["cf-mitigated"] !== void 0) {
+    return `${step} was answered by the shop's bot protection (HTTP ${res.status}), not by the cart`;
+  }
+  if (res.status >= 300 && res.status < 400) {
+    const to = res.headers["location"];
+    return `${step} was redirected${nonEmptyString2(to) ? ` to ${to}` : ""} (HTTP ${res.status})`;
+  }
+  if (res.status === 401) return `${step} was refused (HTTP 401)`;
+  return void 0;
+}
+function notFromTheCart(res, step) {
+  const away = turnedAway(res, step);
+  if (away !== void 0) return away;
+  if (res.status < 500 && res.body.trim() !== "" && parseJson2(res.body) === void 0) {
+    return `${step} answered with a page, not the cart's JSON (HTTP ${res.status})`;
+  }
+  return void 0;
+}
+function cartBody(res, step) {
+  const refused = notFromTheCart(res, step);
+  if (refused !== void 0) throw new NotTheCart(refused);
+  if (!isOk2(res.status)) throw new Error(`${step} returned HTTP ${res.status}`);
+  const cart = parseJson2(res.body)?.value;
+  if (!isRecord2(cart) || !Array.isArray(cart.items)) throw new Error(`${step} is not a Shopify cart`);
+  return cart;
+}
+function cartRefusal(status, body) {
+  if (status !== 422 && status !== 404) return void 0;
+  if (!isRecord2(body) || body.message !== "Cart Error" || !nonEmptyString2(body.description)) return void 0;
+  return body.description;
+}
+function pickLine(body, variantId) {
+  if (!isRecord2(body)) return void 0;
+  if (Array.isArray(body.items)) {
+    const items = body.items;
+    const index2 = items.findIndex((item) => isRecord2(item) && String(item.variant_id) === variantId);
+    const line = items[index2];
+    return isRecord2(line) ? { line, pointer: `/items/${index2}` } : void 0;
+  }
+  return String(body.variant_id) === variantId ? { line: body, pointer: "" } : void 0;
+}
+function linePrice(line, currency) {
+  const field = "final_price" in line ? "final_price" : "price";
+  const amount = line[field];
+  const value = typeof amount === "number" && Number.isSafeInteger(amount) && amount >= 0 ? fromMinor(amount, 2, currency) : null;
+  if (!value) return { problem: `the line's ${field} could not be read` };
+  if (currency === null) return { problem: "the cart states no currency, so its price was left out" };
+  if (minorUnitOf(currency) > 2) {
+    return { problem: `the cart is in ${currency}, a currency with three decimals, and Shopify does not document how it states those amounts, so the price was left out` };
+  }
+  return { value, raw: String(amount), field };
+}
+function isEmptyCart(cart) {
+  if (!isRecord2(cart) || !Array.isArray(cart.items) || cart.items.length > 0) return false;
+  return cart.item_count === void 0 || cart.item_count === 0;
+}
+function currencyCode(value) {
+  return typeof value === "string" && /^[A-Za-z]{3}$/.test(value.trim()) ? value.trim().toUpperCase() : null;
+}
+function idsOf2(target) {
+  const ids = { variantId: target.variantId };
+  if (nonEmptyString2(target.productId)) ids.productId = target.productId;
+  if (nonEmptyString2(target.sku)) ids.sku = target.sku;
+  if (nonEmptyString2(target.url)) ids.url = target.url;
+  return ids;
+}
+function labelOf(target) {
+  return nonEmptyString2(target.sku) ? target.sku : target.variantId;
+}
+function observe4(value, raw, locator2, fetchedAt) {
+  return { value, raw, surface: "checkout", locator: locator2, fetchedAt };
+}
+function issue3(code2, message) {
+  return { surface: "checkout", code: code2, message };
+}
+function ownershipIssue() {
+  return issue3("ownership-not-verified", "the checkout probe needs proof that you control this shop; see the ownership token in the documentation");
 }
 
 // packages/collect-woo/src/http.ts
@@ -26046,7 +26383,7 @@ function parseJson3(text7) {
 function errorText3(err) {
   return err instanceof Error ? err.message : String(err);
 }
-function isOwnershipRefusal(err) {
+function isOwnershipRefusal2(err) {
   return err instanceof FetchRefused && err.code === "write-not-authorized";
 }
 function makeIssue(surface, code2, message, locator2) {
@@ -26058,7 +26395,7 @@ function fetchIssue2(surface, err, locator2) {
   }
   return makeIssue(surface, "fetch-failed", errorText3(err), locator2);
 }
-function observe4(value, raw, surface, locator2, fetchedAt) {
+function observe5(value, raw, surface, locator2, fetchedAt) {
   return { value, raw, surface, locator: locator2, fetchedAt };
 }
 function readMinor(container, field) {
@@ -26106,19 +26443,19 @@ async function readCatalog2(ctx, options) {
   const listed = [];
   for (let page = 1; page <= MAX_PAGES2 && listed.length < maxProducts; page++) {
     const listUrl = `${base}/products?per_page=${PER_PAGE}&page=${page}`;
-    const read = await readList(ctx, listUrl);
-    if (!read.ok) {
-      if (page === 1) return { sightings: [], issues: [read.issue], parents: [] };
-      issues.push(read.issue);
+    const read2 = await readList(ctx, listUrl);
+    if (!read2.ok) {
+      if (page === 1) return { sightings: [], issues: [read2.issue], parents: [] };
+      issues.push(read2.issue);
       break;
     }
-    for (let index2 = 0; index2 < read.items.length && listed.length < maxProducts; index2++) {
-      const entry = readParent(read.items[index2], listUrl, index2, read.fetchedAt);
+    for (let index2 = 0; index2 < read2.items.length && listed.length < maxProducts; index2++) {
+      const entry = readParent(read2.items[index2], listUrl, index2, read2.fetchedAt);
       issues.push(...entry.issues);
       if (entry.listed) listed.push(entry.listed);
     }
-    if (read.items.length < PER_PAGE) break;
-    if (read.totalPages !== void 0 && page >= read.totalPages) break;
+    if (read2.items.length < PER_PAGE) break;
+    if (read2.totalPages !== void 0 && page >= read2.totalPages) break;
   }
   const sightings = [];
   const parents2 = listed.map((entry) => entry.parent);
@@ -26130,12 +26467,12 @@ async function readCatalog2(ctx, options) {
     }
     for (const variationId of entry.parent.variationIds) {
       const url = `${base}/products/${variationId}`;
-      const read = await getJson(ctx, url, "platform");
-      if (!read.ok) {
-        issues.push(read.issue);
+      const read2 = await getJson(ctx, url, "platform");
+      if (!read2.ok) {
+        issues.push(read2.issue);
         continue;
       }
-      if (!isRecord3(read.body)) {
+      if (!isRecord3(read2.body)) {
         issues.push(makeIssue("platform", "parse-error", "variation is not an object", url));
         continue;
       }
@@ -26143,9 +26480,9 @@ async function readCatalog2(ctx, options) {
         buildSighting3(
           entry.parent,
           entry.name,
-          read.body,
+          read2.body,
           `${url}#`,
-          read.res.fetchedAt,
+          read2.res.fetchedAt,
           String(variationId),
           entry.attributes.get(variationId)
         )
@@ -26155,16 +26492,16 @@ async function readCatalog2(ctx, options) {
   return { sightings, issues, parents: parents2 };
 }
 async function readList(ctx, url) {
-  const read = await getJson(ctx, url, "platform");
-  if (!read.ok) return { ok: false, issue: read.issue };
-  if (!Array.isArray(read.body)) {
+  const read2 = await getJson(ctx, url, "platform");
+  if (!read2.ok) return { ok: false, issue: read2.issue };
+  if (!Array.isArray(read2.body)) {
     return { ok: false, issue: makeIssue("platform", "parse-error", "product list is not an array", url) };
   }
   return {
     ok: true,
-    items: read.body,
-    fetchedAt: read.res.fetchedAt,
-    totalPages: wholeNumber(read.res.headers["x-wp-totalpages"])
+    items: read2.body,
+    fetchedAt: read2.res.fetchedAt,
+    totalPages: wholeNumber(read2.res.headers["x-wp-totalpages"])
   };
 }
 function selects2(select3, parent2, parents2, ctx) {
@@ -26216,10 +26553,10 @@ function buildSighting3(parent2, name, body, pointer, fetchedAt, variantId, opti
   if (nonEmptyString3(name)) sighting.title = name;
   const price2 = readMinor(body.prices, "price");
   if (price2) {
-    sighting.price = observe4(price2.value, price2.raw, "platform", `${pointer}/prices/price`, fetchedAt);
+    sighting.price = observe5(price2.value, price2.raw, "platform", `${pointer}/prices/price`, fetchedAt);
     const regular = readMinor(body.prices, "regular_price");
     if (regular && body.on_sale === true && !sameMoney(price2.value, regular.value)) {
-      sighting.listPrice = observe4(regular.value, regular.raw, "platform", `${pointer}/prices/regular_price`, fetchedAt);
+      sighting.listPrice = observe5(regular.value, regular.raw, "platform", `${pointer}/prices/regular_price`, fetchedAt);
     }
   }
   const availability = availabilityOf2(body, pointer, fetchedAt);
@@ -26228,13 +26565,13 @@ function buildSighting3(parent2, name, body, pointer, fetchedAt, variantId, opti
 }
 function availabilityOf2(body, pointer, fetchedAt) {
   if (body.is_on_backorder === true) {
-    return observe4("backorder", "true", "platform", `${pointer}/is_on_backorder`, fetchedAt);
+    return observe5("backorder", "true", "platform", `${pointer}/is_on_backorder`, fetchedAt);
   }
   if (body.is_in_stock === true) {
-    return observe4("in_stock", "true", "platform", `${pointer}/is_in_stock`, fetchedAt);
+    return observe5("in_stock", "true", "platform", `${pointer}/is_in_stock`, fetchedAt);
   }
   if (body.is_in_stock === false) {
-    return observe4("out_of_stock", "false", "platform", `${pointer}/is_in_stock`, fetchedAt);
+    return observe5("out_of_stock", "false", "platform", `${pointer}/is_in_stock`, fetchedAt);
   }
   return void 0;
 }
@@ -26265,15 +26602,15 @@ async function probeWooCheckout(ctx, targets, options) {
   if (targets.length === 0) return { sightings: [], issues: [] };
   const run = { ctx, base: apiBase(ctx), shipTo: options.shipTo, headers: {}, sightings: [], issues: [] };
   try {
-    await runProbe(run, targets);
+    await runProbe2(run, targets);
   } catch (err) {
-    if (isOwnershipRefusal(err)) return { sightings: [], issues: [ownershipIssue()] };
+    if (isOwnershipRefusal2(err)) return { sightings: [], issues: [ownershipIssue2()] };
     run.issues.push(makeIssue("checkout", "probe-failed", errorText3(err)));
   }
   return { sightings: run.sightings, issues: run.issues };
 }
-async function runProbe(run, targets) {
-  const opened = await openCart(run);
+async function runProbe2(run, targets) {
+  const opened = await openCart2(run);
   if (!opened) return;
   const token = opened.headers["cart-token"];
   if (!nonEmptyString3(token)) {
@@ -26285,16 +26622,16 @@ async function runProbe(run, targets) {
   if (nonEmptyString3(nonce)) run.headers.nonce = nonce;
   for (const target of targets) {
     try {
-      await probeTarget(run, target);
+      await probeTarget2(run, target);
     } catch (err) {
-      if (isOwnershipRefusal(err)) throw err;
+      if (isOwnershipRefusal2(err)) throw err;
       run.issues.push(makeIssue("checkout", "probe-failed", `${target.variantId}: ${errorText3(err)}`));
     }
-    if (!await emptyCart(run, target.variantId)) break;
+    if (!await emptyCart2(run, target.variantId)) break;
   }
-  await confirmEmpty(run);
+  await confirmEmpty2(run);
 }
-async function openCart(run) {
+async function openCart2(run) {
   try {
     const res = await run.ctx.fetcher.get(`${run.base}/cart`);
     if (isOk3(res.status)) return res;
@@ -26304,7 +26641,7 @@ async function openCart(run) {
   }
   return void 0;
 }
-async function probeTarget(run, target) {
+async function probeTarget2(run, target) {
   if (!/^\d+$/.test(target.variantId)) throw new Error(`not a variant id: ${target.variantId}`);
   const addUrl = `${run.base}/cart/add-item`;
   const added = await run.ctx.fetcher.send("POST", addUrl, {
@@ -26313,7 +26650,7 @@ async function probeTarget(run, target) {
   });
   const addBody = parseJson3(added.body)?.value;
   if (added.status === 200 || added.status === 201) {
-    await addedToCart(run, target, added, addBody);
+    await addedToCart2(run, target, added, addBody);
     return;
   }
   const code2 = refusalCode(added.status, addBody);
@@ -26321,31 +26658,31 @@ async function probeTarget(run, target) {
     run.sightings.push({
       surface: "checkout",
       scope: "variant",
-      ids: idsOf2(target),
-      purchasable: observe4(false, code2, "checkout", addUrl, added.fetchedAt)
+      ids: idsOf3(target),
+      purchasable: observe5(false, code2, "checkout", addUrl, added.fetchedAt)
     });
     return;
   }
   run.issues.push(makeIssue("checkout", "probe-failed", `${target.variantId}: add-item returned HTTP ${added.status}`, addUrl));
 }
-async function addedToCart(run, target, added, addBody) {
+async function addedToCart2(run, target, added, addBody) {
   const addUrl = `${run.base}/cart/add-item`;
   const fromAdd = pickItem(addBody, target.variantId);
   if (!fromAdd) throw new Error("add-item response does not contain the requested variant");
   const sighting = {
     surface: "checkout",
     scope: "variant",
-    ids: idsOf2(target),
-    purchasable: observe4(true, "added", "checkout", addUrl, added.fetchedAt)
+    ids: idsOf3(target),
+    purchasable: observe5(true, "added", "checkout", addUrl, added.fetchedAt)
   };
   const addPrice = readMinor(fromAdd.item.prices, "price");
   if (addPrice) {
-    sighting.price = observe4(addPrice.value, addPrice.raw, "checkout", `${addUrl}#/items/${fromAdd.index}/prices/price`, added.fetchedAt);
+    sighting.price = observe5(addPrice.value, addPrice.raw, "checkout", `${addUrl}#/items/${fromAdd.index}/prices/price`, added.fetchedAt);
   }
   try {
     await updateCustomer(run, target, sighting);
   } catch (err) {
-    if (isOwnershipRefusal(err)) throw err;
+    if (isOwnershipRefusal2(err)) throw err;
     run.issues.push(makeIssue("checkout", "probe-failed", `${target.variantId}: update-customer failed: ${errorText3(err)}`));
   }
   run.sightings.push(sighting);
@@ -26363,7 +26700,7 @@ async function updateCustomer(run, target, sighting) {
   if (!picked) throw new Error("cart response does not contain the requested variant");
   const price2 = readMinor(picked.item.prices, "price");
   if (price2) {
-    sighting.price = observe4(price2.value, price2.raw, "checkout", `${url}#/items/${picked.index}/prices/price`, res.fetchedAt);
+    sighting.price = observe5(price2.value, price2.raw, "checkout", `${url}#/items/${picked.index}/prices/price`, res.fetchedAt);
   }
   const country = run.shipTo.country.toUpperCase();
   const packages = Array.isArray(cart.shipping_rates) ? cart.shipping_rates : [];
@@ -26372,7 +26709,7 @@ async function updateCustomer(run, target, sighting) {
     const cost = readMinor(cart.totals, "total_shipping");
     if (cost) {
       const quote = { free: cost.value.units === 0, cost: cost.value, country };
-      sighting.shipping = observe4(quote, cost.raw, "checkout", `${url}#/totals/total_shipping`, res.fetchedAt);
+      sighting.shipping = observe5(quote, cost.raw, "checkout", `${url}#/totals/total_shipping`, res.fetchedAt);
     } else {
       run.issues.push(makeIssue("checkout", "probe-failed", `${target.variantId}: shipping total could not be read`));
     }
@@ -26382,17 +26719,17 @@ async function updateCustomer(run, target, sighting) {
   }
   const landed = readMinor(cart.totals, "total_price");
   if (landed) {
-    sighting.landedTotal = observe4(landed.value, landed.raw, "checkout", `${url}#/totals/total_price`, res.fetchedAt);
+    sighting.landedTotal = observe5(landed.value, landed.raw, "checkout", `${url}#/totals/total_price`, res.fetchedAt);
   }
 }
-async function emptyCart(run, variantId) {
+async function emptyCart2(run, variantId) {
   let reason;
   try {
     const res = await run.ctx.fetcher.send("DELETE", `${run.base}/cart/items`, { headers: run.headers });
     if (isOk3(res.status)) return true;
     reason = `HTTP ${res.status}`;
   } catch (err) {
-    if (isOwnershipRefusal(err)) throw err;
+    if (isOwnershipRefusal2(err)) throw err;
     reason = errorText3(err);
   }
   run.issues.push(
@@ -26400,7 +26737,7 @@ async function emptyCart(run, variantId) {
   );
   return false;
 }
-async function confirmEmpty(run) {
+async function confirmEmpty2(run) {
   let cart;
   try {
     const res = await run.ctx.fetcher.get(`${run.base}/cart`, { headers: run.headers });
@@ -26431,14 +26768,14 @@ function refusalCode(status, body) {
   if (!isRecord3(body) || typeof body.code !== "string") return void 0;
   return NOT_ABOUT_THE_PRODUCT.test(body.code) ? void 0 : body.code;
 }
-function idsOf2(target) {
+function idsOf3(target) {
   const ids = { variantId: target.variantId };
   if (nonEmptyString3(target.productId)) ids.productId = target.productId;
   if (nonEmptyString3(target.sku)) ids.sku = target.sku;
   if (nonEmptyString3(target.url)) ids.url = target.url;
   return ids;
 }
-function ownershipIssue() {
+function ownershipIssue2() {
   return {
     surface: "checkout",
     code: "ownership-not-verified",
@@ -26856,8 +27193,8 @@ async function runAudit(config, deps = {}) {
         }
       }
       if (config.cloaking) {
-        const read = new Set(sightings.filter((s) => PAGE_SURFACES2.has(s.surface)).map((s) => key(s.ids.url)));
-        const urls = pageUrls.filter((u) => read.has(key(u)));
+        const read2 = new Set(sightings.filter((s) => PAGE_SURFACES2.has(s.surface)).map((s) => key(s.ids.url)));
+        const urls = pageUrls.filter((u) => read2.has(key(u)));
         const named = typeof config.cloaking === "object" ? config.cloaking.userAgents : DEFAULT_CLOAKING_PROFILES;
         const profiles = Object.entries(named).map(([name, userAgent2]) => ({ name, userAgent: userAgent2 }));
         log("info", `cloaking: reading ${urls.length} pages as ${profiles.map((p) => p.name).join(", ")}`);
