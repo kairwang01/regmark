@@ -160,8 +160,8 @@ Which surface is believed is explicit: the checkout first, then the storefront A
 
 Reading public pages needs nobody's permission. Two checks are different. The **checkout probe** puts one unit in a cart, sets a destination, reads the price and shipping and empties the cart: that writes to the shop. The **cloaking check** fetches each page again as a browser and as a shopping agent: that poses as other clients. Both run only after you show the shop is yours.
 
-1. Choose a token of 16 or more letters, digits, `_` or `-`.
-2. Serve the line `regmark-verify=<token>` at `/.well-known/regmark.txt`, or publish it as a TXT record at `_regmark.<your-domain>`.
+1. Choose a token of 16 to 128 letters, digits, `_` or `-`.
+2. Serve the line `regmark-verify=<token>` at `/.well-known/regmark.txt`, or publish it as a TXT record at `_regmark.<store host>`. The host is the one you audit, prefix and all: `_regmark.staging.your-shop.example` for the example above.
 3. Run with `REGMARK_OWNERSHIP_TOKEN=<token>` and `--checkout`, `--cloaking` or both.
 
 There is no flag that skips this. The probe never reaches a payment step, empties the cart after every item, and says so loudly if it could not. On WooCommerce it reads the full total including tax; on Shopify it reads the line price, purchasability and shipping, because tax is only known at checkout.
@@ -169,7 +169,7 @@ There is no flag that skips this. The probe never reaches a payment step, emptie
 ## How it behaves on a site
 
 - It contacts only the hosts you name. A redirect or a link elsewhere is not followed.
-- It obeys `robots.txt` and spaces its requests a second apart.
+- It obeys `robots.txt` and spaces its requests a second apart. The checkout probe and the cloaking check, which run only once you have shown the shop is yours, act as its owner and do not consult `robots.txt`.
 - It refuses any host that resolves to a private address, so a hostile shop cannot turn an audit run inside your network into requests against it.
 - It caps response size, counted after decompression.
 - It treats everything it reads as untrusted, in every report format.

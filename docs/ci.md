@@ -373,7 +373,8 @@ findings in that run. Use the counts from your own run.
 
 Point pull requests at a staging or preview deployment. The checkout probe
 writes to the shop it is pointed at: for each sampled variant it puts one unit
-in a cart, sets the destination address, reads the total and empties the cart.
+in a cart, sets the destination address, reads the price and shipping (and,
+on WooCommerce, the total) and empties the cart.
 Each of those is a write to the shop's session store, and a shop that reserves
 stock for carts will hold that unit for a moment. On a staging copy that is
 harmless. On production it is real, if small.

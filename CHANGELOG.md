@@ -87,8 +87,13 @@ describe before, probes Shopify carts, and installs from npm.
 ### Compatibility notes
 
 - **New rule ids:** `availability.stale` and `content.cloaking`. Both are
-  skipped unless asked for, so an existing configuration reports exactly what
-  it did, apart from the corrections below.
+  skipped unless asked for. An existing configuration otherwise reports what
+  it did, apart from the corrections listed here, which can move the counts a
+  budget is set from: fewer false alarms from related-product markup (a
+  product under `isRelatedTo`, `isSimilarTo`, `isAccessoryOrSparePartFor`,
+  `isConsumableFor` or an `itemListElement` is no longer read as the page's
+  own), and a Google feed `shipping` entry with transit days, such as
+  `US:CA:Overnight:16.00 USD:1:1:2:3`, read as `16.00 USD` instead of `3`.
 - **New surfaces in reports:** `acp`, `ucp` and `mcp` appear in `surfaces`,
   findings and issues when those collectors run. The JSON schema identifier
   stays `regmark.audit/v0`.

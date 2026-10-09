@@ -260,7 +260,7 @@ exit code 2 and a message naming the mistake.
 | `fetch.timeoutMs` | integer, 1–2,147,483,647 | `15000` | The time in milliseconds allowed for one request. |
 | `fetch.allowPrivateNetwork` | boolean | `false` | Same as `--allow-private-network`. |
 | `fetch.respectRobots` | boolean | `true` | Set to `false` to skip the robots.txt check for reads. |
-| `fetch.userAgent` | string | `Regmark/0.1.0 (+https://github.com/kairwang01/regmark)` | The User-Agent header sent with each request. |
+| `fetch.userAgent` | string | `Regmark/<version> (+https://github.com/kairwang01/regmark)`, such as `Regmark/0.2.0 (...)` in this release | The User-Agent header sent with each request. |
 
 ### Complete example
 
@@ -381,7 +381,7 @@ surface is held to.
 
 | Reading | WooCommerce | Shopify |
 |---|---|---|
-| Can it be bought (`purchasable`) | `add-item` accepts the unit, or refuses it with an error code, which is kept | `add.js` accepts the unit, or refuses it with a `422` `Cart Error`, whose text is kept |
+| Can it be bought (`purchasable`) | `add-item` accepts the unit, or refuses it with an error code, which is kept | `add.js` accepts the unit, or refuses it with a `422` or `404` `Cart Error`, whose text is kept |
 | Price | the cart line's price, once the destination is set | the added line's `final_price`: the unit price after any automatic discount on the line |
 | Shipping | the cart's shipping total for the destination | the cheapest rate offered for the destination |
 | Landed total | the cart's total, with tax as the shop works it out for the destination | not read: see **Tax** below |
@@ -450,11 +450,17 @@ one it accepts, spaced like every other request.
   Shopify challenges automated cart traffic, more often from hosting and VPN
   networks, which is where CI runners are, so a probe run from CI can be
   stopped this way.
-- **Refusals.** Only a `422` with the message `Cart Error` from `add.js`
-  counts as the cart refusing a product: sold out, no more stock to add, not
-  sold in this market, or not published to the online store
-  (`Cannot find variant`). Any other error is a `probe-failed` issue for that
-  variant, and the probe goes on to the next.
+- **Refusals.** Only a `422` or `404` with the message `Cart Error` and a
+  description from `add.js` counts as the cart refusing a product: sold out,
+  no more stock to add, not sold in this market, or not published to the
+  online store (`Cannot find variant`). Any other error is a `probe-failed`
+  issue for that variant, and the probe goes on to the next. A product sold
+  only by subscription refuses the plain add the probe makes, so after a
+  refusal the probe reads the product's `/products/<handle>.js`: when it says
+  `requires_selling_plan`, the refusal is a `probe-failed` issue, not a
+  finding that the product cannot be bought.
+- **Pacing.** Rates are checked up to four times, waiting 0.5, 1, 2 and 4
+  seconds before each check, on top of the fetcher's own spacing.
 - **Shipping.** Rates that are still not ready after four checks, or that
   Shopify fails to calculate, give `probe-failed`. No rate for the
   destination, or an address the shop refuses, such as a postcode that is not
@@ -604,7 +610,7 @@ Every request goes through one fetcher. The table gives the values in
 | robots.txt: `respectRobots` | `true` | yes, `fetch.respectRobots` | Whether robots.txt is obeyed for reads. |
 | Robots agent: `agentToken` | `Regmark` | no | The name matched against robots.txt groups. |
 | Private network: `allowPrivateNetwork` | `false` | yes, `fetch.allowPrivateNetwork` | Whether hosts on private addresses may be contacted. |
-| User-Agent: `userAgent` | `Regmark/0.1.0 (+https://github.com/kairwang01/regmark)` | yes, `fetch.userAgent` | The User-Agent header. |
+| User-Agent: `userAgent` | `Regmark/<version> (+https://github.com/kairwang01/regmark)` | yes, `fetch.userAgent` | The User-Agent header. |
 
 ### Host allowlist
 

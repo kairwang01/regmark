@@ -64,7 +64,7 @@ Other
 The ownership token is read from REGMARK_OWNERSHIP_TOKEN. Put the line
 regmark-verify=<token> in /.well-known/regmark.txt on the shop.
 
-Exit code: 0 within budget, 1 over budget, 2 the audit could not run or read no product.
+Exit code: 0 within budget, 1 over budget, 2 the audit could not run, read no product, or (with --strict) had a collection issue.
 Documentation: ${DOCS}
 `;
 
@@ -169,7 +169,7 @@ async function init(target: string | undefined): Promise<number> {
     regmark audit --html report.html   and keep a report to share
 
   To let Regmark compare against real checkout totals (WooCommerce or Shopify):
-    1. choose a token of 16 or more letters and digits
+    1. choose a token of 16 to 128 letters, digits, _ or -
     2. serve the line  regmark-verify=<token>  at ${store}/.well-known/regmark.txt
     3. REGMARK_OWNERSHIP_TOKEN=<token> regmark audit --checkout
 

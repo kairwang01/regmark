@@ -242,7 +242,7 @@ hold:
 Needs `checkout`.
 
 A refusal is the cart's own answer about the product. On WooCommerce it is the
-Store API's error code; on Shopify it is a `422` `Cart Error` from `add.js`,
+Store API's error code; on Shopify it is a `422` or `404` `Cart Error` from `add.js`,
 and `actual.raw` is its text, such as
 `The product 'Classic Tee' is already sold out.` A challenge from the shop's
 bot protection, a redirect or a page where the cart's answer should be is not

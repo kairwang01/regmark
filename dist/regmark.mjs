@@ -26171,13 +26171,16 @@ function expired(attributes2, now) {
 var NotTheCart = class extends Error {
 };
 var CHALLENGE_STATUSES = /* @__PURE__ */ new Set([403, 429, 430]);
-var RATE_CHECKS = 4;
+var RATE_WAITS_MS = [500, 1e3, 2e3, 4e3];
+var RATE_CHECKS = RATE_WAITS_MS.length;
+var sleep2 = (ms) => new Promise((wake) => setTimeout(wake, ms));
 async function probeShopifyCart(ctx, targets, options) {
   if (targets.length === 0) return { sightings: [], issues: [] };
   const run = {
     ctx,
     origin: ctx.store.origin,
     shipTo: options.shipTo,
+    wait: options.wait ?? sleep2,
     cookies: /* @__PURE__ */ new Map(),
     currency: null,
     dirty: false,
@@ -26242,6 +26245,10 @@ async function probeTarget(run, target) {
   }
   const refusal = cartRefusal(added.status, body);
   if (refusal !== void 0) {
+    if (await needsSellingPlan(run, target)) {
+      run.issues.push(issue3("probe-failed", `${target.variantId}: the cart refused it (${refusal}), and it is sold only by subscription, which the probe does not add; whether it can be bought was not judged`));
+      return;
+    }
     run.sightings.push({
       surface: "checkout",
       scope: "variant",
@@ -26251,6 +26258,23 @@ async function probeTarget(run, target) {
     return;
   }
   throw new Error(`add.js returned HTTP ${added.status}`);
+}
+async function needsSellingPlan(run, target) {
+  let path2;
+  try {
+    path2 = new URL(target.url ?? "").pathname.replace(/\/$/, "");
+  } catch {
+    return false;
+  }
+  if (!/^\/products\/[^/]+$/.test(path2)) return false;
+  try {
+    const res = await read(run, `${run.origin}${path2}.js`);
+    const product3 = isOk2(res.status) ? parseJson2(res.body)?.value : void 0;
+    return isRecord2(product3) && product3.requires_selling_plan === true;
+  } catch (err) {
+    if (isOwnershipRefusal(err)) throw err;
+    return false;
+  }
 }
 async function addedToCart(run, target, added, body) {
   const addUrl = `${run.origin}/cart/add.js`;
@@ -26283,6 +26307,7 @@ async function estimateShipping(run, target, sighting) {
   const prepared = await write(run, `${run.origin}/cart/prepare_shipping_rates.json?${query}`);
   let answer2 = rateAnswer(prepared, "prepare_shipping_rates.json");
   for (let check = 0; answer2.kind === "pending" && check < RATE_CHECKS; check++) {
+    await run.wait(RATE_WAITS_MS[check]);
     answer2 = rateAnswer(await read(run, `${run.origin}/cart/async_shipping_rates.json?${query}`), "async_shipping_rates.json");
   }
   const country = run.shipTo.country.trim().toUpperCase();
@@ -26314,12 +26339,13 @@ function rateAnswer(res, step) {
   if (res.status < 500 && isRecord2(body)) return { kind: "refused", body, status: res.status };
   throw new Error(`${step} returned HTTP ${res.status}`);
 }
+var GENERAL_ERROR_KEYS = /* @__PURE__ */ new Set(["error", "errors", "status", "message", "description"]);
 function rateRefusal(body, status, country, target) {
   const general = [];
   const fields2 = [];
   for (const [key, value] of Object.entries(body)) {
     const texts = (Array.isArray(value) ? value : [value]).filter(nonEmptyString2);
-    if (key === "error" || key === "errors") general.push(...texts);
+    if (GENERAL_ERROR_KEYS.has(key)) general.push(...texts);
     else fields2.push(...texts.map((text7) => `${key} ${text7}`));
   }
   if (fields2.length > 0) return issue3("no-shipping-rate", `no shipping rate for ${country} on ${labelOf(target)}: ${fields2.join("; ")}`);
@@ -27416,7 +27442,7 @@ Other
 The ownership token is read from REGMARK_OWNERSHIP_TOKEN. Put the line
 regmark-verify=<token> in /.well-known/regmark.txt on the shop.
 
-Exit code: 0 within budget, 1 over budget, 2 the audit could not run or read no product.
+Exit code: 0 within budget, 1 over budget, 2 the audit could not run, read no product, or (with --strict) had a collection issue.
 Documentation: ${DOCS}
 `;
 async function version() {
@@ -27520,7 +27546,7 @@ async function init(target) {
     regmark audit --html report.html   and keep a report to share
 
   To let Regmark compare against real checkout totals (WooCommerce or Shopify):
-    1. choose a token of 16 or more letters and digits
+    1. choose a token of 16 to 128 letters, digits, _ or -
     2. serve the line  regmark-verify=<token>  at ${store}/.well-known/regmark.txt
     3. REGMARK_OWNERSHIP_TOKEN=<token> regmark audit --checkout
 
