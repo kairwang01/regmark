@@ -124,6 +124,9 @@ locator in `properties`.
 | `no-shipping-rate` | checkout | The shop offered no shipping rate for the destination. |
 | `cart-not-emptied` | checkout | The probe could not empty the cart, or could not confirm that it is empty. The message says to check the shop admin. |
 | `ownership-not-verified` | checkout | The probe was skipped, because ownership of the shop was not shown. |
+| `ownership-not-verified` | page | The cloaking check was skipped, because ownership of the shop was not shown. |
+| `view-failed` | page | The cloaking check could not read a page as one client profile: an HTTP error status, a refusal or a network error. The message starts with `as <profile>:`. |
+| `view-redirected` | page | A page read as one client profile was answered from another origin, where Regmark does not pose as the profile, so it is not compared. |
 | `probe-unsupported` | checkout | The probe was skipped, because the platform is not WooCommerce. |
 
 A collection issue does not change the exit code by itself. It does when it

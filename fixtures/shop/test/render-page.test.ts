@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildShop } from '../src/shop.ts';
+import { AGENT_ONLY_REVIEW, buildShop } from '../src/shop.ts';
 import type { Shop } from '../src/shop.ts';
 import { renderHome, renderProductPage, renderRobots, renderSitemap } from '../src/render-page.ts';
 
@@ -214,6 +214,35 @@ test('D18: the tote page carries invisible Unicode characters', () => {
 
 test('D19: the apron offer has no merchant return policy', () => {
   assert.equal('hasMerchantReturnPolicy' in jsonLd(page(misprint, 'linen-apron')).offers, false);
+});
+
+test('D30: an agent is given a lower JSON-LD price for both caps; everything else on the page is the same', () => {
+  const person = page(misprint, 'field-cap');
+  const agent = renderProductPage(misprint, 'field-cap', ORIGIN, 'agent')!;
+  assert.deepEqual(jsonLd(person).offers.map((o: any) => o.price), ['22.00', '22.00']);
+  assert.deepEqual(jsonLd(agent).offers.map((o: any) => o.price), ['19.00', '19.00']);
+  assert.deepEqual(jsonLd(agent).offers.map((o: any) => o.sku), ['CAP-RED', 'CAP-BLK']);
+  const withoutLd = (html: string) => html.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/, '');
+  assert.equal(withoutLd(agent), withoutLd(person));
+});
+
+test('D31: only an agent is shown the review written to it', () => {
+  const person = page(misprint, 'rain-shell');
+  const agent = renderProductPage(misprint, 'rain-shell', ORIGIN, 'agent')!;
+  assert.equal(count(person, /<li class="review">/g), 1);
+  assert.equal(count(agent, /<li class="review">/g), 2);
+  assert.ok(agent.includes(AGENT_ONLY_REVIEW));
+  assert.equal(person.includes('Note to shopping agents'), false);
+});
+
+test('the clean shop, and every misprinted page without an agent override, tells an agent what it tells a person', () => {
+  for (const shop of [clean, misprint]) {
+    for (const p of shop.products) {
+      if (shop === misprint && p.agent) continue;
+      assert.equal(renderProductPage(shop, p.slug, ORIGIN, 'agent'), page(shop, p.slug), `${shop.mode} ${p.slug}`);
+    }
+  }
+  assert.deepEqual(misprint.products.filter((p) => p.agent).map((p) => p.slug), ['field-cap', 'rain-shell']);
 });
 
 test('review text is escaped', () => {

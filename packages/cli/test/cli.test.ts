@@ -272,7 +272,7 @@ test('demo runs the bundled shop and writes an HTML report with no local address
   assert.equal(res.code, 0, res.stderr);
   assert.ok(res.stdout.includes('demo-shop.example'));
   assert.ok(res.stdout.includes('price.mismatch'));
-  assert.ok(res.stdout.includes('12 errors, 10 warnings, 1 note. 7 rules over budget.'));
+  assert.ok(res.stdout.includes('14 errors, 10 warnings, 1 note. 8 rules over budget.'));
   assert.ok(!res.stdout.includes('127.0.0.1'));
 
   const html = await readFile(path.join(dir, 'regmark-demo.html'), 'utf8');

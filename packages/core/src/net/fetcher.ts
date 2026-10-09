@@ -283,10 +283,11 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
     async get(url: string, init: RequestOptions = {}): Promise<Fetched> {
       let u = parse(url);
       let headers = callerHeaders(u, init);
+      let owner = init.asOwner === true;
       for (let hop = 0; ; hop++) {
         assertAllowedHost(u);
         // robots.txt speaks to crawlers. The owner reading their own shop is not one.
-        if (!init.asOwner) await assertRobots(u);
+        if (!owner) await assertRobots(u);
         await pace(u);
         const raw = await request('GET', u, headers);
         const location = raw.headers['location'];
@@ -302,7 +303,13 @@ export function createFetcher(options: Partial<FetchPolicy> & { hosts: readonly 
         if (hop >= policy.maxRedirects) throw new FetchRefused('too-many-redirects', url);
         // An allowlisted feed host is not entitled to a shop's credentials or
         // cart token. Only same-origin redirects may inherit caller headers.
-        if (next.origin !== u.origin) headers = {};
+        // Nor is it the shop whose ownership was shown, so an owner read
+        // becomes an ordinary one there: robots.txt applies again, and the
+        // User-Agent is Regmark's own.
+        if (next.origin !== u.origin) {
+          headers = {};
+          owner = false;
+        }
         u = next;
       }
     },

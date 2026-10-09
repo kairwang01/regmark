@@ -11,7 +11,7 @@
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
-import { OWNERSHIP_TOKEN, startShop } from '../fixtures/shop/src/index.ts';
+import { AGENT_ONLY_REVIEW, AGENT_TOKENS, OWNERSHIP_TOKEN, startShop } from '../fixtures/shop/src/index.ts';
 import type { ExpectedFinding, RunningShop } from '../fixtures/shop/src/index.ts';
 import { runAudit } from '../packages/cli/src/index.ts';
 import type { AuditConfig } from '../packages/cli/src/index.ts';
@@ -32,10 +32,11 @@ after(async () => {
 const config = (origin: string, extra: Partial<AuditConfig> = {}): AuditConfig => ({
   store: origin,
   feed: '/feeds/google.xml',
+  maxAge: { feed: '24h' },
   platform: 'woocommerce',
   checkout: { shipTo: { country: 'US', postcode: '94103' } },
+  cloaking: true,
   ownershipToken: OWNERSHIP_TOKEN,
-  maxAge: { feed: '24h' },
   sample: 50,
   fetch: { allowPrivateNetwork: true, minIntervalMs: 0 },
   ...extra,
@@ -47,6 +48,9 @@ const matches = (f: Finding, e: ExpectedFinding): boolean =>
   f.rule === e.rule && f.product.endsWith(`/product/${e.product}`) && (f.variant ?? null) === (e.variant ?? null) && (f.surface ?? null) === (e.surface ?? null);
 
 const show = (f: Finding): string => `${f.rule}  ${f.product.split('/').pop()}  ${f.variant ?? '-'}  ${f.surface ?? '-'}  ${f.message}`;
+
+/** Whether a request posed as a shopping agent, as the fixture shop decides it. */
+const asAgent = (userAgent: string): boolean => AGENT_TOKENS.some((token) => userAgent.includes(token));
 
 test('misprinted shop: every seeded defect is found and nothing else is reported', async (t) => {
   const result = await audit(misprint);
@@ -68,6 +72,22 @@ test('misprinted shop: every seeded defect is found and nothing else is reported
   assert.equal(result.counts.variants, 20, '19 real variants plus the feed-only scarf');
   // The only thing that may get in the way of reading this shop is the page it no longer has.
   assert.deepEqual(result.issues.map((i) => `${i.surface} ${i.code}`), ['page not-found']);
+
+  // D30: the cap's JSON-LD told the agent profile 19.00 and the browser profile 22.00.
+  const cloaked = result.findings.filter((f) => f.rule === 'content.cloaking');
+  assert.deepEqual(cloaked.map((f) => [f.message, f.expected?.locator.endsWith(' [via browser]'), f.actual?.locator.endsWith(' [via agent]')]), [
+    ['a client identifying as agent was told 19.00 USD in jsonld; a browser 22.00 USD', true, true],
+  ]);
+  // D31: the review only agents are shown is reported once, from the agent's view of the page.
+  const planted = result.findings.filter((f) => f.rule === 'content.instruction-like' && f.product.endsWith('/product/rain-shell'));
+  assert.deepEqual(
+    planted.map((f) => [f.message, f.actual?.value, f.actual?.locator.slice(misprint.origin.length)]),
+    [[
+      `text addressed to a language model (addressed-to-model): "${AGENT_ONLY_REVIEW}"`,
+      AGENT_ONLY_REVIEW,
+      '/product/rain-shell/#css(#reviews .comment-text .description) [via agent]',
+    ]],
+  );
 });
 
 test('clean shop: no findings of any severity, and no collection issues', async (t) => {
@@ -79,9 +99,7 @@ test('clean shop: no findings of any severity, and no collection issues', async 
   assert.equal(result.ok, true);
   assert.equal(result.counts.products, 10);
   assert.equal(result.counts.variants, 19);
-  // The opt-in checks are skipped until their settings are given; every other rule ran.
-  const optIn = new Set(['availability.stale', 'content.cloaking']);
-  assert.ok(result.rules.every((r) => r.skipped === undefined || optIn.has(r.id)), 'every rule ran');
+  assert.ok(result.rules.every((r) => r.skipped === undefined), 'every rule ran');
 });
 
 test('the checkout probe leaves no cart with anything in it', () => {
@@ -92,15 +110,27 @@ test('the checkout probe leaves no cart with anything in it', () => {
   }
 });
 
-test('without an ownership token the probe does not write, and the checkout rules are skipped', async () => {
+test('without an ownership token the probe does not write, nothing poses as another client, and those rules are skipped', async () => {
   const before = clean.requests.filter((r) => r.startsWith('POST') || r.startsWith('DELETE')).length;
+  const seen = clean.userAgents.length;
   const result = await audit(clean, { ownershipToken: undefined });
   const after = clean.requests.filter((r) => r.startsWith('POST') || r.startsWith('DELETE')).length;
   assert.equal(after, before, 'no state-changing request reached the shop');
-  assert.deepEqual(result.issues.map((i) => i.code), ['ownership-not-verified']);
+  assert.deepEqual(clean.userAgents.slice(seen).filter((ua) => !ua.startsWith('Regmark/')), [], 'every request said it was Regmark');
+  assert.deepEqual(result.issues.map((i) => `${i.surface} ${i.code}`), ['checkout ownership-not-verified', 'page ownership-not-verified']);
   assert.ok(!result.surfaces.includes('checkout'));
-  assert.deepEqual(result.rules.filter((r) => r.skipped).map((r) => r.id).sort(), ['availability.stale', 'content.cloaking', 'shipping.mismatch', 'shipping.undisclosed', 'variant.unpurchasable']);
+  assert.deepEqual(result.rules.filter((r) => r.skipped).map((r) => r.id).sort(), ['content.cloaking', 'shipping.mismatch', 'shipping.undisclosed', 'variant.unpurchasable']);
   assert.deepEqual(result.findings, []);
+});
+
+test('the cloaking check reads each sampled page once as a browser and once as an agent', () => {
+  for (const shop of [misprint, clean]) {
+    const pages = (pick: (ua: string) => boolean) =>
+      shop.requests.filter((r, i) => r.startsWith('GET /product/') && pick(shop.userAgents[i]!)).length;
+    const asBrowser = pages((ua) => ua.includes('Chrome/'));
+    assert.ok(asBrowser > 0, `${shop.shop.mode}: the browser profile was used`);
+    assert.equal(pages(asAgent), asBrowser, `${shop.shop.mode}: one agent read for every browser read`);
+  }
 });
 
 test('read-only audit (no platform, no checkout) of the misprinted shop finds what can be seen from outside', async (t) => {

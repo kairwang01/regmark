@@ -263,10 +263,17 @@ For each product with at least one real variant: fire once (no `variant`, no
 
 ## Content hygiene rules
 
-These read `product.text`, a list of `TextSample`. All of them produce
+The first three read `product.text`, a list of `TextSample`. They produce
 product-level findings with `surface: 'page'`. `actual` evidence: `value` is the
 offending text cut to 120 characters, `raw` the same, `locator` the sample's
 locator.
+
+When the cloaking check ran, `product.text` also holds the text that only one
+client was shown: each sample a view has that the ordinary read does not (same
+`field`, same text) is added once, with ` [via <profile>]` after its locator.
+These three rules read it like any other sample, so an instruction served only
+to agents is reported, and a sentence every client sees is reported once.
+`content.cloaking` reads the views themselves.
 
 ### `content.hidden-text` (warn)
 *Text kept in the page but deliberately kept from the eye.*
@@ -330,7 +337,57 @@ Fire once per sample when either holds:
 `value` in the evidence should name what was found, for example
 `7 tag characters, 3 zero-width spaces`, not echo the invisible text.
 
-## Not in this release
+### `content.cloaking` (error)
+*A page tells an agent a different price or stock level than a browser.*
 
-`content.cloaking` is planned. It needs information the collectors do not
-gather yet: a second fetch with a different user agent.
+Runs only when the cloaking check ran (`--cloaking`, which needs verified
+ownership); otherwise it is skipped with `needs --cloaking`. The check reads
+each sampled page again once per client profile and keeps each reading as a
+view: sightings with `via` set to the profile name, gathered in
+`product.alternateViews` and kept out of the offer facts.
+
+The **reference** for a product is its `browser` view when there is one,
+otherwise its ordinary sightings (the read made with Regmark's own User-Agent).
+Every other view is compared with it. The reference is not itself compared with
+anything.
+
+For each view `V`, each surface `S` among `page`, `jsonld`, `microdata` and
+`opengraph`, and each of two facts, price and buyability: take the statements
+of that fact on `S` from `V` and from the reference. A buyability statement is
+`isBuyable(availability)`, and `unknown` is no statement. Then, for each
+statement `v` from the view, in order:
+
+- If the reference has sightings on `S` that are the same item as `v`, `v` is
+  held to the statements among them. Two sightings are the same item when the
+  first kind of identifier both carry agrees: SKU (by `skuKey`), else GTIN (by
+  `gtinKey`), else option set (by `optionsKey`). When those sightings state
+  nothing about the fact, `v` is skipped.
+- Otherwise `v` is held to every statement of the fact the reference makes on
+  `S`.
+- `v` is contradicted when it agrees with none of the statements it is held
+  to. Prices agree when `sameMoney` is true, so a different currency is a
+  different price and a missing currency is not. Buyability agrees when it is
+  equal.
+
+Fire for the first contradicted statement, once per `(view, surface, fact)`,
+without `variant`. `surface` is `S`; `expected` is the reference statement it
+was held to (the first one), `actual` is `v`. Both locators end in
+` [via <profile>]` when they come from a view. The message names the view, for
+example `a client identifying as agent was told 19.00 USD in jsonld; a browser
+22.00 USD`; with no browser view the reference is called `Regmark itself`.
+
+It stays silent when:
+
+- a view leaves a fact out, or leaves a surface out altogether. A lighter page
+  for bots is not a different offer;
+- either side's stock level is `unknown`, or the reference names the item and
+  states nothing about the fact;
+- the same facts come in another order, or a view states for the whole product
+  a price the reference gives one of the variants;
+- only markup or text differs: CSRF tokens, timestamps, tracking scripts,
+  related products. Text is the other content rules' business;
+- one surface in the view disagrees with another surface in the reference.
+  Each surface is compared only with itself;
+- a view could not be read for the product, or only the reference was read.
+  A page read through a redirect to another origin was not read as the client,
+  and is not a view.

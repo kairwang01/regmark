@@ -62,3 +62,34 @@ test('a duration is a whole number of minutes, hours or days', () => {
   assert.equal(parseDuration(24), undefined);
   assert.equal(parseDuration(undefined), undefined);
 });
+
+test('malformed cloaking profiles are rejected before any network request', async () => {
+  let requests = 0;
+  const server = createServer((_req, res) => { requests++; res.end(''); });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const store = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const cases: Array<[unknown, RegExp]> = [
+    ['yes', /cloaking must be an object/],
+    [{ profiles: { agent: 'ChatGPT-User/1.0' } }, /unknown cloaking field "profiles"/],
+    [{ userAgents: [] }, /cloaking.userAgents must be an object/],
+    [{ userAgents: {} }, /must name at least one client/],
+    [{ userAgents: { Agent: 'ChatGPT-User/1.0' } }, /short lower-case name/],
+    [{ userAgents: { 'agent one': 'ChatGPT-User/1.0' } }, /short lower-case name/],
+    [{ userAgents: { agent: '' } }, /cloaking.userAgents.agent must be a non-empty string/],
+    [{ userAgents: { agent: 42 } }, /cloaking.userAgents.agent must be a non-empty string/],
+    // A header injection through a User-Agent would let a config file send any header it liked.
+    [{ userAgents: { agent: 'ChatGPT-User/1.0\r\nx-forwarded-for: 10.0.0.1' } }, /printable ASCII/],
+  ];
+  try {
+    for (const [cloaking, message] of cases) {
+      await assert.rejects(runAudit({ store, platform: 'auto', fetch: { allowPrivateNetwork: true, minIntervalMs: 0 }, cloaking } as AuditConfig), (err: unknown) => {
+        assert.ok(err instanceof ConfigError, String(err));
+        assert.match(err.message, message);
+        return true;
+      });
+    }
+    assert.equal(requests, 0);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});

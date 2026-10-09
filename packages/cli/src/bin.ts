@@ -206,6 +206,7 @@ async function demo(clean: boolean, html: string | undefined, color: boolean): P
         feed: '/feeds/google.xml',
         platform: 'woocommerce',
         checkout: { shipTo: { country: 'US', postcode: '94103' } },
+        cloaking: true,
         ownershipToken: OWNERSHIP_TOKEN,
         maxAge: { feed: '24h' },
         sample: 50,
