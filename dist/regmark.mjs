@@ -726,9 +726,11 @@ function cleanProduct(p, now) {
       listPrice: first2.listPrice,
       stock: firstStock
     },
+    description: p.description,
     og: { price: first2.price, currency: CURRENCY2, stock: firstStock },
     jsonld: p.variants.map((v) => says3(v, now)),
     feed: p.variants.map((v) => ({ ...says3(v, now), returnDays: null })),
+    acp: p.variants.map((v) => ({ ...says3(v, now), returnDays: null })),
     platform: p.variants.map((v) => ({ ...says3(v, now), gtin: null, shipping: null, returnDays: null })),
     checkout: p.variants.map((v) => ({ sku: v.sku, wooId: v.wooId, price: v.price, refuses: v.inStock ? null : "out_of_stock" }))
   };
@@ -875,6 +877,7 @@ var init_shop = __esm({
           const p = product2(shop, "enamel-mug");
           variant(p.jsonld, "MUG-WHT").shipping = null;
           variant(p.feed, "MUG-WHT").shipping = null;
+          variant(p.acp, "MUG-WHT").shipping = null;
         }
       },
       {
@@ -978,6 +981,22 @@ var init_shop = __esm({
           const p = product2(shop, "rain-shell");
           p.agent = { ...p.agent, reviews: [...p.page.reviews, AGENT_ONLY_REVIEW] };
         }
+      },
+      {
+        id: "D21",
+        summary: "The ACP feed still offers SOCK-M at its old price; the cart charges more",
+        expected: [{ rule: "price.mismatch", product: "trail-socks", variant: "SOCK-M", surface: "acp" }],
+        apply(shop) {
+          variant(product2(shop, "trail-socks").acp, "SOCK-M").price = "10.00";
+        }
+      },
+      {
+        id: "D22",
+        summary: "The ACP feed tells shopping agents BEANIE-NVY is in stock; it is sold out",
+        expected: [{ rule: "availability.mismatch", product: "wool-beanie", variant: "BEANIE-NVY", surface: "acp" }],
+        apply(shop) {
+          variant(product2(shop, "wool-beanie").acp, "BEANIE-NVY").stock = "in_stock";
+        }
       }
     ];
   }
@@ -990,7 +1009,7 @@ function xml3(s) {
 function isoDate2(d) {
   return d.toISOString().slice(0, 10);
 }
-function money(amount, currency) {
+function money2(amount, currency) {
   return xml3(currency === null ? amount : `${amount} ${currency}`);
 }
 function variantUrl(origin, p, v) {
@@ -1001,10 +1020,10 @@ function variantUrl(origin, p, v) {
   return `${base}?${query}`;
 }
 function priceLines(shop, v) {
-  if (v.listPrice === null) return [`<g:price>${money(v.price, v.currency)}</g:price>`];
+  if (v.listPrice === null) return [`<g:price>${money2(v.price, v.currency)}</g:price>`];
   const lines = [
-    `<g:price>${money(v.listPrice, v.currency)}</g:price>`,
-    `<g:sale_price>${money(v.price, v.currency)}</g:sale_price>`
+    `<g:price>${money2(v.listPrice, v.currency)}</g:price>`,
+    `<g:sale_price>${money2(v.price, v.currency)}</g:sale_price>`
   ];
   if (v.saleEnds !== null) {
     const start = `${isoDate2(new Date(shop.now.getTime() - 7 * 864e5))}T00:00:00Z`;
@@ -1077,6 +1096,59 @@ ${body}
 var init_render_feed = __esm({
   "fixtures/shop/src/render-feed.ts"() {
     "use strict";
+  }
+});
+
+// fixtures/shop/src/render-acp.ts
+function record2(shop, p, v, origin) {
+  const optionValues = Object.values(v.options);
+  const title = optionValues.length > 0 ? `${p.title} - ${optionValues.join(" / ")}` : p.title;
+  const grouped = p.acp.length > 1;
+  const out2 = { item_id: v.sku };
+  if (grouped) {
+    out2.group_id = p.slug;
+    out2.listing_has_variations = true;
+    out2.variant_dict = Object.fromEntries(Object.entries(v.options).map(([name, value]) => [name.toLowerCase(), value]));
+  }
+  Object.assign(out2, {
+    title,
+    description: p.description,
+    url: variantUrl(origin, p, v),
+    brand: p.brand,
+    seller_name: "Northfold",
+    image_url: `${origin}/images/${p.slug}.jpg`
+  });
+  if (v.listPrice === null) {
+    out2.price = money3(v.price, v.currency);
+  } else {
+    out2.price = money3(v.listPrice, v.currency);
+    out2.sale_price = money3(v.price, v.currency);
+  }
+  out2.availability = v.stock;
+  if (v.gtin !== null) out2.gtin = v.gtin;
+  if (v.mpn !== null) out2.mpn = v.mpn;
+  if (v.shipping !== null) out2.shipping_price = money3(v.shipping.cost, shop.currency);
+  if (v.returnDays !== null) {
+    out2.accepts_returns = true;
+    out2.return_deadline_in_days = v.returnDays;
+    out2.return_policy = `${origin}/returns/`;
+  }
+  return out2;
+}
+function renderAcpFeed(shop, origin) {
+  const lines = [];
+  for (const p of shop.products) {
+    for (const v of p.acp) lines.push(JSON.stringify(record2(shop, p, v, origin)));
+  }
+  return lines.map((line) => `${line}
+`).join("");
+}
+var money3;
+var init_render_acp = __esm({
+  "fixtures/shop/src/render-acp.ts"() {
+    "use strict";
+    init_render_feed();
+    money3 = (amount, currency) => currency === null ? amount : `${amount} ${currency}`;
   }
 });
 
@@ -1176,13 +1248,13 @@ function jsonLd(shop, p, origin) {
     })
   };
 }
-function money2(amount) {
+function money4(amount) {
   return `<span class="woocommerce-Price-amount amount"><bdi><span class="woocommerce-Price-currencySymbol">$</span>${esc2(amount)}</bdi></span>`;
 }
 function priceMarkup(p) {
   const { price, listPrice } = p.page;
-  if (listPrice === null) return `<p class="price">${money2(price)}</p>`;
-  return `<p class="price"><del aria-hidden="true">${money2(listPrice)}</del> <span class="screen-reader-text">Original price was: ${esc2(listPrice)}.</span><ins aria-hidden="true">${money2(price)}</ins><span class="screen-reader-text">Current price is: ${esc2(price)}.</span></p>`;
+  if (listPrice === null) return `<p class="price">${money4(price)}</p>`;
+  return `<p class="price"><del aria-hidden="true">${money4(listPrice)}</del> <span class="screen-reader-text">Original price was: ${esc2(listPrice)}.</span><ins aria-hidden="true">${money4(price)}</ins><span class="screen-reader-text">Current price is: ${esc2(price)}.</span></p>`;
 }
 function variationsForm(p) {
   const names = optionNames(p.platform);
@@ -1207,7 +1279,7 @@ function relatedSection(shop, index2, origin) {
   const picks = [1, 2].map((k) => (index2 + k) % n).filter((i) => i !== index2);
   const items = picks.map((i) => {
     const other = shop.products[i];
-    return `<li class="product"><a href="${esc2(productUrl(origin, other.slug))}"><h2 class="woocommerce-loop-product__title">${esc2(other.title)}</h2><span class="price">${money2(other.page.price)}</span></a></li>`;
+    return `<li class="product"><a href="${esc2(productUrl(origin, other.slug))}"><h2 class="woocommerce-loop-product__title">${esc2(other.title)}</h2><span class="price">${money4(other.page.price)}</span></a></li>`;
   });
   return `<section class="related products"><h2>Related products</h2><ul class="products">${items.join("")}</ul></section>`;
 }
@@ -1223,7 +1295,7 @@ function renderProductPage(shop, slug, origin, client = "person") {
   const ld = embedJson(jsonLd(shop, p, origin));
   const inStock = p.page.stock === "in_stock";
   const reviews = p.page.reviews.map(
-    (text6) => `<li class="review"><div class="comment-text"><div class="description"><p>${esc2(text6)}</p></div></div></li>`
+    (text7) => `<li class="review"><div class="comment-text"><div class="description"><p>${esc2(text7)}</p></div></div></li>`
   );
   return [
     "<!doctype html>",
@@ -1622,6 +1694,7 @@ var init_store_api = __esm({
 
 // fixtures/shop/src/server.ts
 import { createServer } from "node:http";
+import { gzipSync } from "node:zlib";
 async function startShop(options) {
   const shop = buildShop(options.mode, options.now);
   const api = createStoreApi(shop);
@@ -1675,6 +1748,8 @@ async function route(req, res, env) {
   if (path2 === "/robots.txt") return send(res, 200, TEXT, renderRobots(origin));
   if (path2 === "/sitemap.xml") return send(res, 200, XML2, renderSitemap(shop, origin));
   if (path2 === "/feeds/google.xml") return send(res, 200, XML2, renderFeed(shop, origin));
+  if (path2 === "/feeds/acp.jsonl") return send(res, 200, JSONL, renderAcpFeed(shop, origin));
+  if (path2 === "/feeds/acp.jsonl.gz") return send(res, 200, "application/gzip", gzipSync(renderAcpFeed(shop, origin)));
   if (path2 === "/.well-known/regmark.txt") return send(res, 200, TEXT, `regmark-verify=${shop.token}
 `);
   if (path2 === "/__regmark/expected.json") {
@@ -1695,7 +1770,7 @@ async function route(req, res, env) {
   return notFound(res);
 }
 async function storeRoute(req, res, url, env) {
-  const { tooLarge, text: text6 } = await readBody(req);
+  const { tooLarge, text: text7 } = await readBody(req);
   if (tooLarge) {
     return sendJson(res, 413, {
       code: "rest_payload_too_large",
@@ -1704,9 +1779,9 @@ async function storeRoute(req, res, url, env) {
     });
   }
   let body;
-  if (text6.length > 0) {
+  if (text7.length > 0) {
     try {
-      body = JSON.parse(text6);
+      body = JSON.parse(text7);
     } catch {
       return sendJson(res, 400, { code: "rest_invalid_json", message: "Invalid JSON body passed.", data: { status: 400 } });
     }
@@ -1751,11 +1826,12 @@ function sendJson(res, status, json) {
 function notFound(res) {
   send(res, 404, HTML, '<!doctype html><meta charset="utf-8"><title>Not found</title><h1>Not found</h1>\n');
 }
-var STORE_BASE, MAX_BODY_BYTES, HTML, TEXT, XML2, JSON_TYPE;
+var STORE_BASE, MAX_BODY_BYTES, HTML, TEXT, XML2, JSON_TYPE, JSONL;
 var init_server = __esm({
   "fixtures/shop/src/server.ts"() {
     "use strict";
     init_shop();
+    init_render_acp();
     init_render_feed();
     init_render_page();
     init_store_api();
@@ -1765,6 +1841,7 @@ var init_server = __esm({
     TEXT = "text/plain; charset=utf-8";
     XML2 = "application/xml; charset=utf-8";
     JSON_TYPE = "application/json; charset=utf-8";
+    JSONL = "application/jsonl; charset=utf-8";
   }
 });
 
@@ -1882,18 +1959,24 @@ function decimalToUnits(dec) {
   if (frac.length > 4 && frac.charCodeAt(4) >= 53) units += 1;
   return Number.isSafeInteger(units) ? units : null;
 }
+function money(amount, currency = null) {
+  const text7 = typeof amount === "number" ? amount.toFixed(4) : amount.trim();
+  const units = decimalToUnits(text7);
+  if (units === null) throw new TypeError(`not a plain decimal amount: ${JSON.stringify(amount)}`);
+  return { units, currency: normCurrency(currency) };
+}
 function fromMinor(minor2, minorUnit, currency) {
-  const text6 = String(minor2).trim();
-  if (!/^\d+$/.test(text6) || !Number.isInteger(minorUnit) || minorUnit < 0 || minorUnit > 4) return null;
-  const units = Number(text6) * 10 ** (4 - minorUnit);
+  const text7 = String(minor2).trim();
+  if (!/^\d+$/.test(text7) || !Number.isInteger(minorUnit) || minorUnit < 0 || minorUnit > 4) return null;
+  const units = Number(text7) * 10 ** (4 - minorUnit);
   return Number.isSafeInteger(units) ? { units, currency: normCurrency(currency) } : null;
 }
-function detectCurrency(text6) {
-  for (const m of text6.matchAll(/(?<![A-Za-z])([A-Z]{3})(?![A-Za-z])/g)) {
+function detectCurrency(text7) {
+  for (const m of text7.matchAll(/(?<![A-Za-z])([A-Z]{3})(?![A-Za-z])/g)) {
     if (ISO_CODES.has(m[1])) return m[1];
   }
   for (const [symbol, code2] of SYMBOLS) {
-    if (text6.includes(symbol)) return code2;
+    if (text7.includes(symbol)) return code2;
   }
   return null;
 }
@@ -1922,10 +2005,10 @@ function normalizeNumber(token, minorUnit) {
 }
 var NUMBER_TOKEN = /\d(?:[\d.,'   ]*\d)?/g;
 function parseAllMoney(raw, hint = {}) {
-  const text6 = raw.normalize("NFKC");
-  const currency = detectCurrency(text6) ?? normCurrency(hint.currency);
+  const text7 = raw.normalize("NFKC");
+  const currency = detectCurrency(text7) ?? normCurrency(hint.currency);
   const out2 = [];
-  for (const m of text6.matchAll(NUMBER_TOKEN)) {
+  for (const m of text7.matchAll(NUMBER_TOKEN)) {
     const dec = normalizeNumber(m[0], minorUnitOf(currency));
     const units = dec === null ? null : decimalToUnits(dec);
     if (units !== null) out2.push({ units, currency });
@@ -2152,7 +2235,7 @@ function toProduct(sightings, amb, index2) {
   const variants = [...clusters.values()].map((c, i) => toOffer(c, `variant-${i + 1}`)).sort((a, b) => a.key.localeCompare(b.key));
   const named = [...sightings].sort(byNamingOrder);
   const url = named.find((s) => s.ids.url)?.ids.url;
-  const text6 = sightings.flatMap((s) => s.text ?? []);
+  const text7 = sightings.flatMap((s) => s.text ?? []);
   return {
     key: urlKey(url) ?? variants[0]?.key ?? `product-${index2 + 1}`,
     url,
@@ -2160,7 +2243,7 @@ function toProduct(sightings, amb, index2) {
     surfaces: uniqueSurfaces(sightings),
     variants,
     productLevel,
-    text: text6,
+    text: text7,
     alternateViews: []
   };
 }
@@ -2396,8 +2479,8 @@ function ipLiteral(hostname) {
 // packages/core/src/net/robots.ts
 var MAX_BYTES = 512 * 1024;
 var KNOWN_KEYS = /* @__PURE__ */ new Set(["user-agent", "allow", "disallow", "sitemap"]);
-function parseRobots(text6) {
-  const body = text6.charCodeAt(0) === 65279 ? text6.slice(1) : text6;
+function parseRobots(text7) {
+  const body = text7.charCodeAt(0) === 65279 ? text7.slice(1) : text7;
   const source = capUtf8(body, MAX_BYTES);
   const groups = [];
   const sitemaps = [];
@@ -2448,24 +2531,24 @@ function isAllowed(robots, agent, pathAndQuery) {
   }
   return best === null ? true : best.allow;
 }
-function capUtf8(text6, limit) {
+function capUtf8(text7, limit) {
   let used = 0;
-  for (let i = 0; i < text6.length; i++) {
-    const code2 = text6.charCodeAt(i);
+  for (let i = 0; i < text7.length; i++) {
+    const code2 = text7.charCodeAt(i);
     let size = code2 < 128 ? 1 : code2 < 2048 ? 2 : 3;
     let step = 1;
-    if (code2 >= 55296 && code2 <= 56319 && i + 1 < text6.length) {
-      const next2 = text6.charCodeAt(i + 1);
+    if (code2 >= 55296 && code2 <= 56319 && i + 1 < text7.length) {
+      const next2 = text7.charCodeAt(i + 1);
       if (next2 >= 56320 && next2 <= 57343) {
         size = 4;
         step = 2;
       }
     }
-    if (used + size > limit) return text6.slice(0, i);
+    if (used + size > limit) return text7.slice(0, i);
     used += size;
     i += step - 1;
   }
-  return text6;
+  return text7;
 }
 function agentToken(value) {
   const lower = value.toLowerCase();
@@ -2679,6 +2762,15 @@ function createFetcher(options) {
     if (init2.asOwner && !isOwned(u)) throw new FetchRefused("write-not-authorized", u.href, "ownership of this host has not been verified");
     return headers;
   }
+  function gunzipFile(u, raw) {
+    if (raw.body.length < 2 || raw.body[0] !== 31 || raw.body[1] !== 139) return raw;
+    try {
+      return { ...raw, body: zlib.gunzipSync(raw.body, { maxOutputLength: policy.maxBytes }) };
+    } catch (err) {
+      if (err.code === "ERR_BUFFER_TOO_LARGE") throw new FetchRefused("too-large", u.href, `over ${policy.maxBytes} bytes`);
+      throw new FetchRefused("network", u.href, `gzip: ${err.message}`);
+    }
+  }
   const finish = (u, raw) => ({
     url: u.href,
     status: raw.status,
@@ -2701,7 +2793,7 @@ function createFetcher(options) {
         await pace(u);
         const raw = await request("GET", u, headers);
         const location = raw.headers["location"];
-        if (!REDIRECTS.has(raw.status) || !location) return finish(u, raw);
+        if (!REDIRECTS.has(raw.status) || !location) return finish(u, init2.gzipFile ? gunzipFile(u, raw) : raw);
         let next2;
         try {
           next2 = new URL(location, u);
@@ -2788,11 +2880,11 @@ var MARK_STYLE = {
 };
 var CONTROL = /[\u0000-\u001f\u007f-\u009f]/g;
 var MAX_LEN = 200;
-function clean(text6) {
-  return text6.replace(CONTROL, " ");
+function clean(text7) {
+  return text7.replace(CONTROL, " ");
 }
-function untrusted(text6) {
-  const cleaned = clean(text6);
+function untrusted(text7) {
+  const cleaned = clean(text7);
   const chars = Array.from(cleaned);
   return chars.length > MAX_LEN ? `${chars.slice(0, MAX_LEN - 1).join("")}\u2026` : cleaned;
 }
@@ -2820,7 +2912,7 @@ var LABEL_INDENT = "  ";
 function renderTerminal(result, options = {}) {
   const color = options.color ?? false;
   const max = Math.max(0, Math.floor(options.maxExamples ?? 5));
-  const paint = (style, text6) => color ? styleText(style, text6, { validateStream: false }) : text6;
+  const paint = (style, text7) => color ? styleText(style, text7, { validateStream: false }) : text7;
   const tag = (surface) => `${paint(PLATE_STYLE[plateOf(surface)], plateOf(surface))} ${untrusted(surface)}`;
   const header = `${LABEL_INDENT}${hostOf(result.store)}    ${plural(result.counts.variants, "variant")}    ${formatDuration(durationMs(result))}`;
   const plates = LABEL_INDENT + PLATES.map((plate) => {
@@ -2834,11 +2926,11 @@ function renderTerminal(result, options = {}) {
     const marker = paint(MARK_STYLE[rule.severity] ?? "dim", MARK[rule.severity]);
     const allowance = rule.budget !== null && rule.budget > 0 ? `, budget ${rule.budget}` : "";
     body.push(`${LABEL_INDENT}${marker} ${rule.id.padEnd(idWidth)}${plural(rule.findings, "finding")}${allowance}`);
-    const shown = result.findings.filter((f) => f.rule === rule.id).slice(0, max);
-    const subjects = shown.map((f) => untrusted(subjectOf(f)));
+    const shown2 = result.findings.filter((f) => f.rule === rule.id).slice(0, max);
+    const subjects = shown2.map((f) => untrusted(subjectOf(f)));
     const width = subjects.reduce((longest, s) => Math.max(longest, s.length), 0) + 3;
     const gutter = " ".repeat(width);
-    shown.forEach((finding2, i) => {
+    shown2.forEach((finding2, i) => {
       const subject = subjects[i].padEnd(width);
       if (finding2.expected && finding2.actual) {
         const actual = `${tag(finding2.actual.surface)} ${untrusted(finding2.actual.value)}`;
@@ -2852,7 +2944,7 @@ function renderTerminal(result, options = {}) {
         body.push(`${INDENT}${gutter}${paint("dim", untrusted(finding2.actual.locator))}`);
       }
     });
-    const rest = rule.findings - shown.length;
+    const rest = rule.findings - shown2.length;
     if (rest > 0) body.push(`${INDENT}\u2026 and ${rest} more`);
   }
   const passedCount = result.rules.filter((r) => r.findings === 0 && r.skipped === void 0).length;
@@ -2978,8 +3070,8 @@ function renderSarif(result) {
 
 // packages/report/src/junit.ts
 var ILLEGAL_XML = /[^\t\n\r\x20-\x7E\xA0-퟿-�\u{10000}-\u{10FFFF}]/gu;
-function xml(text6) {
-  return text6.replace(ILLEGAL_XML, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+function xml(text7) {
+  return text7.replace(ILLEGAL_XML, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
 function kindOf(rule, lines) {
   if (rule.skipped !== void 0) return "skipped";
@@ -3001,7 +3093,7 @@ function renderJUnit(result) {
     const lines = linesByRule.get(rule.id) ?? [];
     const kind = kindOf(rule, lines);
     const name = `classname="regmark" name="${xml(rule.id)}"`;
-    const text6 = lines.map(xml).join("\n");
+    const text7 = lines.map(xml).join("\n");
     if (kind === "skipped") {
       skipped += 1;
       cases.push(
@@ -3015,12 +3107,12 @@ function renderJUnit(result) {
       cases.push(
         `  <testcase ${name}>`,
         `    <failure message="${xml(`${rule.findings} findings, budget ${budget}`)}">`,
-        text6,
+        text7,
         "    </failure>",
         "  </testcase>"
       );
     } else if (kind === "output") {
-      cases.push(`  <testcase ${name}>`, "    <system-out>", text6, "    </system-out>", "  </testcase>");
+      cases.push(`  <testcase ${name}>`, "    <system-out>", text7, "    </system-out>", "  </testcase>");
     } else {
       cases.push(`  <testcase ${name}/>`);
     }
@@ -3076,12 +3168,12 @@ var PLATE_NOTE = {
 };
 var chip = (plate) => `<span class="chip chip-${plate.toLowerCase()}">${plate}</span>`;
 var plateOf2 = (surface) => PLATE_OF[surface] ?? "C";
-function locator(text6) {
-  const shown = esc(clip(text6, 240));
-  const hash = text6.indexOf("#");
-  const url = hash === -1 ? text6 : text6.slice(0, hash);
-  if (!/^https?:\/\/[^\s"'<>]+$/i.test(url)) return `<span class="loc">${shown}</span>`;
-  return `<a class="loc" href="${esc(url)}" rel="noopener noreferrer nofollow">${shown}</a>`;
+function locator(text7) {
+  const shown2 = esc(clip(text7, 240));
+  const hash = text7.indexOf("#");
+  const url = hash === -1 ? text7 : text7.slice(0, hash);
+  if (!/^https?:\/\/[^\s"'<>]+$/i.test(url)) return `<span class="loc">${shown2}</span>`;
+  return `<a class="loc" href="${esc(url)}" rel="noopener noreferrer nofollow">${shown2}</a>`;
 }
 function says(e, role) {
   const plate = plateOf2(e.surface);
@@ -3282,8 +3374,8 @@ var MAX_ISSUES = 20;
 var CODE_MAX = 160;
 var PLATES3 = ["C", "M", "Y", "K"];
 var CONTROL_OR_SEPARATOR = /[\u0000-\u001f\u007f\u2028\u2029]/g;
-function code(text6, max = CODE_MAX) {
-  const flat = text6.replace(CONTROL_OR_SEPARATOR, " ").replace(/\s+/g, " ").trim();
+function code(text7, max = CODE_MAX) {
+  const flat = text7.replace(CONTROL_OR_SEPARATOR, " ").replace(/\s+/g, " ").trim();
   const chars = Array.from(flat);
   const cut = chars.length > max ? `${chars.slice(0, max).join("")}\u2026` : flat;
   if (cut === "") return "`\u2013`";
@@ -3328,7 +3420,7 @@ function findingRow(finding2) {
 }
 function ruleDetails(rule, findings, maxPerRule) {
   const matches2 = findings.filter((f) => f.rule === rule.id);
-  const shown = matches2.slice(0, maxPerRule);
+  const shown2 = matches2.slice(0, maxPerRule);
   const lines = [
     "<details>",
     `<summary><code>${text(rule.id)}</code> \xB7 ${plural3(rule.findings, "finding")} \xB7 ${text(rule.summary)}</summary>`,
@@ -3336,8 +3428,8 @@ function ruleDetails(rule, findings, maxPerRule) {
   ];
   if (rule.help) lines.push(text(rule.help), "");
   lines.push("| Subject | Says | Datum |", "|---|---|---|");
-  for (const finding2 of shown) lines.push(findingRow(finding2));
-  const rest = matches2.length - shown.length;
+  for (const finding2 of shown2) lines.push(findingRow(finding2));
+  const rest = matches2.length - shown2.length;
   if (rest > 0) lines.push("", `\u2026and ${rest} more in the JSON report.`);
   lines.push("", "</details>");
   return lines.join("\n");
@@ -3485,19 +3577,19 @@ var cloaking_default = defineRule({
 var EVIDENCE_MAX = 120;
 var INSPECT_MAX = 2e4;
 var CONTROL2 = /[\u0000-\u001f\u007f]/g;
-function printable(text6) {
-  return text6.replace(CONTROL2, " ");
+function printable(text7) {
+  return text7.replace(CONTROL2, " ");
 }
-function clip2(text6) {
-  const head = Array.from(text6.slice(0, EVIDENCE_MAX * 2 + 2));
+function clip2(text7) {
+  const head = Array.from(text7.slice(0, EVIDENCE_MAX * 2 + 2));
   if (head.length > EVIDENCE_MAX) return printable(head.slice(0, EVIDENCE_MAX).join("")) + "\u2026";
-  return printable(text6);
+  return printable(text7);
 }
-function windowAround(text6, start, end2) {
+function windowAround(text7, start, end2) {
   const from = Math.max(0, Math.max(start - 30, end2 - EVIDENCE_MAX));
-  const to = Math.min(text6.length, from + EVIDENCE_MAX);
-  const body = printable(text6.slice(from, to));
-  return (from > 0 ? "\u2026" : "") + body + (to < text6.length ? "\u2026" : "");
+  const to = Math.min(text7.length, from + EVIDENCE_MAX);
+  const body = printable(text7.slice(from, to));
+  return (from > 0 ? "\u2026" : "") + body + (to < text7.length ? "\u2026" : "");
 }
 function sampleFinding(product3, sample2, severity, message, value) {
   return {
@@ -3514,11 +3606,11 @@ function sampleFinding(product3, sample2, severity, message, value) {
 var HONEST = /* @__PURE__ */ new Set(["a11y-class", "alt-attribute", "html-comment"]);
 var CLOAKING = /* @__PURE__ */ new Set(["font-size:0", "color:transparent", "color-matches-background", "offscreen", "zero-size", "clipped"]);
 var MIN_LENGTH = 20;
-function looksStuffed(text6, title) {
+function looksStuffed(text7, title) {
   const counts = /* @__PURE__ */ new Map();
   let words = 0;
   let top = 0;
-  for (const [word] of text6.toLowerCase().matchAll(/[\p{L}\p{N}]{4,}/gu)) {
+  for (const [word] of text7.toLowerCase().matchAll(/[\p{L}\p{N}]{4,}/gu)) {
     const n = (counts.get(word) ?? 0) + 1;
     counts.set(word, n);
     words++;
@@ -3619,9 +3711,9 @@ var CANCEL_TAG = 917631;
 var ZERO_WIDTH = /* @__PURE__ */ new Set([8203, 8288, 65279]);
 var ZERO_WIDTH_LIMIT = 3;
 var isTag = (cp) => cp >= 917536 && cp <= 917630;
-function count(text6) {
+function count(text7) {
   const cps = [];
-  for (const ch of text6) cps.push(ch.codePointAt(0));
+  for (const ch of text7) cps.push(ch.codePointAt(0));
   let tags = 0;
   let zeroWidth = 0;
   for (let i = 0; i < cps.length; i++) {
@@ -4149,8 +4241,8 @@ var DAY_MS = 864e5;
 var BARE_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 var ZONELESS_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
 function endInstant(raw) {
-  const text6 = raw.trim();
-  const bare = BARE_DATE.exec(text6);
+  const text7 = raw.trim();
+  const bare = BARE_DATE.exec(text7);
   if (bare) {
     const y = Number(bare[1]);
     const m = Number(bare[2]);
@@ -4160,7 +4252,7 @@ function endInstant(raw) {
     if (back.getUTCFullYear() !== y || back.getUTCMonth() !== m - 1 || back.getUTCDate() !== d) return null;
     return start + DAY_MS - 1;
   }
-  const ms = ZONELESS_DATETIME.test(text6) ? Date.parse(`${text6}Z`) : Date.parse(text6);
+  const ms = ZONELESS_DATETIME.test(text7) ? Date.parse(`${text7}Z`) : Date.parse(text7);
   return Number.isNaN(ms) ? null : ms;
 }
 var price_sale_expired_default = defineRule({
@@ -4207,7 +4299,7 @@ var price_tax_basis_default = defineRule({
   help: "One surface includes tax and the other does not. Decide which one the shop publishes and make the feed, the structured data and the page agree. A shop that shows tax-free prices to visitors abroad will see this whenever it is crawled from abroad.",
   check(product3, ctx) {
     const findings = [];
-    const report = (actual, expected, rate, variant2) => {
+    const report2 = (actual, expected, rate, variant2) => {
       findings.push({
         rule: "price.tax-basis",
         severity: "warn",
@@ -4228,7 +4320,7 @@ var price_tax_basis_default = defineRule({
         const rate = taxRateBetween(o.value, d.value);
         if (rate === null) continue;
         seen.add(o.surface);
-        report(o, d, rate, offer2.key);
+        report2(o, d, rate, offer2.key);
       }
     }
     for (const s of product3.productLevel) {
@@ -4242,7 +4334,7 @@ var price_tax_basis_default = defineRule({
       for (const d of candidates) {
         const rate = taxRateBetween(sp.value, d.value);
         if (rate === null) continue;
-        report(sp, d, rate);
+        report2(sp, d, rate);
         break;
       }
     }
@@ -4254,7 +4346,7 @@ var price_tax_basis_default = defineRule({
         for (const o of comparable) {
           const rate = taxRateBetween(o.value, page.value);
           if (rate === null) continue;
-          report(o, page, rate);
+          report2(o, page, rate);
           break;
         }
       }
@@ -4339,7 +4431,7 @@ var variant_missing_default = defineRule({
   id: "variant.missing",
   severity: "error",
   summary: "A surface lists some of a product's variants and leaves others out.",
-  help: "The structured data describes only the default variant. Emit one Offer per variant, as a ProductGroup with hasVariant or as an offers array, each with its own sku, price and availability.",
+  help: "The structured data describes only the default variant. Emit one Offer per variant, as a ProductGroup with hasVariant or as an offers array, each with its own sku, price and availability. In an agent feed, send one row per variant, out of stock or not, and hold a variant back with is_eligible_search=false rather than by leaving it out.",
   needsAny: ["platform", "checkout"],
   check(product3) {
     const real = product3.variants.filter(isReal);
@@ -4434,8 +4526,8 @@ function instant(f) {
   if (f.hour > 23 || f.minute > 59 || f.second > 60) return void 0;
   return Date.UTC(f.year, f.month - 1, f.day, f.hour, f.minute, f.second, f.ms) - f.offset * 6e4;
 }
-function numericOffset(text6) {
-  const m = /^([+-])(\d{2}):?(\d{2})$/.exec(text6);
+function numericOffset(text7) {
+  const m = /^([+-])(\d{2}):?(\d{2})$/.exec(text7);
   if (!m) return void 0;
   const hours = Number(m[2]);
   const minutes = Number(m[3]);
@@ -4443,8 +4535,8 @@ function numericOffset(text6) {
   return (m[1] === "-" ? -1 : 1) * (hours * 60 + minutes);
 }
 var RFC822 = /^(?:([A-Za-z]{3}),\s*)?(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4}|\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?\s+([+-]\d{4}|[A-Za-z]{1,3})$/;
-function parseRfc822(text6) {
-  const m = RFC822.exec(text6.trim());
+function parseRfc822(text7) {
+  const m = RFC822.exec(text7.trim());
   if (!m) return void 0;
   if (m[1] !== void 0 && !DAYS.has(m[1].toLowerCase())) return void 0;
   const month = MONTHS.indexOf(m[3].toLowerCase()) + 1;
@@ -4457,8 +4549,8 @@ function parseRfc822(text6) {
   return instant({ year, month, day: Number(m[2]), hour: Number(m[5]), minute: Number(m[6]), second: Number(m[7] ?? 0), ms: 0, offset });
 }
 var RFC3339 = /^(\d{4})-(\d{2})-(\d{2})[Tt ](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?([Zz]|[+-]\d{2}:\d{2})$/;
-function parseRfc3339(text6) {
-  const m = RFC3339.exec(text6.trim());
+function parseRfc3339(text7) {
+  const m = RFC3339.exec(text7.trim());
   if (!m) return void 0;
   const zone = m[8];
   const offset = zone === "Z" || zone === "z" ? 0 : numericOffset(zone);
@@ -4475,24 +4567,36 @@ function parseRfc3339(text6) {
     offset
   });
 }
+var ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+var ISO_DATETIME = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?([Zz]|[+-]\d{2}:?\d{2})$/;
+function parseIso8601(text7) {
+  const trimmed = text7.trim();
+  const date = ISO_DATE.exec(trimmed);
+  if (date) {
+    const time2 = instant({ year: Number(date[1]), month: Number(date[2]), day: Number(date[3]), hour: 0, minute: 0, second: 0, ms: 0, offset: 0 });
+    return time2 === void 0 ? void 0 : { time: time2, dateOnly: true };
+  }
+  const m = ISO_DATETIME.exec(trimmed);
+  if (!m) return void 0;
+  const zone = m[8];
+  const offset = zone === "Z" || zone === "z" ? 0 : numericOffset(zone);
+  if (offset === void 0) return void 0;
+  const ms = m[7] ? Number(m[7].slice(0, 3).padEnd(3, "0")) : 0;
+  const time = instant({
+    year: Number(m[1]),
+    month: Number(m[2]),
+    day: Number(m[3]),
+    hour: Number(m[4]),
+    minute: Number(m[5]),
+    second: Number(m[6] ?? 0),
+    ms,
+    offset
+  });
+  return time === void 0 ? void 0 : { time, dateOnly: false };
+}
 function readDate(date) {
   const time = date.syntax === "rfc822" ? parseRfc822(date.text) : parseRfc3339(date.text);
   return time === void 0 ? void 0 : new Date(time).toISOString();
-}
-
-// packages/collect-feed/src/item.ts
-function parseShippingCell(cell2) {
-  const out2 = [];
-  for (const part of cell2.split(/,(?=\s*[A-Za-z]{0,2}\s*:)/)) {
-    const raw = part.trim();
-    if (!raw) continue;
-    const pieces = raw.split(":");
-    const price = (pieces[pieces.length - 1] ?? "").trim();
-    if (!price) continue;
-    const country = pieces.length > 1 ? (pieces[0] ?? "").trim() : "";
-    out2.push(country ? { country, price, raw } : { price, raw });
-  }
-  return out2;
 }
 
 // packages/collect-feed/src/map.ts
@@ -4510,13 +4614,21 @@ function resolveUrl(link, feedUrl) {
     return void 0;
   }
 }
-function parseDate(text6) {
-  const time = new Date(text6).getTime();
+function httpUrl(text7) {
+  try {
+    const u = new URL(text7);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.href : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function parseDate(text7) {
+  const time = new Date(text7).getTime();
   return Number.isNaN(time) ? void 0 : time;
 }
-function saleWindow(text6, now) {
-  if (!text6) return { active: true };
-  const parts = text6.split("/");
+function saleWindow(text7, now) {
+  if (!text7) return { active: true };
+  const parts = text7.split("/");
   if (parts.length !== 2) return { active: true };
   const start = parseDate((parts[0] ?? "").trim());
   const endText = (parts[1] ?? "").trim();
@@ -4544,24 +4656,24 @@ function mapItem(item, position, ctx) {
     issues.push({ surface: "feed", code: "feed-item-incomplete", message: `item "${id}" has no link`, locator: at });
     return { issues };
   }
-  const observe3 = (value, raw, field) => ({
+  const observe5 = (value, raw, field) => ({
     value,
     raw,
     surface: "feed",
     locator: `${at}/${field}`,
     fetchedAt: ctx.fetchedAt
   });
-  const readMoney4 = (field, text6) => {
-    const money3 = parseMoney(text6, { currency: ctx.defaultCurrency });
-    if (!money3) {
+  const readMoney5 = (field, text7) => {
+    const money5 = parseMoney(text7, { currency: ctx.defaultCurrency });
+    if (!money5) {
       issues.push({
         surface: "feed",
         code: "feed-field-unreadable",
-        message: `${field} "${text6}" is not an amount`,
+        message: `${field} "${text7}" is not an amount`,
         locator: `${at}/${field}`
       });
     }
-    return money3 ?? void 0;
+    return money5 ?? void 0;
   };
   const ids = { aliases: [id] };
   const url = resolveUrl(link, ctx.feedUrl);
@@ -4584,56 +4696,72 @@ function mapItem(item, position, ctx) {
   const title = f("title");
   if (title) sighting.title = title;
   const regularText = f("price");
-  const regular = regularText ? readMoney4("price", regularText) : void 0;
+  const regular = regularText ? readMoney5("price", regularText) : void 0;
   const saleText = f("sale_price");
-  const sale = saleText ? readMoney4("sale_price", saleText) : void 0;
+  const sale = saleText ? readMoney5("sale_price", saleText) : void 0;
   if (sale && saleText) {
     const interval = saleWindow(f("sale_price_effective_date"), ctx.now);
     if (interval.active) {
-      sighting.price = observe3(sale, saleText, "sale_price");
-      if (regular && regularText) sighting.listPrice = observe3(regular, regularText, "price");
+      sighting.price = observe5(sale, saleText, "sale_price");
+      if (regular && regularText) sighting.listPrice = observe5(regular, regularText, "price");
       if (interval.until) {
-        sighting.priceValidUntil = observe3(interval.until, interval.until, "sale_price_effective_date");
+        sighting.priceValidUntil = observe5(interval.until, interval.until, "sale_price_effective_date");
       }
     } else if (regular && regularText) {
-      sighting.price = observe3(regular, regularText, "price");
+      sighting.price = observe5(regular, regularText, "price");
     }
   } else if (regular && regularText) {
-    sighting.price = observe3(regular, regularText, "price");
+    sighting.price = observe5(regular, regularText, "price");
   }
   const availabilityText = f("availability");
   if (availabilityText) {
     const value = AVAILABILITY.get(availabilityText.toLowerCase().replace(/\s+/g, "_"));
-    if (value) sighting.availability = observe3(value, availabilityText, "availability");
+    if (value) sighting.availability = observe5(value, availabilityText, "availability");
   }
   const entry = item.shipping[0];
   if (entry) {
-    const cost = readMoney4("shipping", entry.price);
+    const cost = readMoney5("shipping", entry.price);
     if (cost) {
       const country = entry.country?.toUpperCase();
       const quote = { free: cost.units === 0, cost };
       if (country && /^[A-Z]{2}$/.test(country)) quote.country = country;
-      sighting.shipping = observe3(quote, entry.raw, "shipping");
+      sighting.shipping = observe5(quote, entry.raw, "shipping");
     }
   }
   return { sighting, issues };
+}
+
+// packages/collect-feed/src/item.ts
+function parseShippingCell(cell2) {
+  const out2 = [];
+  for (const part of cell2.split(/,(?=\s*[A-Za-z]{0,2}\s*:)/)) {
+    const raw = part.trim();
+    if (!raw) continue;
+    const pieces = raw.split(":");
+    while (pieces.length > 4 && /^\s*\d+\s*$/.test(pieces[pieces.length - 1])) pieces.pop();
+    const price = (pieces[pieces.length - 1] ?? "").trim();
+    if (!price) continue;
+    const country = pieces.length > 1 ? (pieces[0] ?? "").trim() : "";
+    out2.push(country ? { country, price, raw } : { price, raw });
+  }
+  return out2;
 }
 
 // packages/collect-feed/src/tsv.ts
 function headerName(cell2) {
   return cell2.trim().toLowerCase().replace(/^g:/, "").replace(/\s+/g, "_");
 }
-function splitRows(text6) {
+function splitRows(text7, delimiter = "	") {
   const rows = [];
   let row = [];
   let cell2 = "";
   let quoted = false;
   let i = 0;
-  while (i < text6.length) {
-    const ch = text6[i];
+  while (i < text7.length) {
+    const ch = text7[i];
     if (quoted) {
       if (ch === '"') {
-        if (text6[i + 1] === '"') {
+        if (text7[i + 1] === '"') {
           cell2 += '"';
           i += 2;
         } else {
@@ -4648,7 +4776,7 @@ function splitRows(text6) {
     }
     if (ch === '"' && cell2 === "") {
       quoted = true;
-    } else if (ch === "	") {
+    } else if (ch === delimiter) {
       row.push(cell2);
       cell2 = "";
     } else if (ch === "\n" || ch === "\r") {
@@ -4656,21 +4784,21 @@ function splitRows(text6) {
       rows.push(row);
       row = [];
       cell2 = "";
-      if (ch === "\r" && text6[i + 1] === "\n") i += 1;
+      if (ch === "\r" && text7[i + 1] === "\n") i += 1;
     } else {
       cell2 += ch;
     }
     i += 1;
   }
-  if (quoted) throw new Error("tab-separated feed has an unterminated quoted cell");
+  if (quoted) throw new Error(`${delimiter === "," ? "comma" : "tab"}-separated feed has an unterminated quoted cell`);
   if (cell2 !== "" || row.length > 0) {
     row.push(cell2);
     rows.push(row);
   }
   return rows.filter((r) => r.some((c) => c.trim() !== ""));
 }
-function readTsv(text6) {
-  const [header, ...body] = splitRows(text6);
+function readTsv(text7) {
+  const [header, ...body] = splitRows(text7);
   if (!header) return [];
   const names = header.map(headerName);
   if (!names.includes("id") || !names.includes("link")) {
@@ -4684,6 +4812,523 @@ function readTsv(text6) {
     });
     return { fields: fields2, shipping: parseShippingCell(fields2.shipping ?? "") };
   });
+}
+
+// packages/collect-feed/src/acp/read.ts
+var isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+var placeText = (p) => `${p.unit} ${p.position}`;
+var placeLocator = (feedUrl, p) => `${feedUrl}#${p.unit}[${p.position}]`;
+function record(value, place) {
+  const fields2 = Object.assign(/* @__PURE__ */ Object.create(null), value);
+  return Array.isArray(value.variants) ? { kind: "product", product: fields2, place } : { kind: "flat", fields: fields2, place };
+}
+function readJsonLines(text7, feedUrl) {
+  const records = [];
+  const issues = [];
+  text7.split(/\r?\n/).forEach((line, i) => {
+    if (line.trim() === "") return;
+    const place = { unit: "line", position: i + 1 };
+    let value;
+    try {
+      value = JSON.parse(line);
+    } catch (err) {
+      issues.push({ surface: "acp", code: "feed-line-unreadable", message: `line ${i + 1} is not JSON: ${err.message}`, locator: placeLocator(feedUrl, place) });
+      return;
+    }
+    if (!isObject(value)) {
+      issues.push({ surface: "acp", code: "feed-line-unreadable", message: `line ${i + 1} is not a JSON object`, locator: placeLocator(feedUrl, place) });
+      return;
+    }
+    records.push(record(value, place));
+  });
+  return { records, profile: "openai", issues };
+}
+function readProductsDocument(products, feedUrl) {
+  const records = [];
+  const issues = [];
+  products.forEach((value, i) => {
+    const place = { unit: "product", position: i + 1 };
+    if (isObject(value)) records.push({ kind: "product", product: Object.assign(/* @__PURE__ */ Object.create(null), value), place });
+    else issues.push({ surface: "acp", code: "feed-item-incomplete", message: `product ${i + 1} is not an object`, locator: placeLocator(feedUrl, place) });
+  });
+  return { records, profile: "openai", issues };
+}
+function readDelimited(text7) {
+  const headerLine = text7.split(/\r?\n/).find((line) => line.trim() !== "") ?? "";
+  const delimiter = headerLine.includes("	") ? "	" : ",";
+  let rows;
+  try {
+    rows = splitRows(text7, delimiter);
+  } catch (err) {
+    return { error: err.message };
+  }
+  const [header, ...body] = rows;
+  if (!header) return { error: "feed is empty" };
+  const names = header.map(headerName);
+  const kind = delimiter === "	" ? "tab-separated" : "comma-separated";
+  let profile;
+  if (names.includes("url")) {
+    profile = "openai";
+    if (!names.some((n) => n === "item_id" || n === "id" || n === "sku")) return { error: `${kind} ACP feed has a url column but no item_id column` };
+  } else if (names.includes("link")) {
+    profile = "google";
+    if (!names.includes("id")) return { error: `${kind} ACP feed in the Google-compatible profile has a link column but no id column` };
+  } else {
+    return { error: `${kind} ACP feed has neither a url column (OpenAI format) nor a link column (Google-compatible profile)` };
+  }
+  const records = body.map((cells, i) => {
+    const fields2 = /* @__PURE__ */ Object.create(null);
+    names.forEach((name, column) => {
+      const value = (cells[column] ?? "").trim();
+      if (name && value && !(name in fields2)) fields2[name] = value;
+    });
+    return { kind: "flat", fields: fields2, place: { unit: "row", position: i + 1 } };
+  });
+  return { records, profile, issues: [] };
+}
+function readAcp(text7, feedUrl) {
+  const start = text7.trimStart();
+  if (start.startsWith("PAR1")) return { error: "the feed is Parquet, which is not read; export it as JSON Lines, CSV or TSV" };
+  if (start.startsWith("<")) return { error: "the feed is XML, which is not an ACP feed format; ACP feeds are JSON Lines, CSV or TSV, and a Google Merchant feed is read with --feed" };
+  if (start.startsWith("[")) return { error: 'the feed is a JSON array, which is not an ACP feed format; write one record per line (JSON Lines), or a {"products": [...]} document' };
+  if (start.startsWith("{")) {
+    let whole2;
+    try {
+      whole2 = JSON.parse(text7);
+    } catch {
+      return readJsonLines(text7, feedUrl);
+    }
+    if (isObject(whole2) && Array.isArray(whole2.products)) return readProductsDocument(whole2.products, feedUrl);
+    return readJsonLines(text7, feedUrl);
+  }
+  return readDelimited(text7);
+}
+
+// packages/collect-feed/src/acp/flat.ts
+var SURFACE = "acp";
+var DAY_MS2 = 864e5;
+var AVAILABILITY2 = {
+  openai: /* @__PURE__ */ new Map([
+    ["in_stock", "in_stock"],
+    ["out_of_stock", "out_of_stock"],
+    ["pre_order", "preorder"],
+    ["backorder", "backorder"],
+    // "Stock status unavailable": a statement that says nothing either way.
+    ["unknown", "unknown"]
+  ]),
+  google: /* @__PURE__ */ new Map([
+    ["in_stock", "in_stock"],
+    ["out_of_stock", "out_of_stock"],
+    ["preorder", "preorder"],
+    ["backorder", "backorder"]
+  ])
+};
+var NAMES = {
+  openai: { id: ["item_id", "id", "sku"], group: ["group_id", "item_group_id"], url: "url" },
+  google: { id: ["id"], group: ["item_group_id"], url: "link" }
+};
+var SEARCH = ["enable_search", "is_eligible_search"];
+var RETURN_WINDOW = ["return_window", "return_deadline_in_days"];
+var REQUIRED = {
+  openai: ["title", "description", "brand", "seller_name", "image_url", "availability", "price"],
+  google: ["title", "description", "image_link", "availability", "price", "brand"]
+};
+var GOOGLE_OPTIONS = ["color", "size", "material", "age_group", "gender", "pattern", "size_type"];
+var MONEY = /^(\d+(?:\.\d+)?)(?:\s+([A-Za-z]{3}))?$/;
+var present = (v) => !(v === void 0 || v === null || typeof v === "string" && v.trim() === "");
+function shown(v) {
+  const text7 = typeof v === "string" ? v : JSON.stringify(v);
+  return text7.length > 80 ? `${text7.slice(0, 77)}...` : text7;
+}
+function saleWindowEnd(text7) {
+  const parts = text7.split("/");
+  if (parts.length !== 2) return void 0;
+  const start = parseIso8601(parts[0]);
+  const end2 = parseIso8601(parts[1]);
+  if (!start || !end2) return void 0;
+  const endAt = end2.dateOnly ? end2.time + DAY_MS2 - 1 : end2.time;
+  if (start.time >= endAt) return void 0;
+  return end2.dateOnly ? parts[1].trim() : new Date(end2.time).toISOString();
+}
+function report(row, code2, message, field) {
+  row.issues.push({ surface: SURFACE, code: code2, message, locator: field ? `${row.at}/${field}` : row.at });
+}
+var unreadable = (row, field, message) => report(row, "feed-field-unreadable", message, field);
+var ignored = (row, field, message) => report(row, "feed-field-ignored", message, field);
+function observe(row, value, raw, field) {
+  return { value, raw, surface: SURFACE, locator: `${row.at}/${field}`, fetchedAt: row.ctx.fetchedAt };
+}
+var winner = (row, names) => names.find((n) => present(row.fields[n]));
+function reportShadowed(row, names) {
+  const first2 = winner(row, names);
+  if (!first2) return;
+  for (const other of names) {
+    if (other === first2 || !present(row.fields[other])) continue;
+    if (JSON.stringify(row.fields[other]) === JSON.stringify(row.fields[first2])) continue;
+    ignored(row, other, `${other} is ignored: ${first2} is also given, and wins`);
+  }
+}
+function text2(row, name) {
+  if (name === void 0) return void 0;
+  const v = row.fields[name];
+  if (!present(v)) return void 0;
+  if (typeof v === "string") return v.trim();
+  if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  unreadable(row, name, `${name} is ${shown(v)}, not text`);
+  return void 0;
+}
+function flag(row, name) {
+  if (name === void 0) return void 0;
+  const v = row.fields[name];
+  if (!present(v)) return void 0;
+  if (v === true || v === "true") return true;
+  if (v === false || v === "false") return false;
+  unreadable(row, name, `${name} ${shown(v)} is not true or false`);
+  return void 0;
+}
+function readMoney(row, field, written) {
+  const m = MONEY.exec(written);
+  let value;
+  try {
+    value = m ? money(m[1], m[2] ?? row.ctx.defaultCurrency) : void 0;
+  } catch {
+    value = void 0;
+  }
+  if (!value) unreadable(row, field, `${field} "${written}" is not an amount and currency such as "79.99 USD"`);
+  return value;
+}
+function variantDict(row) {
+  let value = row.fields.variant_dict;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      value = void 0;
+    }
+  }
+  const entries = isObject(value) ? Object.entries(value) : void 0;
+  if (!entries || entries.some(([k, v]) => k.trim() === "" || typeof v !== "string" || v.trim() === "")) {
+    unreadable(row, "variant_dict", `variant_dict ${shown(row.fields.variant_dict)} is not an object of option names to values`);
+    return void 0;
+  }
+  return Object.fromEntries(entries.map(([k, v]) => [k.trim(), v.trim()]));
+}
+function openaiOptions(row, grouped) {
+  const condition = "listing_has_variations=true and a group_id that differs from item_id";
+  if (present(row.fields.variant_dict)) {
+    const dict = variantDict(row);
+    if (dict && !grouped) ignored(row, "variant_dict", `variant_dict is ignored: it needs ${condition}`);
+    return grouped ? dict : void 0;
+  }
+  const pairs = {};
+  for (const n of [1, 2, 3]) {
+    const category = text2(row, winner(row, [`Custom_variant${n}_category`, `custom_variant${n}_category`]));
+    const option = text2(row, winner(row, [`Custom_variant${n}_option`, `custom_variant${n}_option`]));
+    if (category && option) pairs[category] = option;
+  }
+  if (Object.keys(pairs).length === 0) return void 0;
+  if (!grouped) ignored(row, "custom_variant1_category", `the Custom_variant pairs are ignored: they need ${condition}`);
+  return grouped ? pairs : void 0;
+}
+function googleOptions(row, grouped) {
+  if (!grouped) return void 0;
+  const out2 = {};
+  for (const name of GOOGLE_OPTIONS) {
+    const value = text2(row, name);
+    if (value) out2[name] = value;
+  }
+  return out2;
+}
+function readPrice2(row, s) {
+  const regularText = text2(row, "price");
+  const regular = regularText ? readMoney(row, "price", regularText) : void 0;
+  const saleText = text2(row, "sale_price");
+  const sale = saleText ? readMoney(row, "sale_price", saleText) : void 0;
+  if (!regular || !regularText) return;
+  if (!sale || !saleText) {
+    s.price = observe(row, regular, regularText, "price");
+    return;
+  }
+  if (sale.units === 0 || sale.units >= regular.units || sale.currency !== regular.currency) {
+    const consequence = row.profile === "google" ? "; the Google-compatible profile rejects the row" : ", so the regular price is shown";
+    ignored(row, "sale_price", `sale_price "${saleText}" is not used: a sale must be above zero, below price "${regularText}" and in its currency${consequence}`);
+    s.price = observe(row, regular, regularText, "price");
+    return;
+  }
+  s.price = observe(row, sale, saleText, "sale_price");
+  s.listPrice = observe(row, regular, regularText, "price");
+  const windowText = text2(row, "sale_price_effective_date");
+  if (windowText) {
+    const end2 = saleWindowEnd(windowText);
+    if (end2) s.priceValidUntil = observe(row, end2, windowText, "sale_price_effective_date");
+    else unreadable(row, "sale_price_effective_date", `sale_price_effective_date "${windowText}" is not a start/end pair of ISO 8601 dates, start first`);
+  }
+}
+function readAvailability(row, s) {
+  const written = text2(row, "availability");
+  if (!written) return;
+  const accepted = AVAILABILITY2[row.profile];
+  const value = accepted.get(written.toLowerCase());
+  if (value) s.availability = observe(row, value, written, "availability");
+  else unreadable(row, "availability", `availability "${written}" is not one of ${[...accepted.keys()].join(", ")}; an agent rejects the row`);
+}
+function readShipping(row, s) {
+  const chargeText = text2(row, "shipping_price");
+  const tuple = text2(row, "shipping");
+  if (chargeText) {
+    const cost2 = readMoney(row, "shipping_price", chargeText);
+    if (cost2) s.shipping = observe(row, { free: cost2.units === 0, cost: cost2 }, chargeText, "shipping_price");
+    if (tuple) ignored(row, "shipping", "shipping is ignored: the row also gives shipping_price, and a charge is sent one way or the other");
+    return;
+  }
+  if (!tuple) return;
+  const pieces = tuple.split(":");
+  const country = (pieces[0] ?? "").trim().toUpperCase();
+  if (pieces.length !== 4 || !/^[A-Z]{2}$/.test(country)) {
+    unreadable(row, "shipping", `shipping "${tuple}" is not country:region:service_class:price`);
+    return;
+  }
+  const cost = readMoney(row, "shipping", pieces[3].trim());
+  if (cost) s.shipping = observe(row, { free: cost.units === 0, cost, country }, tuple, "shipping");
+}
+function readReturns(row, s) {
+  const accepts = flag(row, "accepts_returns");
+  reportShadowed(row, RETURN_WINDOW);
+  const windowName = winner(row, RETURN_WINDOW);
+  let days;
+  if (windowName) {
+    const v = row.fields[windowName];
+    const n = typeof v === "number" ? v : typeof v === "string" && /^\d+$/.test(v.trim()) ? Number(v.trim()) : Number.NaN;
+    if (Number.isSafeInteger(n) && n > 0) days = n;
+    else unreadable(row, windowName, `${windowName} ${shown(v)} is not a whole number of days above zero`);
+  }
+  if (windowName && days !== void 0 && accepts !== true) {
+    ignored(row, windowName, `${windowName} is ignored: a return window counts only with accepts_returns=true`);
+    days = void 0;
+  }
+  const policyText = text2(row, "return_policy");
+  const policyUrl = policyText ? httpUrl(policyText) : void 0;
+  if (policyText && !policyUrl) unreadable(row, "return_policy", `return_policy "${policyText}" is not an http or https URL`);
+  let value;
+  if (accepts === true) value = days !== void 0 ? { present: true, days } : { present: true };
+  else if (accepts === false) value = { present: true, days: 0 };
+  else if (policyUrl) value = { present: true };
+  if (!value) return;
+  if (policyUrl) value.url = policyUrl;
+  const source = Object.fromEntries(["accepts_returns", ...RETURN_WINDOW, "return_policy"].filter((n) => present(row.fields[n])).map((n) => [n, row.fields[n]]));
+  s.returnPolicy = observe(row, value, JSON.stringify(source), accepts !== void 0 ? "accepts_returns" : "return_policy");
+}
+function mapFlat(record3, profile, ctx) {
+  const names = NAMES[profile];
+  const row = { profile, fields: record3.fields, ctx, issues: [], at: placeLocator(ctx.feedUrl, record3.place) };
+  const id = text2(row, winner(row, names.id));
+  if (!id) {
+    report(row, "feed-item-incomplete", `${placeText(record3.place)} has no ${names.id[0]}`);
+    return { issues: row.issues };
+  }
+  row.at = `${ctx.feedUrl}#item[id="${id}"]`;
+  reportShadowed(row, names.id);
+  const link = text2(row, names.url);
+  if (!link) {
+    report(row, "feed-item-incomplete", `item "${id}" has no ${names.url}`);
+    return { issues: row.issues };
+  }
+  const ids = { aliases: [id] };
+  const url = resolveUrl(link, ctx.feedUrl);
+  if (url) ids.url = url;
+  const gtin = text2(row, "gtin");
+  if (gtin) ids.gtin = gtin;
+  const mpn = text2(row, "mpn");
+  if (mpn) ids.mpn = mpn;
+  const brand = text2(row, "brand");
+  if (brand) ids.brand = brand;
+  reportShadowed(row, names.group);
+  const group = text2(row, winner(row, names.group));
+  if (group && group !== id) ids.groupId = group;
+  const options = profile === "openai" ? openaiOptions(row, flag(row, "listing_has_variations") === true && ids.groupId !== void 0) : googleOptions(row, ids.groupId !== void 0);
+  if (options && Object.keys(options).length > 0) ids.options = options;
+  const sighting = { surface: SURFACE, scope: "variant", ids };
+  const title = text2(row, "title");
+  if (title) sighting.title = title;
+  if (profile === "openai") {
+    reportShadowed(row, SEARCH);
+    if (flag(row, winner(row, SEARCH)) === false) return { sighting, issues: row.issues };
+  }
+  const missing = REQUIRED[profile].filter((name) => !present(row.fields[name]));
+  if (missing.length > 0) {
+    report(row, "feed-item-incomplete", `item "${id}" has no ${missing.join(", ")}, which the format requires; an agent rejects the row`);
+  }
+  readPrice2(row, sighting);
+  readAvailability(row, sighting);
+  if (profile === "openai") {
+    readShipping(row, sighting);
+    readReturns(row, sighting);
+  }
+  return { sighting, issues: row.issues };
+}
+
+// packages/collect-feed/src/acp/nested.ts
+var SURFACE2 = "acp";
+var STATUS = /* @__PURE__ */ new Map([
+  ["in_stock", "in_stock"],
+  // Few left is still in stock.
+  ["limited_stock", "in_stock"],
+  ["backorder", "backorder"],
+  ["preorder", "preorder"],
+  ["out_of_stock", "out_of_stock"],
+  ["discontinued", "discontinued"]
+]);
+var GTIN_TYPE = /^(gtin|upc|ean)/i;
+function idText(v) {
+  if (typeof v === "string") return v.trim() || void 0;
+  if (typeof v === "number" && Number.isSafeInteger(v)) return String(v);
+  return void 0;
+}
+var textOf = (v) => typeof v === "string" ? v.trim() || void 0 : void 0;
+function unreadable2(v, field, message) {
+  v.issues.push({ surface: SURFACE2, code: "feed-field-unreadable", message, locator: `${v.at}/${field}` });
+}
+function observe2(v, value, raw, field) {
+  return { value, raw, surface: SURFACE2, locator: `${v.at}/${field}`, fetchedAt: v.ctx.fetchedAt };
+}
+function readPrice3(v, value, field) {
+  if (value === void 0 || value === null) return void 0;
+  const currency = isObject(value) && typeof value.currency === "string" ? value.currency.trim().toUpperCase() : "";
+  const amount = isObject(value) ? value.amount : void 0;
+  const money5 = /^[A-Z]{3}$/.test(currency) && typeof amount === "number" && Number.isSafeInteger(amount) && amount >= 0 ? fromMinor(amount, minorUnitOf(currency), currency) : null;
+  if (!money5) {
+    unreadable2(v, field, `${field} ${JSON.stringify(value)} is not {"amount": <minor units>, "currency": "<ISO 4217 code>"}`);
+    return void 0;
+  }
+  return observe2(v, money5, JSON.stringify(value), field);
+}
+function readAvailability2(v, value) {
+  if (value === void 0 || value === null) return void 0;
+  const raw = JSON.stringify(value);
+  const given = isObject(value) && value.available !== void 0 && value.available !== null;
+  if (!isObject(value) || given && typeof value.available !== "boolean") {
+    unreadable2(v, "availability", `availability ${raw} is not {"available": true or false, "status": "<state>"}`);
+    return void 0;
+  }
+  const available = given ? value.available : void 0;
+  const status = textOf(value.status);
+  const fromStatus = status ? STATUS.get(status.toLowerCase()) : void 0;
+  if (fromStatus) {
+    if (available !== void 0 && isBuyable(fromStatus) !== available) {
+      unreadable2(v, "availability", `availability ${raw} contradicts itself: status "${status}" with available ${available}`);
+      return void 0;
+    }
+    return observe2(v, fromStatus, raw, "availability");
+  }
+  if (available !== void 0) return observe2(v, available ? "in_stock" : "out_of_stock", raw, "availability");
+  if (status) unreadable2(v, "availability", `availability status "${status}" is not one the protocol names, and available is not given`);
+  return void 0;
+}
+function readGtin(value) {
+  if (!Array.isArray(value)) return void 0;
+  for (const b of value) {
+    if (!isObject(b) || typeof b.type !== "string" || !GTIN_TYPE.test(b.type.trim())) continue;
+    const digits = textOf(b.value);
+    if (digits) return digits;
+  }
+  return void 0;
+}
+function readOptions(v, value) {
+  if (value === void 0 || value === null) return void 0;
+  if (!Array.isArray(value)) {
+    unreadable2(v, "variant_options", `variant_options ${JSON.stringify(value)} is not a list`);
+    return void 0;
+  }
+  const out2 = {};
+  value.forEach((option, i) => {
+    const name = isObject(option) ? textOf(option.name) : void 0;
+    const chosen = isObject(option) ? textOf(option.value) : void 0;
+    if (name && chosen) out2[name] = chosen;
+    else unreadable2(v, `variant_options[${i + 1}]`, `variant option ${JSON.stringify(option)} is not {"name": ..., "value": ...}`);
+  });
+  return Object.keys(out2).length > 0 ? out2 : void 0;
+}
+function readRefundPolicy(v, seller) {
+  if (!isObject(seller) || !Array.isArray(seller.links)) return void 0;
+  for (const [i, link] of seller.links.entries()) {
+    if (!isObject(link) || textOf(link.type) !== "refund_policy") continue;
+    const url = textOf(link.url);
+    const href = url ? httpUrl(url) : void 0;
+    if (href) return observe2(v, { present: true, url: href }, JSON.stringify(link), `seller/links[${i + 1}]`);
+    unreadable2(v, `seller/links[${i + 1}]`, `refund_policy link ${JSON.stringify(link)} has no http or https URL`);
+  }
+  return void 0;
+}
+function mapProduct(record3, ctx) {
+  const p = record3.product;
+  const issues = [];
+  const productId = idText(p.id);
+  if (!productId) {
+    issues.push({ surface: SURFACE2, code: "feed-item-incomplete", message: `${placeText(record3.place)} has no id`, locator: placeLocator(ctx.feedUrl, record3.place) });
+    return { sightings: [], issues };
+  }
+  const productAt = `${ctx.feedUrl}#product[id="${productId}"]`;
+  if (!Array.isArray(p.variants)) {
+    issues.push({ surface: SURFACE2, code: "feed-item-incomplete", message: `product "${productId}" has no variants`, locator: productAt });
+    return { sightings: [], issues };
+  }
+  const productUrl2 = textOf(p.url);
+  const sightings = [];
+  p.variants.forEach((variant2, i) => {
+    const variantId = isObject(variant2) ? idText(variant2.id) : void 0;
+    if (!isObject(variant2) || !variantId) {
+      issues.push({ surface: SURFACE2, code: "feed-item-incomplete", message: `product "${productId}" variant ${i + 1} has no id`, locator: `${productAt}/variant[${i + 1}]` });
+      return;
+    }
+    const v = { ctx, issues, at: `${productAt}/variant[id="${variantId}"]` };
+    const link = textOf(variant2.url) ?? productUrl2;
+    if (!link) {
+      issues.push({ surface: SURFACE2, code: "feed-item-incomplete", message: `variant "${variantId}" has no url, and neither has its product`, locator: v.at });
+      return;
+    }
+    const title = textOf(variant2.title);
+    if (!title) issues.push({ surface: SURFACE2, code: "feed-item-incomplete", message: `variant "${variantId}" has no title, which the model requires`, locator: v.at });
+    const ids = { aliases: [variantId], groupId: productId };
+    const url = resolveUrl(link, ctx.feedUrl);
+    if (url) ids.url = url;
+    const gtin = readGtin(variant2.barcodes);
+    if (gtin) ids.gtin = gtin;
+    const options = readOptions(v, variant2.variant_options);
+    if (options) ids.options = options;
+    const sighting = { surface: SURFACE2, scope: "variant", ids };
+    const named = title ?? textOf(p.title);
+    if (named) sighting.title = named;
+    const price = readPrice3(v, variant2.price, "price");
+    if (price) sighting.price = price;
+    const listPrice = readPrice3(v, variant2.list_price, "list_price");
+    if (listPrice) sighting.listPrice = listPrice;
+    const availability = readAvailability2(v, variant2.availability);
+    if (availability) sighting.availability = availability;
+    const returnPolicy = readRefundPolicy(v, variant2.seller);
+    if (returnPolicy) sighting.returnPolicy = returnPolicy;
+    sightings.push(sighting);
+  });
+  return { sightings, issues };
+}
+
+// packages/collect-feed/src/acp/index.ts
+function parseAcp(text7, ctx) {
+  const read = readAcp(text7, ctx.feedUrl);
+  if ("error" in read) return read;
+  const sightings = [];
+  const issues = [...read.issues];
+  for (const record3 of read.records) {
+    if (record3.kind === "flat") {
+      const mapped = mapFlat(record3, read.profile, ctx);
+      if (mapped.sighting) sightings.push(mapped.sighting);
+      issues.push(...mapped.issues);
+    } else {
+      const mapped = mapProduct(record3, ctx);
+      sightings.push(...mapped.sightings);
+      issues.push(...mapped.issues);
+    }
+  }
+  return { sightings, issues };
 }
 
 // node_modules/.pnpm/fast-xml-parser@5.11.2/node_modules/fast-xml-parser/src/util.js
@@ -8649,7 +9294,7 @@ function prettify(node, options, matcher, readonlyMatcher) {
   return compress(node, options, matcher, readonlyMatcher);
 }
 function compress(arr, options, matcher, readonlyMatcher) {
-  let text6;
+  let text7;
   const compressedObj = {};
   for (let i = 0; i < arr.length; i++) {
     const tagObj = arr[i];
@@ -8662,8 +9307,8 @@ function compress(arr, options, matcher, readonlyMatcher) {
       matcher.push(property, rawAttrs);
     }
     if (property === options.textNodeName) {
-      if (text6 === void 0) text6 = tagObj[property];
-      else text6 += "" + tagObj[property];
+      if (text7 === void 0) text7 = tagObj[property];
+      else text7 += "" + tagObj[property];
     } else if (property === void 0) {
       continue;
     } else if (tagObj[property]) {
@@ -8701,9 +9346,9 @@ function compress(arr, options, matcher, readonlyMatcher) {
       }
     }
   }
-  if (typeof text6 === "string") {
-    if (text6.length > 0) compressedObj[options.textNodeName] = text6;
-  } else if (text6 !== void 0) compressedObj[options.textNodeName] = text6;
+  if (typeof text7 === "string") {
+    if (text7.length > 0) compressedObj[options.textNodeName] = text7;
+  } else if (text7 !== void 0) compressedObj[options.textNodeName] = text7;
   return compressedObj;
 }
 function propName(obj) {
@@ -8819,14 +9464,14 @@ var parser = new XMLParser({
   trimValues: true,
   isArray: (name) => name === "item" || name === "entry" || name === "shipping"
 });
-var isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+var isObject2 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 var asList = (v) => v === void 0 ? [] : Array.isArray(v) ? v : [v];
 function scalar(v) {
   if (typeof v === "string") return v.trim() || void 0;
   if (typeof v === "number" || typeof v === "boolean") return String(v);
-  if (isObject(v)) {
-    const text6 = v["#text"];
-    if (typeof text6 === "string" || typeof text6 === "number") return scalar(String(text6));
+  if (isObject2(v)) {
+    const text7 = v["#text"];
+    if (typeof text7 === "string" || typeof text7 === "number") return scalar(String(text7));
     const href = v["@_href"];
     if (typeof href === "string") return href.trim() || void 0;
   }
@@ -8834,19 +9479,19 @@ function scalar(v) {
 }
 function firstText(v) {
   for (const candidate of asList(v)) {
-    const text6 = scalar(candidate);
-    if (text6) return text6;
+    const text7 = scalar(candidate);
+    if (text7) return text7;
   }
   return void 0;
 }
 function linkText(v) {
   const preferred = asList(v).find(
-    (c) => isObject(c) && typeof c["@_href"] === "string" && (c["@_rel"] === void 0 || c["@_rel"] === "alternate")
+    (c) => isObject2(c) && typeof c["@_href"] === "string" && (c["@_rel"] === void 0 || c["@_rel"] === "alternate")
   );
   return scalar(preferred) ?? firstText(v);
 }
 function shippingEntry(v) {
-  if (!isObject(v)) return void 0;
+  if (!isObject2(v)) return void 0;
   const price = firstText(v.price);
   if (!price) return void 0;
   const country = firstText(v.country);
@@ -8855,7 +9500,7 @@ function shippingEntry(v) {
 function itemFromXml(v) {
   const fields2 = /* @__PURE__ */ Object.create(null);
   const shipping = [];
-  if (!isObject(v)) return { fields: fields2, shipping };
+  if (!isObject2(v)) return { fields: fields2, shipping };
   for (const [key, value] of Object.entries(v)) {
     if (key.startsWith("@_") || key === "#text") continue;
     if (key === "shipping") {
@@ -8865,32 +9510,32 @@ function itemFromXml(v) {
       }
       continue;
     }
-    const text6 = key === "link" ? linkText(value) : firstText(value);
-    if (text6) fields2[key] = text6;
+    const text7 = key === "link" ? linkText(value) : firstText(value);
+    if (text7) fields2[key] = text7;
   }
   return { fields: fields2, shipping };
 }
-function readXml(text6) {
-  const valid = XMLValidator.validate(text6);
+function readXml(text7) {
+  const valid = XMLValidator.validate(text7);
   if (valid !== true) return { error: `not well-formed XML: ${valid.err.msg} (line ${valid.err.line})` };
   let root2;
   try {
-    root2 = parser.parse(text6);
+    root2 = parser.parse(text7);
   } catch (err) {
     return { error: `XML could not be parsed: ${err.message}` };
   }
-  if (!isObject(root2)) return { error: "XML has no root element" };
-  if (isObject(root2.rss)) {
-    const channel = asList(root2.rss.channel).find(isObject);
+  if (!isObject2(root2)) return { error: "XML has no root element" };
+  if (isObject2(root2.rss)) {
+    const channel = asList(root2.rss.channel).find(isObject2);
     if (!channel) return { error: "RSS document has no channel" };
     const dates = [];
     for (const name of ["lastBuildDate", "pubDate"]) {
-      const text7 = firstText(channel[name]);
-      if (text7) dates.push({ text: text7, path: `/rss/channel/${name}`, syntax: "rfc822" });
+      const text8 = firstText(channel[name]);
+      if (text8) dates.push({ text: text8, path: `/rss/channel/${name}`, syntax: "rfc822" });
     }
     return { items: asList(channel.item).map(itemFromXml), dates };
   }
-  if (isObject(root2.feed)) {
+  if (isObject2(root2.feed)) {
     const updated = firstText(root2.feed.updated);
     const dates = updated ? [{ text: updated, path: "/feed/updated", syntax: "rfc3339" }] : [];
     return { items: asList(root2.feed.entry).map(itemFromXml), dates };
@@ -8907,54 +9552,65 @@ function generatedAt(dates, lastModified, feedUrl, fetchedAt) {
   }
   return void 0;
 }
-function parseFeed(body, feedUrl, fetchedAt, now, options = {}) {
-  const text6 = body.replace(/^\uFEFF/, "");
-  const detected = text6.trimStart();
-  const parseError = (message) => ({
-    sightings: [],
-    issues: [{ surface: "feed", code: "parse-error", message, locator: feedUrl }]
-  });
+function parseGoogle(text7, ctx) {
   let items;
   let dates = [];
-  if (detected === "") return parseError("feed is empty");
+  const detected = text7.trimStart();
   if (detected.startsWith("<")) {
     const read = readXml(detected);
-    if ("error" in read) return parseError(read.error);
+    if ("error" in read) return read;
     items = read.items;
     dates = read.dates;
   } else {
     try {
-      items = readTsv(text6);
+      items = readTsv(text7);
     } catch (err) {
-      return parseError(err instanceof Error ? err.message : String(err));
+      return { error: err instanceof Error ? err.message : String(err) };
     }
   }
   const sightings = [];
   const issues = [];
-  const ctx = { feedUrl, fetchedAt, now, defaultCurrency: options.defaultCurrency ?? null };
-  const stamp = generatedAt(dates, options.lastModified, feedUrl, fetchedAt);
   items.forEach((item, index2) => {
     const mapped = mapItem(item, index2 + 1, ctx);
-    if (mapped.sighting) {
-      if (stamp) mapped.sighting.generatedAt = { ...stamp, surface: mapped.sighting.surface };
-      sightings.push(mapped.sighting);
-    }
+    if (mapped.sighting) sightings.push(mapped.sighting);
     issues.push(...mapped.issues);
   });
-  return { sightings, issues };
+  return { sightings, issues, dates };
+}
+function parseFeed(body, feedUrl, fetchedAt, now, options = {}) {
+  const surface = options.surface ?? "feed";
+  const text7 = body.replace(/^\uFEFF/, "");
+  const parseError = (message) => ({
+    sightings: [],
+    issues: [{ surface, code: "parse-error", message, locator: feedUrl }]
+  });
+  if (text7.trim() === "") return parseError("feed is empty");
+  const ctx = { feedUrl, fetchedAt, now, defaultCurrency: options.defaultCurrency ?? null };
+  let parsed;
+  if (surface === "acp") {
+    const acp = parseAcp(text7, ctx);
+    parsed = "error" in acp ? acp : { ...acp, dates: [] };
+  } else {
+    parsed = parseGoogle(text7, ctx);
+  }
+  if ("error" in parsed) return parseError(parsed.error);
+  const stamp = generatedAt(parsed.dates, options.lastModified, feedUrl, fetchedAt);
+  if (stamp) for (const s of parsed.sightings) s.generatedAt = { ...stamp, surface: s.surface };
+  return { sightings: parsed.sightings, issues: parsed.issues };
 }
 async function collectFeed(ctx, feedUrl, options = {}) {
+  const surface = options.surface ?? "feed";
   const fetchFailed = (message) => ({
     sightings: [],
-    issues: [{ surface: "feed", code: "fetch-failed", message, locator: feedUrl }]
+    issues: [{ surface, code: "fetch-failed", message, locator: feedUrl }]
   });
   let res;
   try {
-    res = await ctx.fetcher.get(feedUrl);
+    res = await ctx.fetcher.get(feedUrl, { gzipFile: true });
   } catch (err) {
     if (err instanceof FetchRefused) {
       const code2 = err.code === "robots" ? "robots-disallowed" : "fetch-failed";
-      return { sightings: [], issues: [{ surface: "feed", code: code2, message: err.message, locator: feedUrl }] };
+      return { sightings: [], issues: [{ surface, code: code2, message: err.message, locator: feedUrl }] };
     }
     return fetchFailed(err instanceof Error ? err.message : String(err));
   }
@@ -8996,7 +9652,7 @@ __export(static_exports, {
   merge: () => merge,
   parseHTML: () => parseHTML,
   root: () => root,
-  text: () => text2,
+  text: () => text3,
   xml: () => xml2
 });
 
@@ -9445,11 +10101,11 @@ var DomHandler = class {
     this.lastNode = null;
   }
   oncdatastart() {
-    const text6 = new Text2("");
-    const node = new CDATA2([text6]);
+    const text7 = new Text2("");
+    const node = new CDATA2([text7]);
     this.addNode(node);
-    text6.parent = node;
-    this.lastNode = text6;
+    text7.parent = node;
+    this.lastNode = text7;
   }
   oncdataend() {
     this.lastNode = null;
@@ -10784,7 +11440,7 @@ function xml2(dom) {
   const options = { ...this._options, xmlMode: true };
   return render2(this, dom, options);
 }
-function text2(elements) {
+function text3(elements) {
   const elems = elements !== null && elements !== void 0 ? elements : this ? this.root() : [];
   let ret = "";
   for (let i = 0; i < elems.length; i++) {
@@ -12546,7 +13202,7 @@ function getAttr(elem, name, xmlMode) {
     return !xmlMode && rboolean.test(name) ? name : elem.attribs[name];
   }
   if (elem.name === "option" && name === "value") {
-    return text2(elem.children);
+    return text3(elem.children);
   }
   if (elem.name === "input" && (elem.attribs["type"] === "radio" || elem.attribs["type"] === "checkbox") && name === "value") {
     return "on";
@@ -12775,7 +13431,7 @@ function val(value) {
         }
         return this;
       }
-      return this.attr("multiple") ? option.toArray().map((el) => text2(el.children)) : option.attr("value");
+      return this.attr("multiple") ? option.toArray().map((el) => text3(el.children)) : option.attr("value");
     }
     case "button":
     case "input":
@@ -13294,13 +13950,13 @@ function getChildFunc(next2, adapter2) {
   };
 }
 var filters = {
-  contains(next2, text6, { adapter: adapter2 }) {
+  contains(next2, text7, { adapter: adapter2 }) {
     return function contains2(elem) {
-      return next2(elem) && adapter2.getText(elem).includes(text6);
+      return next2(elem) && adapter2.getText(elem).includes(text7);
     };
   },
-  icontains(next2, text6, { adapter: adapter2 }) {
-    const itext = text6.toLowerCase();
+  icontains(next2, text7, { adapter: adapter2 }) {
+    const itext = text7.toLowerCase();
     return function icontains(elem) {
       return next2(elem) && adapter2.getText(elem).toLowerCase().includes(itext);
     };
@@ -14412,7 +15068,7 @@ __export(manipulation_exports, {
   prependTo: () => prependTo,
   remove: () => remove,
   replaceWith: () => replaceWith,
-  text: () => text3,
+  text: () => text4,
   toString: () => toString,
   unwrap: () => unwrap,
   wrap: () => wrap,
@@ -14756,12 +15412,12 @@ function html2(str) {
 function toString() {
   return this._render(this);
 }
-function text3(str) {
+function text4(str) {
   if (str === void 0) {
-    return text2(this);
+    return text3(this);
   }
   if (typeof str === "function") {
-    return domEach(this, (el, i) => this._make(el).text(str.call(el, i, text2([el]))));
+    return domEach(this, (el, i) => this._make(el).text(str.call(el, i, text3([el]))));
   }
   return domEach(this, (el) => {
     if (!hasChildren(el))
@@ -19448,22 +20104,22 @@ var defaultTreeAdapter = {
       node.parentNode = null;
     }
   },
-  insertText(parentNode, text6) {
+  insertText(parentNode, text7) {
     if (parentNode.childNodes.length > 0) {
       const prevNode = parentNode.childNodes[parentNode.childNodes.length - 1];
       if (defaultTreeAdapter.isTextNode(prevNode)) {
-        prevNode.value += text6;
+        prevNode.value += text7;
         return;
       }
     }
-    defaultTreeAdapter.appendChild(parentNode, defaultTreeAdapter.createTextNode(text6));
+    defaultTreeAdapter.appendChild(parentNode, defaultTreeAdapter.createTextNode(text7));
   },
-  insertTextBefore(parentNode, text6, referenceNode) {
+  insertTextBefore(parentNode, text7, referenceNode) {
     const prevNode = parentNode.childNodes[parentNode.childNodes.indexOf(referenceNode) - 1];
     if (prevNode && defaultTreeAdapter.isTextNode(prevNode)) {
-      prevNode.value += text6;
+      prevNode.value += text7;
     } else {
-      defaultTreeAdapter.insertBefore(parentNode, defaultTreeAdapter.createTextNode(text6), referenceNode);
+      defaultTreeAdapter.insertBefore(parentNode, defaultTreeAdapter.createTextNode(text7), referenceNode);
     }
   },
   adoptAttributes(recipient, attrs) {
@@ -23162,20 +23818,20 @@ var adapter = {
       node.parent = null;
     }
   },
-  insertText(parentNode, text6) {
+  insertText(parentNode, text7) {
     const lastChild = parentNode.children[parentNode.children.length - 1];
     if (lastChild && isText(lastChild)) {
-      lastChild.data += text6;
+      lastChild.data += text7;
     } else {
-      adapter.appendChild(parentNode, adapter.createTextNode(text6));
+      adapter.appendChild(parentNode, adapter.createTextNode(text7));
     }
   },
-  insertTextBefore(parentNode, text6, referenceNode) {
+  insertTextBefore(parentNode, text7, referenceNode) {
     const prevNode = parentNode.children[parentNode.children.indexOf(referenceNode) - 1];
     if (prevNode && isText(prevNode)) {
-      prevNode.data += text6;
+      prevNode.data += text7;
     } else {
-      adapter.insertBefore(parentNode, adapter.createTextNode(text6), referenceNode);
+      adapter.insertBefore(parentNode, adapter.createTextNode(text7), referenceNode);
     }
   },
   adoptAttributes(recipient, attrs) {
@@ -23287,8 +23943,8 @@ function documentOf(source) {
 }
 
 // packages/collect-page/src/jsonld.ts
-var SURFACE = "jsonld";
-var AVAILABILITY2 = /* @__PURE__ */ new Map([
+var SURFACE3 = "jsonld";
+var AVAILABILITY3 = /* @__PURE__ */ new Map([
   ["instock", "in_stock"],
   ["limitedavailability", "in_stock"],
   ["onlineonly", "in_stock"],
@@ -23317,28 +23973,28 @@ function extractJsonLd(html3, pageUrl, fetchedAt) {
       try {
         parsed = JSON.parse($2(el).text());
       } catch (err) {
-        issues.push({ surface: SURFACE, code: "parse-error", message: `invalid JSON-LD: ${messageOf(err)}`, locator: locator2 });
+        issues.push({ surface: SURFACE3, code: "parse-error", message: `invalid JSON-LD: ${messageOf(err)}`, locator: locator2 });
         return;
       }
       try {
         visit(parsed, "", { pageUrl, fetchedAt, scriptIndex, out: out2 });
       } catch (err) {
-        issues.push({ surface: SURFACE, code: "extract-failed", message: `could not read JSON-LD: ${messageOf(err)}`, locator: locator2 });
+        issues.push({ surface: SURFACE3, code: "extract-failed", message: `could not read JSON-LD: ${messageOf(err)}`, locator: locator2 });
       }
     });
   } catch (err) {
-    issues.push({ surface: SURFACE, code: "extract-failed", message: `could not read page: ${messageOf(err)}`, locator: pageUrl });
+    issues.push({ surface: SURFACE3, code: "extract-failed", message: `could not read page: ${messageOf(err)}`, locator: pageUrl });
   }
   return { sightings: out2, issues };
 }
-function readMoney(text6, currency) {
-  if (parseAllMoney(text6, { currency }).length !== 1) return null;
-  return parseMoney(text6, { currency });
+function readMoney2(text7, currency) {
+  if (parseAllMoney(text7, { currency }).length !== 1) return null;
+  return parseMoney(text7, { currency });
 }
 function schemaAvailability(value) {
   if (typeof value !== "string") return void 0;
   const last2 = value.trim().split(/[/#]/).pop() ?? "";
-  return AVAILABILITY2.get(last2.toLowerCase());
+  return AVAILABILITY3.get(last2.toLowerCase());
 }
 function visit(node, ptr, ctx) {
   if (Array.isArray(node)) {
@@ -23382,7 +24038,7 @@ function emitProduct(product3, group, ctx) {
 function emitOffer(product3, offer2, fallbackCurrency, group, ctx, inherit) {
   const o = offer2.node;
   const ids = idsOf(o, product3.node, group, ctx.pageUrl, inherit);
-  const sighting = { surface: SURFACE, scope: isVariant(ids, o, group, ctx.pageUrl) ? "variant" : "product", ids };
+  const sighting = { surface: SURFACE3, scope: isVariant(ids, o, group, ctx.pageUrl) ? "variant" : "product", ids };
   const title = titleOf(product3.node, group?.node);
   if (title) sighting.title = title;
   const offerCurrency = strOnly(o.priceCurrency);
@@ -23411,7 +24067,7 @@ function emitOffer(product3, offer2, fallbackCurrency, group, ctx, inherit) {
 function emitAggregate(product3, agg, group, ctx) {
   const a = agg.node;
   const ids = idsOf(a, product3.node, group, ctx.pageUrl, true);
-  const sighting = { surface: SURFACE, scope: "product", ids };
+  const sighting = { surface: SURFACE3, scope: "product", ids };
   const title = titleOf(product3.node, group?.node);
   if (title) sighting.title = title;
   const currency = strOnly(a.priceCurrency) ?? null;
@@ -23420,8 +24076,8 @@ function emitAggregate(product3, agg, group, ctx) {
   const count3 = countOf(a.offerCount);
   let field;
   if (low !== void 0 && high !== void 0) {
-    const lowMoney = readMoney(low, currency);
-    const highMoney = readMoney(high, currency);
+    const lowMoney = readMoney2(low, currency);
+    const highMoney = readMoney2(high, currency);
     if (lowMoney && highMoney && lowMoney.units === highMoney.units) field = { raw: low, ptr: `${agg.ptr}/lowPrice` };
   } else if (low !== void 0 && count3 === 1) {
     field = { raw: low, ptr: `${agg.ptr}/lowPrice` };
@@ -23436,15 +24092,15 @@ function emitAggregate(product3, agg, group, ctx) {
 }
 function idsOf(o, p, group, pageUrl, inherit) {
   const ids = {};
-  const sku = text4(o.sku) ?? (inherit ? text4(p.sku) : void 0);
+  const sku = text5(o.sku) ?? (inherit ? text5(p.sku) : void 0);
   if (sku !== void 0) ids.sku = sku;
-  const mpn = text4(o.mpn) ?? (inherit ? text4(p.mpn) : void 0);
+  const mpn = text5(o.mpn) ?? (inherit ? text5(p.mpn) : void 0);
   if (mpn !== void 0) ids.mpn = mpn;
   const gtin = gtinOf(o) ?? (inherit ? gtinOf(p) : void 0);
   if (gtin !== void 0) ids.gtin = gtin;
   const brand = brandOf(p) ?? (group ? brandOf(group.node) : void 0);
   if (brand !== void 0) ids.brand = brand;
-  const urlRaw = text4(o.url) ?? text4(p.url) ?? (group ? text4(group.node.url) : void 0);
+  const urlRaw = text5(o.url) ?? text5(p.url) ?? (group ? text5(group.node.url) : void 0);
   const url = urlRaw === void 0 ? pageUrl : absolute(urlRaw, pageUrl);
   if (url !== void 0) ids.url = url;
   const hints = urlHints(strOnly(o.url), pageUrl);
@@ -23486,7 +24142,7 @@ function brandOf(p) {
 }
 function gtinOf(o) {
   for (const key of GTIN_KEYS) {
-    const value = text4(o[key]);
+    const value = text5(o[key]);
     if (value !== void 0) return value;
   }
   return void 0;
@@ -23516,8 +24172,8 @@ function priceFields(o, ptr) {
   return out2;
 }
 function moneyObs(ctx, field, currency) {
-  const money3 = readMoney(field.raw, currency);
-  return money3 ? obs(ctx, field.ptr, money3, field.raw) : void 0;
+  const money5 = readMoney2(field.raw, currency);
+  return money5 ? obs(ctx, field.ptr, money5, field.raw) : void 0;
 }
 function availabilityObs(ctx, ptr, value) {
   const availability = schemaAvailability(value);
@@ -23530,7 +24186,7 @@ function shippingOf(o, ptr, ctx) {
     const currency = strOnly(rate.currency) ?? null;
     const amount = rateAmount(rate, `${details.ptr}/shippingRate`, currency);
     if (!amount) return void 0;
-    const cost = readMoney(amount.raw, currency);
+    const cost = readMoney2(amount.raw, currency);
     if (!cost) return void 0;
     const quote = { free: cost.units === 0, cost };
     const country = countryOf(details.node.shippingDestination);
@@ -23546,8 +24202,8 @@ function rateAmount(rate, ptr, currency) {
   if (max === void 0) return void 0;
   const min = numText(rate.minValue);
   if (min !== void 0) {
-    const lo = readMoney(min, currency);
-    const hi = readMoney(max, currency);
+    const lo = readMoney2(min, currency);
+    const hi = readMoney2(max, currency);
     if (!lo || !hi || lo.units !== hi.units) return void 0;
   }
   return { raw: max, ptr: `${ptr}/maxValue` };
@@ -23579,7 +24235,7 @@ function obs(ctx, ptr, value, raw) {
   return {
     value,
     raw,
-    surface: SURFACE,
+    surface: SURFACE3,
     locator: `${ctx.pageUrl}#jsonld[${ctx.scriptIndex}]${ptr}`,
     fetchedAt: ctx.fetchedAt
   };
@@ -23615,7 +24271,7 @@ function escapePointer(key) {
 function isObj(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-function text4(value) {
+function text5(value) {
   if (typeof value === "number") return Number.isFinite(value) ? String(value) : void 0;
   return strOnly(value);
 }
@@ -23639,9 +24295,9 @@ function messageOf(err) {
 }
 
 // packages/collect-page/src/microdata.ts
-var SURFACE2 = "microdata";
+var SURFACE4 = "microdata";
 var PRODUCT_TYPE = /^https?:\/\/(?:www\.)?schema\.org\/Product$/i;
-var AVAILABILITY3 = /* @__PURE__ */ new Map([
+var AVAILABILITY4 = /* @__PURE__ */ new Map([
   ["instock", "in_stock"],
   ["limitedavailability", "in_stock"],
   ["onlineonly", "in_stock"],
@@ -23663,7 +24319,7 @@ function extractMicrodata(html3, pageUrl, fetchedAt) {
       emitProduct2($2, product3, productIndex, { pageUrl, fetchedAt, out: sightings });
     });
   } catch (err) {
-    issues.push({ surface: SURFACE2, code: "extract-failed", message: `could not read microdata: ${messageOf2(err)}`, locator: pageUrl });
+    issues.push({ surface: SURFACE4, code: "extract-failed", message: `could not read microdata: ${messageOf2(err)}`, locator: pageUrl });
   }
   return { sightings, issues };
 }
@@ -23688,7 +24344,7 @@ function emitSighting($2, root2, product3, prefix, title, ctx) {
   if (gtin !== void 0) ids.gtin = gtin.value;
   if (mpn !== void 0) ids.mpn = mpn.value;
   const variant2 = ids.sku !== void 0 || ids.gtin !== void 0 || ids.mpn !== void 0 || hasQuery2(offerUrl?.value, ctx.pageUrl);
-  const sighting = { surface: SURFACE2, scope: variant2 ? "variant" : "product", ids };
+  const sighting = { surface: SURFACE4, scope: variant2 ? "variant" : "product", ids };
   if (title !== void 0) sighting.title = title;
   const currency = readValue($2, findProp($2, root2, "priceCurrency"), ["content"])?.value ?? null;
   const priceField = readValue($2, findProp($2, root2, "price"), ["content"]);
@@ -23736,8 +24392,8 @@ function readValue($2, el, attrs) {
     const raw = $2(el).attr(attr2);
     if (raw !== void 0 && raw.trim() !== "") return { value: raw.trim() };
   }
-  const text6 = $2(el).text().trim();
-  return text6 === "" ? void 0 : { value: text6 };
+  const text7 = $2(el).text().trim();
+  return text7 === "" ? void 0 : { value: text7 };
 }
 function hasToken($2, el, attr2, token) {
   return tokens($2(el).attr(attr2)).includes(token);
@@ -23746,15 +24402,15 @@ function tokens(value) {
   return (value ?? "").trim().split(/\s+/).filter((t) => t !== "");
 }
 function moneyObs2(ctx, locator2, amount, currency) {
-  const money3 = readMoney2(amount, currency);
-  return money3 ? obs2(ctx, locator2, money3, amount) : void 0;
+  const money5 = readMoney3(amount, currency);
+  return money5 ? obs2(ctx, locator2, money5, amount) : void 0;
 }
 function availabilityObs2(ctx, locator2, value) {
-  const availability = AVAILABILITY3.get((value.trim().split(/[/#]/).pop() ?? "").toLowerCase());
+  const availability = AVAILABILITY4.get((value.trim().split(/[/#]/).pop() ?? "").toLowerCase());
   return availability ? obs2(ctx, locator2, availability, value) : void 0;
 }
 function obs2(ctx, locator2, value, raw) {
-  return { value, raw, surface: SURFACE2, locator: locator2, fetchedAt: ctx.fetchedAt };
+  return { value, raw, surface: SURFACE4, locator: locator2, fetchedAt: ctx.fetchedAt };
 }
 function hasQuery2(rawUrl, base) {
   if (rawUrl === void 0) return false;
@@ -23764,20 +24420,20 @@ function hasQuery2(rawUrl, base) {
     return false;
   }
 }
-function readMoney2(text6, currency) {
-  if (parseAllMoney(text6, { currency }).length !== 1) return null;
-  return parseMoney(text6, { currency });
+function readMoney3(text7, currency) {
+  if (parseAllMoney(text7, { currency }).length !== 1) return null;
+  return parseMoney(text7, { currency });
 }
 function messageOf2(err) {
   return err instanceof Error ? err.message : String(err);
 }
 
 // packages/collect-page/src/opengraph.ts
-var SURFACE3 = "opengraph";
+var SURFACE5 = "opengraph";
 var PRICE_AMOUNT = ["product:price:amount", "og:price:amount", "product:sale_price:amount"];
 var PRICE_CURRENCY = ["product:price:currency", "og:price:currency", "product:sale_price:currency"];
 var AVAILABILITY_KEYS = ["product:availability", "og:availability"];
-var AVAILABILITY4 = /* @__PURE__ */ new Map([
+var AVAILABILITY5 = /* @__PURE__ */ new Map([
   ["instock", "in_stock"],
   ["availablefororder", "in_stock"],
   ["outofstock", "out_of_stock"],
@@ -23824,7 +24480,7 @@ function buildSighting(tags, pageUrl, fetchedAt) {
   const aliasTag = firstTag(tags, ["product:retailer_item_id"]);
   const alias = aliasTag?.content.trim();
   if (alias) ids.aliases = [alias];
-  const sighting = { surface: SURFACE3, scope: "product", ids };
+  const sighting = { surface: SURFACE5, scope: "product", ids };
   const title = firstTag(tags, ["og:title"])?.content.trim();
   if (title) sighting.title = title;
   if (price) sighting.price = price;
@@ -23835,12 +24491,12 @@ function priceOf(tags, pageUrl, fetchedAt) {
   const amount = firstTag(tags, PRICE_AMOUNT);
   if (!amount) return void 0;
   const currency = firstTag(tags, PRICE_CURRENCY)?.content.trim() ?? null;
-  const money3 = readMoney3(amount.content, currency);
-  if (!money3) return void 0;
+  const money5 = readMoney4(amount.content, currency);
+  if (!money5) return void 0;
   return {
-    value: money3,
+    value: money5,
     raw: amount.content,
-    surface: SURFACE3,
+    surface: SURFACE5,
     locator: `${pageUrl}#meta[${amount.attr}="${amount.key}"]`,
     fetchedAt
   };
@@ -23848,12 +24504,12 @@ function priceOf(tags, pageUrl, fetchedAt) {
 function availabilityOf(tags, pageUrl, fetchedAt) {
   const tag = firstTag(tags, AVAILABILITY_KEYS);
   if (!tag) return void 0;
-  const value = AVAILABILITY4.get(tag.content.toLowerCase().replace(/[\s_-]/g, ""));
+  const value = AVAILABILITY5.get(tag.content.toLowerCase().replace(/[\s_-]/g, ""));
   if (!value) return void 0;
   return {
     value,
     raw: tag.content,
-    surface: SURFACE3,
+    surface: SURFACE5,
     locator: `${pageUrl}#meta[${tag.attr}="${tag.key}"]`,
     fetchedAt
   };
@@ -23866,9 +24522,9 @@ function resolve(raw, pageUrl) {
     return pageUrl;
   }
 }
-function readMoney3(text6, currency) {
-  if (parseAllMoney(text6, { currency }).length !== 1) return null;
-  return parseMoney(text6, { currency });
+function readMoney4(text7, currency) {
+  if (parseAllMoney(text7, { currency }).length !== 1) return null;
+  return parseMoney(text7, { currency });
 }
 
 // packages/collect-page/src/text.ts
@@ -23935,8 +24591,8 @@ function productTitle($2, preferred) {
   for (const selector of candidates) {
     if (!selector) continue;
     for (const el of select2($2, selector)) {
-      const text6 = tidy(textContent2(el));
-      if (text6) return { text: text6, selector };
+      const text7 = tidy(textContent2(el));
+      if (text7) return { text: text7, selector };
     }
   }
   return void 0;
@@ -24090,11 +24746,11 @@ function extractText(html3, pageUrl, options = {}) {
     a.hidden.forEach((h, n) => {
       out2.push({ field, text: h.text, hidden: true, hiddenReason: h.reason, locator: `${at} hidden[${n}]` });
     });
-    a.comments.forEach((text6, n) => {
-      out2.push({ field, text: text6, hidden: true, hiddenReason: "html-comment", locator: `${at} comment[${n}]` });
+    a.comments.forEach((text7, n) => {
+      out2.push({ field, text: text7, hidden: true, hiddenReason: "html-comment", locator: `${at} comment[${n}]` });
     });
-    a.alts.forEach((text6, n) => {
-      out2.push({ field: "other", text: text6, hidden: true, hiddenReason: "alt-attribute", locator: `${at} img[${n}]@alt` });
+    a.alts.forEach((text7, n) => {
+      out2.push({ field: "other", text: text7, hidden: true, hiddenReason: "alt-attribute", locator: `${at} img[${n}]@alt` });
     });
   }
   return out2;
@@ -24106,8 +24762,8 @@ function extractVisible(html3, pageUrl, fetchedAt, options = {}) {
   const hint = { currency: options.currency };
   const obs3 = (value, raw, selector) => ({ value, raw, surface: "page", locator: `${pageUrl}#css(${selector})`, fetchedAt });
   const heading = productTitle($2, options.titleSelector);
-  const read = readPrice2($2, options, hint, obs3);
-  const availability = readAvailability($2, options, obs3, read.soldOut);
+  const read = readPrice4($2, options, hint, obs3);
+  const availability = readAvailability3($2, options, obs3, read.soldOut);
   if (!read.price && !availability) return { sightings: [], issues: [] };
   const sighting = { surface: "page", scope: "product", ids: { url: pageUrl } };
   if (heading) sighting.title = heading.text;
@@ -24116,18 +24772,18 @@ function extractVisible(html3, pageUrl, fetchedAt, options = {}) {
   if (availability) sighting.availability = availability;
   return { sightings: [sighting], issues: [] };
 }
-function single(text6, hint) {
-  const all = parseAllMoney(text6, hint);
+function single(text7, hint) {
+  const all = parseAllMoney(text7, hint);
   return all.length === 1 ? all[0] : void 0;
 }
 var isScreenReader = (n) => hasClass2(n, "screen-reader-text");
-function readPrice2($2, options, hint, obs3) {
+function readPrice4($2, options, hint, obs3) {
   if (options.priceSelector) {
     const el = select2($2, options.priceSelector)[0];
     if (!el) return {};
-    const text6 = tidy(textContent2(el));
-    const money3 = single(text6, hint);
-    return money3 ? { price: obs3(money3, text6, options.priceSelector) } : {};
+    const text7 = tidy(textContent2(el));
+    const money5 = single(text7, hint);
+    return money5 ? { price: obs3(money5, text7, options.priceSelector) } : {};
   }
   const woo = wooContainer($2);
   if (woo) return readWoo(woo.el, woo.selector, hint, obs3);
@@ -24155,9 +24811,9 @@ function readWoo(el, selector, hint, obs3) {
       ...listPrice ? { listPrice: obs3(listPrice, delText, `${selector} del`) } : {}
     };
   }
-  const text6 = tidy(textContent2(el, isScreenReader));
-  const money3 = single(text6, hint);
-  return money3 ? { price: obs3(money3, text6, selector) } : {};
+  const text7 = tidy(textContent2(el, isScreenReader));
+  const money5 = single(text7, hint);
+  return money5 ? { price: obs3(money5, text7, selector) } : {};
 }
 function dawnContainer($2) {
   return select2($2, ".price").find((el) => findAll2(el, (n) => hasClass2(n, "price__regular")).length > 0);
@@ -24173,9 +24829,9 @@ function readDawn(el, hint, obs3) {
   const pick = (outer, inner) => {
     const node = inside(el, outer, inner);
     if (!node) return void 0;
-    const text6 = tidy(textContent2(node));
-    const money3 = single(text6, hint);
-    return money3 ? obs3(money3, text6, `.${outer} .${inner}`) : void 0;
+    const text7 = tidy(textContent2(node));
+    const money5 = single(text7, hint);
+    return money5 ? obs3(money5, text7, `.${outer} .${inner}`) : void 0;
   };
   const out2 = {};
   if (hasClass2(el, "price--on-sale")) {
@@ -24187,7 +24843,7 @@ function readDawn(el, hint, obs3) {
   if (hasClass2(el, "price--sold-out")) out2.soldOut = obs3("out_of_stock", "price--sold-out", ".price");
   return out2;
 }
-function readAvailability($2, options, obs3, soldOut) {
+function readAvailability3($2, options, obs3, soldOut) {
   if (options.availabilitySelector) {
     const el = select2($2, options.availabilitySelector)[0];
     return el ? decideAvailability(el, options.availabilitySelector, obs3) : void 0;
@@ -24266,11 +24922,11 @@ function extractPage(html3, pageUrl, fetchedAt, options = {}) {
   const currency = options.currency ?? (stated.size === 1 ? [...stated][0] : null);
   const visible = extractVisible(document, pageUrl, fetchedAt, { ...options, currency });
   const sightings = [...visible.sightings, ...jsonld.sightings, ...microdata.sightings, ...opengraph.sightings];
-  const text6 = extractText(document, pageUrl, options);
-  if (text6.length > 0) {
+  const text7 = extractText(document, pageUrl, options);
+  if (text7.length > 0) {
     const carrier = visible.sightings[0];
-    if (carrier) carrier.text = text6;
-    else sightings.unshift({ surface: "page", scope: "product", ids: { url: pageUrl }, text: text6 });
+    if (carrier) carrier.text = text7;
+    else sightings.unshift({ surface: "page", scope: "product", ids: { url: pageUrl }, text: text7 });
   }
   return { sightings, issues: [...visible.issues, ...jsonld.issues, ...microdata.issues, ...opengraph.issues] };
 }
@@ -24407,17 +25063,17 @@ function buildSighting2(entry, variant2, currency) {
   const rawPrice = body.price;
   const price = typeof rawPrice === "string" ? parseMoney(rawPrice, { currency }) : null;
   if (price && typeof rawPrice === "string") {
-    sighting.price = observe(price, rawPrice, `${base}/price`, fetchedAt);
+    sighting.price = observe3(price, rawPrice, `${base}/price`, fetchedAt);
     const rawCompare = body.compare_at_price;
     const compare = typeof rawCompare === "string" ? parseMoney(rawCompare, { currency }) : null;
     if (compare && typeof rawCompare === "string" && compare.units > price.units) {
-      sighting.listPrice = observe(compare, rawCompare, `${base}/compare_at_price`, fetchedAt);
+      sighting.listPrice = observe3(compare, rawCompare, `${base}/compare_at_price`, fetchedAt);
     }
   }
   const available = body.available;
   if (available === true || available === false) {
     const value = available ? "in_stock" : "out_of_stock";
-    sighting.availability = observe(value, String(available), `${base}/available`, fetchedAt);
+    sighting.availability = observe3(value, String(available), `${base}/available`, fetchedAt);
   }
   return sighting;
 }
@@ -24442,7 +25098,7 @@ function selects(select3, parent2, ctx) {
     return false;
   }
 }
-function observe(value, raw, locator2, fetchedAt) {
+function observe3(value, raw, locator2, fetchedAt) {
   return { value, raw, surface: "platform", locator: locator2, fetchedAt };
 }
 function issue(code2, message, locator2) {
@@ -24464,9 +25120,9 @@ function isId(value) {
 function nonEmptyString(value) {
   return typeof value === "string" && value.trim() !== "";
 }
-function parseJson(text6) {
+function parseJson(text7) {
   try {
-    return { value: JSON.parse(text6) };
+    return { value: JSON.parse(text7) };
   } catch {
     return void 0;
   }
@@ -24495,9 +25151,9 @@ function isRecord2(value) {
 function nonEmptyString2(value) {
   return typeof value === "string" && value.trim() !== "";
 }
-function parseJson2(text6) {
+function parseJson2(text7) {
   try {
-    return { value: JSON.parse(text6) };
+    return { value: JSON.parse(text7) };
   } catch {
     return void 0;
   }
@@ -24517,7 +25173,7 @@ function fetchIssue2(surface, err, locator2) {
   }
   return makeIssue(surface, "fetch-failed", errorText2(err), locator2);
 }
-function observe2(value, raw, surface, locator2, fetchedAt) {
+function observe4(value, raw, surface, locator2, fetchedAt) {
   return { value, raw, surface, locator: locator2, fetchedAt };
 }
 function readMinor(container, field) {
@@ -24675,10 +25331,10 @@ function buildSighting3(parent2, name, body, pointer, fetchedAt, variantId, opti
   if (nonEmptyString2(name)) sighting.title = name;
   const price = readMinor(body.prices, "price");
   if (price) {
-    sighting.price = observe2(price.value, price.raw, "platform", `${pointer}/prices/price`, fetchedAt);
+    sighting.price = observe4(price.value, price.raw, "platform", `${pointer}/prices/price`, fetchedAt);
     const regular = readMinor(body.prices, "regular_price");
     if (regular && body.on_sale === true && !sameMoney(price.value, regular.value)) {
-      sighting.listPrice = observe2(regular.value, regular.raw, "platform", `${pointer}/prices/regular_price`, fetchedAt);
+      sighting.listPrice = observe4(regular.value, regular.raw, "platform", `${pointer}/prices/regular_price`, fetchedAt);
     }
   }
   const availability = availabilityOf2(body, pointer, fetchedAt);
@@ -24687,13 +25343,13 @@ function buildSighting3(parent2, name, body, pointer, fetchedAt, variantId, opti
 }
 function availabilityOf2(body, pointer, fetchedAt) {
   if (body.is_on_backorder === true) {
-    return observe2("backorder", "true", "platform", `${pointer}/is_on_backorder`, fetchedAt);
+    return observe4("backorder", "true", "platform", `${pointer}/is_on_backorder`, fetchedAt);
   }
   if (body.is_in_stock === true) {
-    return observe2("in_stock", "true", "platform", `${pointer}/is_in_stock`, fetchedAt);
+    return observe4("in_stock", "true", "platform", `${pointer}/is_in_stock`, fetchedAt);
   }
   if (body.is_in_stock === false) {
-    return observe2("out_of_stock", "false", "platform", `${pointer}/is_in_stock`, fetchedAt);
+    return observe4("out_of_stock", "false", "platform", `${pointer}/is_in_stock`, fetchedAt);
   }
   return void 0;
 }
@@ -24713,9 +25369,9 @@ function isId2(value) {
 function stringOr(value) {
   return typeof value === "string" ? value : "";
 }
-function wholeNumber(text6) {
-  if (text6 === void 0 || !/^\d+$/.test(text6.trim())) return void 0;
-  return Number(text6.trim());
+function wholeNumber(text7) {
+  if (text7 === void 0 || !/^\d+$/.test(text7.trim())) return void 0;
+  return Number(text7.trim());
 }
 
 // packages/collect-woo/src/probe.ts
@@ -24781,7 +25437,7 @@ async function probeTarget(run, target) {
       surface: "checkout",
       scope: "variant",
       ids: idsOf2(target),
-      purchasable: observe2(false, code2, "checkout", addUrl, added.fetchedAt)
+      purchasable: observe4(false, code2, "checkout", addUrl, added.fetchedAt)
     });
     return;
   }
@@ -24795,11 +25451,11 @@ async function addedToCart(run, target, added, addBody) {
     surface: "checkout",
     scope: "variant",
     ids: idsOf2(target),
-    purchasable: observe2(true, "added", "checkout", addUrl, added.fetchedAt)
+    purchasable: observe4(true, "added", "checkout", addUrl, added.fetchedAt)
   };
   const addPrice = readMinor(fromAdd.item.prices, "price");
   if (addPrice) {
-    sighting.price = observe2(addPrice.value, addPrice.raw, "checkout", `${addUrl}#/items/${fromAdd.index}/prices/price`, added.fetchedAt);
+    sighting.price = observe4(addPrice.value, addPrice.raw, "checkout", `${addUrl}#/items/${fromAdd.index}/prices/price`, added.fetchedAt);
   }
   try {
     await updateCustomer(run, target, sighting);
@@ -24822,7 +25478,7 @@ async function updateCustomer(run, target, sighting) {
   if (!picked) throw new Error("cart response does not contain the requested variant");
   const price = readMinor(picked.item.prices, "price");
   if (price) {
-    sighting.price = observe2(price.value, price.raw, "checkout", `${url}#/items/${picked.index}/prices/price`, res.fetchedAt);
+    sighting.price = observe4(price.value, price.raw, "checkout", `${url}#/items/${picked.index}/prices/price`, res.fetchedAt);
   }
   const country = run.shipTo.country.toUpperCase();
   const packages = Array.isArray(cart.shipping_rates) ? cart.shipping_rates : [];
@@ -24831,7 +25487,7 @@ async function updateCustomer(run, target, sighting) {
     const cost = readMinor(cart.totals, "total_shipping");
     if (cost) {
       const quote = { free: cost.value.units === 0, cost: cost.value, country };
-      sighting.shipping = observe2(quote, cost.raw, "checkout", `${url}#/totals/total_shipping`, res.fetchedAt);
+      sighting.shipping = observe4(quote, cost.raw, "checkout", `${url}#/totals/total_shipping`, res.fetchedAt);
     } else {
       run.issues.push(makeIssue("checkout", "probe-failed", `${target.variantId}: shipping total could not be read`));
     }
@@ -24841,7 +25497,7 @@ async function updateCustomer(run, target, sighting) {
   }
   const landed = readMinor(cart.totals, "total_price");
   if (landed) {
-    sighting.landedTotal = observe2(landed.value, landed.raw, "checkout", `${url}#/totals/total_price`, res.fetchedAt);
+    sighting.landedTotal = observe4(landed.value, landed.raw, "checkout", `${url}#/totals/total_price`, res.fetchedAt);
   }
 }
 async function emptyCart(run, variantId) {
@@ -24915,16 +25571,16 @@ async function readJson(ctx, url) {
     return void 0;
   }
 }
-var isObject2 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+var isObject3 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 async function detectPlatform(ctx) {
   const origin = ctx.store.origin;
   const woo = await readJson(ctx, `${origin}/wp-json/wc/store/v1/products?per_page=1`);
   if (woo && Array.isArray(woo.body)) {
     const first2 = woo.body[0];
-    if ("x-wp-total" in woo.headers || isObject2(first2) && isObject2(first2.prices)) return "woocommerce";
+    if ("x-wp-total" in woo.headers || isObject3(first2) && isObject3(first2.prices)) return "woocommerce";
   }
   const shopify = await readJson(ctx, `${origin}/products.json?limit=1`);
-  if (shopify && isObject2(shopify.body) && Array.isArray(shopify.body.products)) return "shopify";
+  if (shopify && isObject3(shopify.body) && Array.isArray(shopify.body.products)) return "shopify";
   return null;
 }
 
@@ -24946,7 +25602,7 @@ function fields(value, name, allowed) {
     if (!allowed.includes(key)) throw new ConfigError(`unknown ${name} field "${key}"; the fields are ${allowed.join(", ")}`);
   }
 }
-function text5(value, name) {
+function text6(value, name) {
   if (value !== void 0 && (typeof value !== "string" || value.trim() === "")) throw new ConfigError(`${name} must be a non-empty string`);
 }
 function whole(value, name, min, max = Number.MAX_SAFE_INTEGER) {
@@ -24962,8 +25618,8 @@ function strings(value, name) {
     throw new ConfigError(`${name} must be a list of non-empty strings`);
   }
 }
-function httpUrl(value, name, base) {
-  text5(value, name);
+function httpUrl2(value, name, base) {
+  text6(value, name);
   let url;
   try {
     url = new URL(value, base);
@@ -24975,9 +25631,9 @@ function httpUrl(value, name, base) {
   return url;
 }
 var AGEABLE_SURFACES = ["feed", "acp"];
-function parseDuration(text6) {
-  if (typeof text6 !== "string") return void 0;
-  const m = /^\s*(\d{1,6})\s*(m|h|d)\s*$/i.exec(text6);
+function parseDuration(text7) {
+  if (typeof text7 !== "string") return void 0;
+  const m = /^\s*(\d{1,6})\s*(m|h|d)\s*$/i.exec(text7);
   if (!m) return void 0;
   const n = Number(m[1]);
   const unit = m[2].toLowerCase();
@@ -24992,7 +25648,7 @@ function endpoint(value, name, store) {
   if (value === void 0 || typeof value === "boolean") return;
   fields(value, name, ["url"]);
   if (typeof value.url !== "string") throw new ConfigError(`${name}.url must be a URL; use ${name}: true to discover it`);
-  httpUrl(value.url, `${name}.url`, store);
+  httpUrl2(value.url, `${name}.url`, store);
 }
 function checkConfig(config, rules, { partial = false } = {}) {
   fields(config, "config", [
@@ -25017,7 +25673,7 @@ function checkConfig(config, rules, { partial = false } = {}) {
     "ownershipToken",
     "fetch"
   ]);
-  const store = httpUrl(config.store, "store");
+  const store = httpUrl2(config.store, "store");
   const platforms = ["woocommerce", "shopify", "auto"];
   if (config.platform !== void 0 && !platforms.includes(config.platform)) {
     throw new ConfigError(`unknown platform "${String(config.platform)}"; choose one of ${platforms.join(", ")}, none`);
@@ -25026,17 +25682,17 @@ function checkConfig(config, rules, { partial = false } = {}) {
   whole(config.maxVariants, "maxVariants", 1);
   whole(config.seed, "seed", 0);
   boolean(config.strict, "strict");
-  text5(config.ownershipToken, "ownershipToken");
+  text6(config.ownershipToken, "ownershipToken");
   for (const key of ["feed", "acpFeed", "sitemap"]) {
-    if (config[key] !== void 0) httpUrl(config[key], key, store);
+    if (config[key] !== void 0) httpUrl2(config[key], key, store);
   }
   if (config.maxAge !== void 0) {
     fields(config.maxAge, "maxAge", AGEABLE_SURFACES);
     const source = { feed: ["feed", "--feed"], acp: ["acpFeed", "--acp-feed"] };
     for (const [surface, value] of Object.entries(config.maxAge)) {
       if (parseDuration(value) === void 0) throw new ConfigError(`maxAge.${surface} must be a duration such as "90m", "24h" or "7d"; got ${JSON.stringify(value)}`);
-      const [field, flag] = source[surface];
-      if (!partial && config[field] === void 0) throw new ConfigError(`maxAge.${surface} is set, but no ${surface} is read; give ${flag} or the ${field} field`);
+      const [field, flag2] = source[surface];
+      if (!partial && config[field] === void 0) throw new ConfigError(`maxAge.${surface} is set, but no ${surface} is read; give ${flag2} or the ${field} field`);
     }
   }
   if (config.cloaking !== void 0 && typeof config.cloaking !== "boolean") {
@@ -25055,7 +25711,7 @@ function checkConfig(config, rules, { partial = false } = {}) {
   endpoint(config.mcp, "mcp", store);
   if (config.pages !== void 0) {
     strings(config.pages, "pages");
-    config.pages.forEach((url, i) => httpUrl(url, `pages[${i}]`, store));
+    config.pages.forEach((url, i) => httpUrl2(url, `pages[${i}]`, store));
   }
   if (config.datum !== void 0) {
     strings(config.datum, "datum");
@@ -25078,12 +25734,12 @@ function checkConfig(config, rules, { partial = false } = {}) {
     whole(config.fetch.timeoutMs, "fetch.timeoutMs", 1, 2147483647);
     boolean(config.fetch.allowPrivateNetwork, "fetch.allowPrivateNetwork");
     boolean(config.fetch.respectRobots, "fetch.respectRobots");
-    text5(config.fetch.userAgent, "fetch.userAgent");
+    text6(config.fetch.userAgent, "fetch.userAgent");
     if (config.fetch.userAgent && /[^\x20-\x7e]/.test(config.fetch.userAgent)) throw new ConfigError("fetch.userAgent must contain printable ASCII only");
   }
   if (config.page !== void 0) {
     fields(config.page, "page", ["priceSelector", "availabilitySelector", "titleSelector", "currency", "descriptionSelectors", "reviewSelectors"]);
-    for (const key of ["priceSelector", "availabilitySelector", "titleSelector"]) text5(config.page[key], `page.${key}`);
+    for (const key of ["priceSelector", "availabilitySelector", "titleSelector"]) text6(config.page[key], `page.${key}`);
     for (const key of ["descriptionSelectors", "reviewSelectors"]) {
       if (config.page[key] !== void 0) strings(config.page[key], `page.${key}`);
     }
@@ -25096,7 +25752,7 @@ function checkConfig(config, rules, { partial = false } = {}) {
     fields(config.checkout.shipTo, "checkout.shipTo", ["country", "postcode", "state", "city"]);
     const { country } = config.checkout.shipTo;
     if (typeof country !== "string" || !/^[A-Za-z]{2}$/.test(country)) throw new ConfigError("checkout.shipTo.country must be a two-letter country code");
-    for (const key of ["postcode", "state", "city"]) text5(config.checkout.shipTo[key], `checkout.shipTo.${key}`);
+    for (const key of ["postcode", "state", "city"]) text6(config.checkout.shipTo[key], `checkout.shipTo.${key}`);
   }
 }
 
@@ -25324,8 +25980,8 @@ async function runAudit(config, deps = {}) {
   const graph = buildGraph(sightings);
   const datum = config.datum ?? [...DEFAULT_DATUM];
   const maxAgeMs = {};
-  for (const [surface, text6] of Object.entries(config.maxAge ?? {})) {
-    const ms = parseDuration(text6);
+  for (const [surface, text7] of Object.entries(config.maxAge ?? {})) {
+    const ms = parseDuration(text7);
     if (ms !== void 0) maxAgeMs[surface] = ms;
   }
   const run = runRules(graph, rules, { datum, budget: config.budget, now: now(), options: { maxAgeMs } });
@@ -25359,7 +26015,7 @@ Usage
 
 Surfaces (audit)
   --feed <url>              product feed in Google Merchant format
-  --acp-feed <url>          product feed in Agentic Commerce Protocol format
+  --acp-feed <url>          agent product feed (ACP): JSON Lines, CSV or TSV, may be .gz
   --platform <name>         woocommerce, shopify, auto or none; default auto
   --ucp                     read the shop's UCP catalogue (/.well-known/ucp)
   --mcp                     read the shop's storefront MCP server
@@ -25408,9 +26064,9 @@ async function loadConfig(file) {
   checkConfig({ ...value, store: value.store ?? "https://config.example", platform: value.platform === "none" ? void 0 : value.platform }, allRules, { partial: true });
   return value;
 }
-function parseShipTo(text6) {
-  const [country = "", postcode, extra] = text6.split(":");
-  if (!/^[A-Za-z]{2}$/.test(country)) throw new ConfigError(`--ship-to wants a two-letter country code, got "${text6}"`);
+function parseShipTo(text7) {
+  const [country = "", postcode, extra] = text7.split(":");
+  if (!/^[A-Za-z]{2}$/.test(country)) throw new ConfigError(`--ship-to wants a two-letter country code, got "${text7}"`);
   if (extra !== void 0 || postcode === "") throw new ConfigError("--ship-to wants CC or CC:postcode");
   return postcode ? { country: country.toUpperCase(), postcode } : { country: country.toUpperCase() };
 }
@@ -25432,13 +26088,13 @@ function parseMaxAge(entries) {
   }
   return out2;
 }
-var wholeNumber2 = (flag, text6) => {
-  if (!/^\d+$/.test(text6)) throw new ConfigError(`${flag} wants a whole number, got "${text6}"`);
-  return Number(text6);
+var wholeNumber2 = (flag2, text7) => {
+  if (!/^\d+$/.test(text7)) throw new ConfigError(`${flag2} wants a whole number, got "${text7}"`);
+  return Number(text7);
 };
-var out = (text6) => process.stdout.write(text6);
-var note = (text6) => process.stderr.write(text6);
-var dim = (text6) => process.stderr.isTTY && !process.env.NO_COLOR ? styleText2("dim", text6) : text6;
+var out = (text7) => process.stdout.write(text7);
+var note = (text7) => process.stderr.write(text7);
+var dim = (text7) => process.stderr.isTTY && !process.env.NO_COLOR ? styleText2("dim", text7) : text7;
 var ruleAnchor = (id, severity) => `${id.replace(/\./g, "")}-${severity}`;
 function explain(id) {
   const rule = allRules.find((r) => r.id === id);
@@ -25464,10 +26120,10 @@ function explain(id) {
 `);
   return 0;
 }
-function wrap2(text6, width) {
+function wrap2(text7, width) {
   const lines = [];
   let line = "";
-  for (const word of text6.split(/\s+/)) {
+  for (const word of text7.split(/\s+/)) {
     if (line && line.length + 1 + word.length > width) {
       lines.push(line);
       line = word;
@@ -25526,6 +26182,7 @@ async function demo(clean2, html3, color) {
       {
         store: shop.origin,
         feed: "/feeds/google.xml",
+        acpFeed: "/feeds/acp.jsonl.gz",
         platform: "woocommerce",
         checkout: { shipTo: { country: "US", postcode: "94103" } },
         cloaking: true,
