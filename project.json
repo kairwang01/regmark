@@ -9,19 +9,20 @@
   "facts": [
     [
       "阶段",
-      "原型已经能跑，版本 0.0.1，还没有发布"
+      "原型已经能跑，版本 0.0.1，还没有发布到 npm"
     ],
     [
       "验收",
       "样板店 22 条预置缺陷全部查出，对照店零误报"
     ],
     [
-      "实现语言",
-      "TypeScript"
+      "源码",
+      "github.com/kairwang01/regmark"
     ],
     [
       "许可证",
       "Apache-2.0"
     ]
-  ]
+  ],
+  "repo": "https://github.com/kairwang01/regmark"
 }

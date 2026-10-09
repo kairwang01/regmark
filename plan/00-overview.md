@@ -64,7 +64,8 @@ Regmark 目前是工作代号。npm 上这个包名还空着，GitHub 上的同�
 
 | 项 | 内容 |
 |---|---|
-| 阶段 | 原型已经能跑，版本 0.0.1，还没有发布 |
+| 阶段 | 原型已经能跑，版本 0.0.1，还没有发布到 npm |
+| 源码 | [github.com/kairwang01/regmark](https://github.com/kairwang01/regmark) |
 | 已经有的 | 商品页、feed、WooCommerce 三类采集，结账探针，15 条规则，五种报告 |
 | 还没有的 | 协议端点的采集，探店代理，GitHub Action |
 | 验收 | 606 项测试通过。样板店里 22 条预置缺陷全部查出，对照店零误报 |
