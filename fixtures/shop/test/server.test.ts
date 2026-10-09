@@ -47,8 +47,8 @@ describe('fixture server', () => {
       expected: unknown[];
     };
     assert.equal(body.mode, 'misprint');
-    assert.equal(body.expected.length, 22);
-    assert.equal(body.defects.length, 19);
+    assert.equal(body.expected.length, 23);
+    assert.equal(body.defects.length, 20);
   });
 
   it('lists products over HTTP with the total header', async () => {

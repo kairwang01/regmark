@@ -99,6 +99,8 @@ export function renderFeed(shop: Shop, origin: string): string {
     '<title>Northfold</title>',
     `<link>${xml(origin)}/</link>`,
     '<description>Northfold product feed</description>',
+    // toUTCString writes the RFC 822 form RSS asks for: "Fri, 09 Oct 2026 12:00:00 GMT".
+    `<lastBuildDate>${shop.feedBuiltAt.toUTCString()}</lastBuildDate>`,
     ...items.map((body) => `<item>\n${body}\n</item>`),
     '</channel>',
     '</rss>',
