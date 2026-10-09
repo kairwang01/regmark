@@ -1,3 +1,8 @@
 node_modules/
 .regmark/
 *.log
+*.tgz
+# what a local run leaves behind
+regmark-demo.html
+regmark-report/
+

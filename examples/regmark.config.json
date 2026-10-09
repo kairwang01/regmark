@@ -1,0 +1,27 @@
+{
+  "store": "https://shop.example",
+  "feed": "/feeds/google.xml",
+  "platform": "woocommerce",
+  "checkout": {
+    "shipTo": {
+      "country": "US",
+      "postcode": "94103"
+    }
+  },
+  "sample": 40,
+  "seed": 7,
+  "maxVariants": 30,
+  "datum": ["checkout", "platform", "page"],
+  "budget": {
+    "price.mismatch": 0,
+    "availability.mismatch": 1,
+    "identity.gtin-invalid": 2
+  },
+  "page": {
+    "currency": "USD"
+  },
+  "fetch": {
+    "minIntervalMs": 1000,
+    "timeoutMs": 15000
+  }
+}

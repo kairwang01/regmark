@@ -143,7 +143,7 @@ $ regmark audit https://your-shop.example --budget price.mismatch=7 --budget var
 
 当前目录下有这个文件时，直接运行 `regmark audit` 就会读它。把它提交进仓库，每修掉一批就把数字往下调。
 
-退出码：0 是全部在预算内，1 是有规则超出预算，2 是检查没能跑起来。
+退出码：0 是全部在预算内，1 是有规则超出预算，2 是检查没能跑起来，或者一件商品都没读到。后一种情况不会被算成通过：预发环境挂了，构建应该红，而不是绿。
 
 ## 接进 GitHub Actions
 

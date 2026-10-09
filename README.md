@@ -143,14 +143,15 @@ jobs:
 ```
 
 The job fails when a rule goes over its budget. The findings appear in the job
-summary, and the HTML, JSON and SARIF reports are kept as an artifact. An error
+summary, and the HTML, JSON, SARIF and Markdown reports are kept as an artifact. An error
 rule fails on its first finding; warnings never fail a build. For a shop that
 already has findings, set each rule's budget to today's count and lower it from
 there. [CI guide](docs/ci.md), including GitLab and SARIF upload.
 
 Reports come as a terminal summary and any of `--html`, `--json`, `--sarif`,
 `--junit` and `--markdown`. Exit code 0 within budget, 1 over, 2 if the audit
-could not run.
+could not run or read no product: a shop that is down fails the build, it does
+not pass it.
 
 ## The checkout probe
 
@@ -191,7 +192,7 @@ empties the cart after every item, and says so loudly if it could not.
 
 Version 0.1.0. It works, it is young, and its rules have met few real shops.
 
-- 677 unit tests and a type check.
+- 684 unit tests and a type check.
 - A benchmark that runs the tool against the two shops in this repository. One
   has 19 seeded defects that should give 22 findings; the tool reports those 22
   and nothing else. The other has none; the tool reports nothing.

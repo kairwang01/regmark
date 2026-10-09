@@ -69,7 +69,7 @@ Regmark 目前是工作代号。npm 上这个包名还空着，GitHub 上的同�
 | 源码 | [github.com/kairwang01/regmark](https://github.com/kairwang01/regmark) |
 | 已经有的 | 商品页、feed、WooCommerce、Shopify 商品接口四类采集，结账探针，15 条规则，六种报告，GitHub Action |
 | 还没有的 | 协议端点的采集，探店代理，Shopify 结账探针 |
-| 验收 | 677 项测试通过。样板店里 22 条预置缺陷全部查出，对照店零误报 |
+| 验收 | 684 项测试通过。样板店里 22 条预置缺陷全部查出，对照店零误报 |
 | 实现语言 | TypeScript。使用要求 Node 22 及以上 |
 | 许可证 | 代码 Apache-2.0，文档 CC BY 4.0 |
 | 更新 | 2026 年 10 月 9 日 |

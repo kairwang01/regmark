@@ -8,5 +8,6 @@ edited.
 - `terminal-misprint.txt`, `report-misprint.html`: the shop with 19 seeded defects.
 - `terminal-clean.txt`, `report-clean.html`: the same shop with none.
 
-To regenerate, start the fixture shop and run the audit as shown in the
-project README, with `--allow-private-network`.
+To get the same on your own machine, run `regmark demo` for the first pair and
+`regmark demo --clean` for the second. The demo calls the shop
+`demo-shop.example`; nothing else differs.

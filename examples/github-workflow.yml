@@ -1,0 +1,34 @@
+# Copy this file to .github/workflows/regmark.yml in your repository.
+name: Regmark
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Audit the staging shop
+        uses: kairwang01/regmark@v0.1.0
+        with:
+          store: https://staging.shop.example
+          feed: /feeds/google.xml
+          platform: woocommerce
+          checkout: 'true'
+          ship-to: US:94103
+          ownership-token: ${{ secrets.REGMARK_OWNERSHIP_TOKEN }}
+          sample: '25'
+
+      - name: Upload SARIF to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: regmark-report/regmark.sarif

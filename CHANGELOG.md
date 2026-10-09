@@ -26,6 +26,11 @@ The first release.
 - Every rule carries the usual cause and the fix: `regmark explain <rule>`.
 - Reports: terminal, HTML, JSON, SARIF, JUnit and Markdown.
 - Budgets per rule, and an exit code a CI job can act on.
+- A mistake stops the run before it starts. A misspelt field in the config
+  file, a platform or surface that does not exist, a budget for a rule that
+  does not exist: each is exit code 2 with a message naming it.
+- An audit that reads no product exits 2. A shop that is down, or one robots.txt
+  closes entirely, is not reported as a pass.
 
 ### Running it
 
