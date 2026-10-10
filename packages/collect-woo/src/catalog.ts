@@ -29,6 +29,8 @@ type Listed = {
   fetchedAt: string;
   /** Attributes of each variation as the parent lists them, keyed by variation id. */
   attributes: Map<number, Record<string, string>>;
+  /** Some variation identities in the list were unreadable. */
+  incompleteVariants: boolean;
 };
 
 export async function collectWooCatalog(
@@ -71,19 +73,22 @@ async function readCatalog(ctx: CollectContext, options: CatalogOptions): Promis
   for (const entry of listed) {
     if (options.select && !selects(options.select, entry.parent, parents, ctx)) continue;
 
-    if (entry.parent.type === 'simple' || entry.parent.variationIds.length === 0) {
+    if (entry.parent.type === 'simple' || (entry.parent.variationIds.length === 0 && !entry.incompleteVariants)) {
       sightings.push(buildSighting(entry.parent, entry.name, entry.body, entry.pointer, entry.fetchedAt, String(entry.parent.id), undefined));
       continue;
     }
+    let incompleteVariants = entry.incompleteVariants;
     for (const variationId of entry.parent.variationIds) {
       const url = `${base}/products/${variationId}`;
       const read = await getJson(ctx, url, 'platform');
       if (!read.ok) {
         issues.push(read.issue);
+        incompleteVariants = true;
         continue;
       }
       if (!isRecord(read.body)) {
         issues.push(makeIssue('platform', 'parse-error', 'variation is not an object', url));
+        incompleteVariants = true;
         continue;
       }
       // The pointer is the response's own root, so locators read "<url>#/prices/price".
@@ -98,6 +103,14 @@ async function readCatalog(ctx: CollectContext, options: CatalogOptions): Promis
           entry.attributes.get(variationId),
         ),
       );
+    }
+    if (incompleteVariants) {
+      // Keep uncertainty attached to this parent, even if every detail
+      // failed. A placeholder variant would invent an offer and could make
+      // variant.missing blame other surfaces for not listing it.
+      const ids: VariantIds = { productId: String(entry.parent.id) };
+      if (entry.parent.permalink !== '') ids.url = entry.parent.permalink;
+      sightings.push({ surface: 'platform', scope: 'product', ids, incompleteVariants: true });
     }
   }
 
@@ -145,10 +158,16 @@ function readParent(item: unknown, listUrl: string, index: number, fetchedAt: st
   const issues: CollectIssue[] = [];
   const variationIds: number[] = [];
   const attributes = new Map<number, Record<string, string>>();
+  let incompleteVariants = false;
+  if (item.type === 'variable' && !Array.isArray(item.variations)) {
+    issues.push(makeIssue('platform', 'parse-error', 'variations is not an array', `${pointer}/variations`));
+    incompleteVariants = true;
+  }
   const variations: unknown[] = Array.isArray(item.variations) ? item.variations : [];
   variations.forEach((variation, position) => {
     if (!isRecord(variation) || !isId(variation.id)) {
       issues.push(makeIssue('platform', 'parse-error', 'variation entry has no numeric id', `${pointer}/variations/${position}`));
+      incompleteVariants = true;
       return;
     }
     variationIds.push(variation.id);
@@ -164,7 +183,7 @@ function readParent(item: unknown, listUrl: string, index: number, fetchedAt: st
     variationIds,
   };
   const name = typeof item.name === 'string' && item.name !== '' ? item.name : undefined;
-  return { listed: { parent, name, body: item, pointer, fetchedAt, attributes }, issues };
+  return { listed: { parent, name, body: item, pointer, fetchedAt, attributes, incompleteVariants }, issues };
 }
 
 function buildSighting(

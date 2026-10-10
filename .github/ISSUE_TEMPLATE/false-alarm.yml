@@ -75,6 +75,6 @@ body:
     id: version
     attributes:
       label: Regmark version
-      description: The output of regmark --version (or npx regmark --version)
+      description: The output of node regmark.mjs --version (or regmark --version if installed)
     validations:
       required: true

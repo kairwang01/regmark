@@ -48,6 +48,34 @@ test('a product-scope sighting attaches to the product, not to a variant', () =>
   assert.equal(g.products[0]!.title, 'Stoneware Mug');
 });
 
+test('backend coverage markers alone are not successfully read products or surfaces', () => {
+  const g = buildGraph([
+    sighting('platform', { productId: '100', url: URL_TEE }, { scope: 'product', incompleteVariants: true }),
+  ]);
+  assert.deepEqual(g, { products: [], surfaces: [] });
+});
+
+test('a backend coverage marker qualifies matching sightings without inventing an offer', () => {
+  const marker = sighting('platform', { productId: '100', url: URL_TEE }, { scope: 'product', incompleteVariants: true });
+  const g = buildGraph([marker, sighting('feed', { sku: 'TEE-BLU-M', url: URL_TEE })]);
+  assert.equal(g.products.length, 1);
+  assert.deepEqual(g.products[0]!.productLevel, [marker]);
+  assert.equal(g.products[0]!.variants.length, 1);
+  assert.deepEqual(g.products[0]!.variants[0]!.surfaces, ['feed']);
+  assert.deepEqual(g.products[0]!.variants[0]!.price, []);
+  assert.deepEqual(g.surfaces, ['platform', 'feed']);
+});
+
+test('an unmatched coverage marker adds no product or surface to successful unrelated collection', () => {
+  const g = buildGraph([
+    sighting('platform', { productId: '100', url: URL_TEE }, { scope: 'product', incompleteVariants: true }),
+    sighting('feed', { sku: 'MUG', url: 'https://shop.example/product/mug/' }),
+  ]);
+  assert.equal(g.products.length, 1);
+  assert.equal(g.products[0]!.variants[0]!.key, 'MUG');
+  assert.deepEqual(g.surfaces, ['feed']);
+});
+
 test('a GTIN shared by two SKUs joins nothing', () => {
   const dup = '4006381333931';
   const g = buildGraph([

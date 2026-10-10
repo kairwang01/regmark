@@ -20,6 +20,16 @@ test('JSON-LD listing one of three sizes is reported for the other two', () => {
   assert.equal(findings[0]!.message, 'missing from jsonld, which lists 1 of 3 variants');
 });
 
+test('an incomplete catalogue adds no phantom missing variant and still checks readable ones', () => {
+  const findings = run(rule, [
+    ...platform3().slice(0, 2),
+    whole('platform', URL, { incompleteVariants: true }),
+    variant('jsonld', { sku: 'BELT-32', url: URL }),
+  ]);
+  assert.deepEqual(brief(findings), [{ variant: 'BELT-34', surface: 'jsonld' }]);
+  assert.equal(findings[0]!.message, 'missing from jsonld, which lists 1 of 2 variants');
+});
+
 test('JSON-LD listing all three sizes is silent', () => {
   const findings = run(rule, [
     ...platform3(),

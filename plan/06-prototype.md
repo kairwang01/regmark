@@ -7,7 +7,7 @@ summary: 现在是 0.2.0。用预置缺陷的样板店量过，第一个版本�
 
 ## 做到哪了
 
-2026 年 10 月 9 日有了第一个能跑的版本，当天整理成 0.1.0。现在是 0.2.0，源码在 [GitHub](https://github.com/kairwang01/regmark) 上，`npx regmark demo` 可以直接试。怎么用见[使用说明](07-usage.md)。
+2026 年 10 月 9 日有了第一个能跑的版本，当天整理成 0.1.0。现在是 0.2.0，源码在 [GitHub](https://github.com/kairwang01/regmark) 上，下载并校验固定的 GitHub 发布包后，可用 `node regmark.mjs demo` 试用。2026-10-10 检查时 npm 包接口返回 404。怎么用见[使用说明](07-usage.md)。
 
 | 模块 | 状态 | 说明 |
 |---|---|---|

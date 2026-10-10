@@ -129,9 +129,15 @@ function rulesFor(robots: Robots, token: string): RobotsGroup['rules'] | null {
   return matched.flatMap((g) => g.rules);
 }
 
-/** Uppercases escape hex digits and decodes escapes of unreserved characters. */
+/** Normalises both raw Unicode and percent escapes for RFC 9309 comparison. */
 function normalisePercent(s: string): string {
-  return s.replace(/%([0-9A-Fa-f]{2})/g, (_escape: string, hex: string) => {
+  // Encode only non-ASCII text as UTF-8, leaving path delimiters, existing
+  // escapes and the robots '*' / '$' operators intact. Buffer also handles
+  // astral characters without splitting their surrogate pairs.
+  const ascii = s.replace(/[^\x00-\x7f]+/g, (text) =>
+    Array.from(Buffer.from(text, 'utf8'), (byte) => '%' + byte.toString(16).padStart(2, '0').toUpperCase()).join(''),
+  );
+  return ascii.replace(/%([0-9A-Fa-f]{2})/g, (_escape: string, hex: string) => {
     const ch = String.fromCharCode(parseInt(hex, 16));
     return /^[A-Za-z0-9\-._~]$/.test(ch) ? ch : '%' + hex.toUpperCase();
   });

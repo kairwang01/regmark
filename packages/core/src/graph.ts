@@ -285,7 +285,14 @@ export function buildGraph(all: readonly Sighting[]): OfferGraph {
     if (!clusters.has(root)) clusters.set(root, []);
     clusters.get(root)!.push(s);
   });
-  const products = [...clusters.values()].map((c, i) => toProduct(c, amb, i)).sort((a, b) => a.key.localeCompare(b.key));
+  // Coverage metadata can qualify another sighting, but alone it is not a
+  // successfully read product. In particular, a catalogue whose every
+  // detail failed must not turn an empty audit into a successful one.
+  const observed = [...clusters.values()].filter((cluster) =>
+    cluster.some((s) => !(s.scope === 'product' && BACKEND.has(s.surface) && s.incompleteVariants)),
+  );
+  const products = observed.map((c, i) => toProduct(c, amb, i)).sort((a, b) => a.key.localeCompare(b.key));
   attachViews(products, views);
-  return { products, surfaces: uniqueSurfaces(sightings) };
+  const retained = new Set(observed.flat());
+  return { products, surfaces: uniqueSurfaces(sightings.filter((s) => retained.has(s))) };
 }

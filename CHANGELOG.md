@@ -3,6 +3,28 @@
 Rule ids and the JSON report schema are the two things other people build on.
 A change to either is called out here under **Breaking**.
 
+## Unreleased
+
+### Fixed
+
+- Preserve per-product uncertainty when WooCommerce variant details cannot be
+  read, so incomplete collection cannot imply that a feed variant no longer
+  exists. Metadata-only coverage does not count as a successfully read product.
+- Match raw Unicode robots.txt paths against UTF-8 percent-encoded URLs,
+  preserving wildcard, anchor and reserved-escape semantics.
+- Resolve relative sitemap entries against the final response URL after redirects.
+- Keep successful sitemap children when a sibling cannot be fetched, report
+  the failed child, and retain strict-mode collection failures.
+- Use explicit Unicode escapes in the JUnit XML sanitizer so TypeScript 7
+  accepts its character ranges; preserve legal astral text and strip isolated
+  surrogates and disallowed XML characters.
+
+### Documentation
+
+- Lead the English and Chinese quickstarts with a pinned, checksum-verified
+  standalone release. The npm package was unavailable when checked.
+- Clarify the read-only baseline and optional owner-verified cart evidence.
+
 ## 0.2.0 (2026-10-09)
 
 Regmark now reads what shopping agents read, checks two things it could only

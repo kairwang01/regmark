@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { buildGraph } from '@regmark/core';
 import type { Sighting } from '@regmark/core';
 import { collectWooCatalog } from '../src/index.ts';
 import { API_BASE, ORIGIN, createFakeShop, defaultCatalog, generatedProducts, makeContext, obs, usd } from './fake-store.ts';
+import type { ShopOptions } from './fake-store.ts';
 
 const LIST = `${API_BASE}/products?per_page=100&page=1`;
 const PAGE_2 = `${API_BASE}/products?per_page=100&page=2`;
@@ -169,9 +171,14 @@ test('a variation that fails to load is an issue, and the others still come thro
     { surface: 'platform', code: 'fetch-failed', message: 'HTTP 500', locator: `${API_BASE}/products/102` },
   ]);
   assert.deepEqual(
-    result.sightings.map((s) => s.ids.variantId),
+    result.sightings.filter((s) => s.scope === 'variant').map((s) => s.ids.variantId),
     ['101', '103', '200', '300', '401', '500'],
   );
+  assert.deepEqual(result.sightings.filter((s) => s.scope === 'product'), [{
+    surface: 'platform', scope: 'product',
+    ids: { productId: '100', url: `${ORIGIN}/product/classic-tee/` },
+    incompleteVariants: true,
+  }]);
 });
 
 test('a failing first list request returns only that issue', async () => {
@@ -222,4 +229,72 @@ test('garbage prices give a sighting without a price, not a crash', async () => 
   assert.equal(sighting.listPrice, undefined);
   assert.deepEqual(sighting.availability, obs('in_stock', 'true', `${LIST}#/1/is_in_stock`));
   assert.deepEqual(result.issues, []);
+});
+
+for (const [label, options, code] of [
+  ['HTTP 503', { fail: { '/products/102': 503 } }, 'fetch-failed'],
+  ['non-JSON response', { nonJson: ['/products/102'] }, 'parse-error'],
+  ['robots refusal', { robots: ['/products/102'] }, 'robots-disallowed'],
+  ['network failure', { networkError: ['/products/102'] }, 'fetch-failed'],
+] satisfies [string, ShopOptions, string][]) {
+  test(`${label} marks only the affected parent incomplete, with no invented variant or facts`, async () => {
+    const result = await collectWooCatalog(makeContext(createFakeShop(options)));
+    assert.equal(result.issues.length, 1);
+    assert.equal(result.issues[0]!.code, code);
+    assert.equal(result.issues[0]!.locator, `${API_BASE}/products/102`);
+    assert.deepEqual(result.sightings.filter((s) => s.incompleteVariants), [{
+      surface: 'platform', scope: 'product',
+      ids: { productId: '100', url: `${ORIGIN}/product/classic-tee/` },
+      incompleteVariants: true,
+    }]);
+    assert.equal(result.sightings.filter((s) => s.scope === 'variant').length, 6);
+    assert.equal(result.sightings.some((s) => s.ids.variantId === '102'), false);
+    assert.ok(at(result.sightings, '101').price);
+    assert.ok(at(result.sightings, '200').price);
+  });
+}
+
+for (const body of ['null', '[]', '"not an object"']) {
+  test(`a variation body of ${body} preserves incomplete parent coverage`, async () => {
+    const shop = createFakeShop();
+    const ctx = makeContext({ ...shop, async get(url, options) {
+      const res = await shop.get(url, options);
+      return url === `${API_BASE}/products/102` ? { ...res, body } : res;
+    } });
+    const result = await collectWooCatalog(ctx);
+    assert.deepEqual(result.issues, [{ surface: 'platform', code: 'parse-error', message: 'variation is not an object', locator: `${API_BASE}/products/102` }]);
+    assert.equal(result.sightings.filter((s) => s.incompleteVariants).length, 1);
+    assert.equal(result.sightings.some((s) => s.ids.variantId === '102'), false);
+  });
+}
+
+test('every variation failing keeps one coverage marker, but cannot create a successfully read product', async () => {
+  const result = await collectWooCatalog(makeContext(createFakeShop({ fail: { '/products/101': 503, '/products/102': 503, '/products/103': 503 } })), { select: (parent) => parent.id === 100 });
+  assert.equal(result.issues.length, 3);
+  assert.deepEqual(result.sightings, [{
+    surface: 'platform', scope: 'product',
+    ids: { productId: '100', url: `${ORIGIN}/product/classic-tee/` },
+    incompleteVariants: true,
+  }]);
+  assert.deepEqual(buildGraph(result.sightings), { products: [], surfaces: [] });
+});
+
+for (const variations of [[{ id: 101 }, { id: 'broken' }], [{ id: 'broken' }], null]) {
+  test(`unreadable variation identities ${JSON.stringify(variations)} also leave the parent incomplete`, async () => {
+    const catalog = defaultCatalog();
+    catalog.products[0]!.variations = variations;
+    const result = await collectWooCatalog(makeContext(createFakeShop({ catalog })), { select: (parent) => parent.id === 100 });
+    assert.equal(result.issues.length, 1);
+    assert.equal(result.issues[0]!.code, 'parse-error');
+    assert.equal(result.sightings.filter((s) => s.incompleteVariants).length, 1);
+    assert.equal(result.sightings.some((s) => s.ids.variantId === '100'), false, 'the parent must not stand in for an unreadable variant');
+  });
+}
+
+test('a selected-out parent never contributes an incomplete coverage marker', async () => {
+  const shop = createFakeShop({ fail: { '/products/102': 503 } });
+  const result = await collectWooCatalog(makeContext(shop), { select: (parent) => parent.id !== 100 });
+  assert.deepEqual(result.issues, []);
+  assert.equal(result.sightings.some((s) => s.incompleteVariants), false);
+  assert.equal(shop.calls.some((c) => c.path === '/products/102'), false);
 });
