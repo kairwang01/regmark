@@ -2,12 +2,12 @@
 title: Regmark
 slug: ""
 nav: 总览
-summary: 让 AI 购物代理读到的商品事实，和结账时实际收的对得上。
+summary: 比对各出口的商品事实，以公开接口或页面为默认基准，可选验证归属后的购物车探针。
 ---
 
 ## 这是什么
 
-Regmark 是一个开源的命令行测试工具。一家店会从好几个出口向机器报价：商品页、结构化数据、商品 feed、代理协议端点。Regmark 把这些出口上的价格、库存、运费逐项拿去和结账实算的结果比对，对不上就报出来，并且可以让 CI 失败。
+Regmark 是一个开源的命令行测试工具。一家店会从好几个出口向机器报价：商品页、结构化数据、商品 feed、代理协议端点。Regmark 对采样商品逐项比对这些出口。默认以公开商品接口、其次以可见页面为基准；验证店铺归属后，可选购物车探针补充结账证据。发现超出预算时可以让 CI 失败。
 
 它要回答三个问题：
 
@@ -28,7 +28,7 @@ Regmark 是一个开源的命令行测试工具。一家店会从好几个出口
 | Y | UCP 目录接口 | 39.00 | 缺货 | 没提 |
 | K | 结账实算 | 39.00 | 可下单 | 6.20 |
 
-Regmark 对这件商品会报三条：JSON-LD 的价格是促销结束后没改回来的旧值，UCP 的库存状态是错的，feed 里的「包邮」在结账时并不成立。每一条都带着两边的原始取值和出处。下面用 feed 来演示同样的三条，因为协议端点的采集器还没写。
+Regmark 对这件商品会报三条：JSON-LD 的价格是促销结束后没改回来的旧值，UCP 的库存状态是错的，feed 里的「包邮」在结账时并不成立。每一条都带着两边的原始取值和出处。下面用 feed 展示报告格式。当前已实现 UCP 目录、店铺 MCP 服务和 ACP feed 的只读采集；这段是合成示意，不是真实店铺实测。
 
 ```terminal
 $ regmark audit https://shop.example --feed /feeds/google.xml --platform woocommerce --checkout
@@ -56,20 +56,20 @@ $ regmark audit https://shop.example --feed /feeds/google.xml --platform woocomm
 
 印刷时各色版要逐张对齐，纸边印的那个十字圆圈叫套准标，英文是 registration mark，行话叫 reg mark。黑版是其余色版对齐的基准，所以它的代号是 K，取自 key。
 
-在这个项目里，结账就是那块黑版。商品页、feed、协议端点都得向它对齐，因为用户最后付的是结账算出来的那个数。
+在这个项目里，K 表示参考观测。默认只读审计通常以公开商品接口或可见页面为基准；只有验证归属并运行购物车探针时，才有相应的结账观测。
 
-Regmark 目前是工作代号。npm 上这个包名还空着，GitHub 上的同名账号已经被人注册，正式定名之前还要查商标。
+Regmark 的源码和单文件发布包托管在 GitHub。2026-10-10 检查时 npm 包接口返回 HTTP 404；这并不表示包名一定可注册，也不构成商标检索。
 
 ## 现在的状态
 
 | 项 | 内容 |
 |---|---|
-| 阶段 | 版本 0.2.0，发布到 npm 和 GitHub Marketplace |
-| 试一下 | `npx regmark demo`，详见[使用说明](07-usage.md) |
+| 阶段 | GitHub 已有 v0.2.0 发布包；npm 当前返回 404，Marketplace 状态不在此作保证 |
+| 试一下 | 下载并校验固定发布包后运行 `node regmark.mjs demo`，详见[使用说明](07-usage.md) |
 | 源码 | [github.com/kairwang01/regmark](https://github.com/kairwang01/regmark) |
 | 已经有的 | 商品页、Google feed、ACP feed、UCP 目录、店铺 MCP 服务、WooCommerce 与 Shopify 商品接口的采集，WooCommerce 与 Shopify 结账探针，对代理换脸（cloaking）的检查，17 条规则，六种报告，GitHub Action |
 | 还没有的 | 探店代理，经 UCP 结账会话的实算，更多平台 |
-| 验收 | 超过 1100 项测试通过。样板店里 27 处预置缺陷对应的 31 条发现全部查出，对照店零误报 |
+| 验收 | 超过 1100 项测试通过。样板店里 27 处预置缺陷对应的 31 条发现全部查出，合成对照店零发现；不是对真实店铺准确率的测量 |
 | 实现语言 | TypeScript。使用要求 Node 22 及以上 |
 | 许可证 | 代码 Apache-2.0，文档 CC BY 4.0 |
-| 更新 | 2026 年 10 月 9 日 |
+| 更新 | 2026 年 10 月 10 日 |

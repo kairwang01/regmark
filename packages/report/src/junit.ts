@@ -5,7 +5,7 @@ import { collectionFailure, durationMs, findingSentence } from './shared.ts';
 // dropped before escaping rather than replaced. DEL and the C1 range (0x7F-0x9F)
 // are legal in XML 1.0 but are dropped too: parsers and terminals handle them
 // inconsistently, and a page has no business sending them.
-const ILLEGAL_XML = /[^\t\n\r\x20-\x7E\xA0-퟿-�\u{10000}-\u{10FFFF}]/gu;
+const ILLEGAL_XML = /[^\t\n\r\x20-\x7E\u00A0-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/gu;
 
 function xml(text: string): string {
   return text

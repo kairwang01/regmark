@@ -80,3 +80,15 @@ test('an empty result still produces a valid suite', () => {
   const out = renderJUnit(audit());
   assert.ok(out.includes('<testsuite name="regmark" tests="0" failures="0" skipped="0" time="161.000">'));
 });
+
+
+test('XML character boundaries preserve legal Unicode and drop isolated surrogates', () => {
+  const allowed = '\t\n\r ~\u00A0\uD7FF\uE000\uFFFD\u{10000}\u{1F6D2}\u{10FFFF}中文é';
+  const out = renderJUnit(singleFinding({ message: allowed, product: 'mug' }));
+  assert.ok(out.includes(`mug: ${allowed}`), JSON.stringify(out));
+
+  // Separators keep isolated surrogate code units from forming a valid pair.
+  const forbidden = '\u0000a\u0008b\u000Bc\u000Cd\u000Ee\u001Ff\u007Fg\u009Fh\uD800i\uDBFFj\uDC00k\uDFFFl\uFFFEm\uFFFFn';
+  const cleaned = renderJUnit(singleFinding({ message: forbidden, product: 'mug' }));
+  assert.ok(cleaned.includes('mug: abcdefghijklmn'), JSON.stringify(cleaned));
+});

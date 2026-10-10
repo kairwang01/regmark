@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/kairwang01/regmark/actions/workflows/ci.yml"><img alt="CI 状态" src="https://github.com/kairwang01/regmark/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://www.npmjs.com/package/regmark"><img alt="npm 版本" src="https://img.shields.io/npm/v/regmark?color=21355c"></a>
+  <a href="https://github.com/kairwang01/regmark/releases/tag/v0.2.0"><img alt="发布版本 v0.2.0" src="https://img.shields.io/badge/release-v0.2.0-21355c"></a>
   <a href="#在-github-actions-中使用"><img alt="GitHub Action：kairwang01/regmark@v0" src="https://img.shields.io/badge/action-kairwang01%2Fregmark%40v0-21355c?logo=githubactions&logoColor=white"></a>
   <a href="docs/rules.md"><img alt="17 条规则" src="https://img.shields.io/badge/rules-17-21355c"></a>
   <a href="LICENSE"><img alt="Apache-2.0 许可证" src="https://img.shields.io/badge/license-Apache--2.0-21355c"></a>
@@ -14,10 +14,10 @@
 <h1 align="center">Regmark</h1>
 
 <p align="center"><b>你的店铺前后一致吗？</b><br>
-在本地或 CI 中，找出商品页、结构化数据、商家 feed、AI 代理端点与结账之间的价格、库存和运费不一致。</p>
+在本地或 CI 中，将商品页、结构化数据、商家 feed 和 AI 代理端点与店铺参考数据比对。需要结账证据时，可选用经过所有权验证的购物车探测。</p>
 
 <p align="center">
-  <a href="#十秒钟试用">演示</a> ·
+  <a href="#试用本地演示">演示</a> ·
   <a href="docs/quickstart.md">快速上手</a> ·
   <a href="#在-github-actions-中使用">GitHub Action</a> ·
   <a href="docs/rules.md">规则</a> ·
@@ -27,57 +27,66 @@
 
 你的 feed 写着 **22 美元**，购物车却收 **24 美元**。JSON-LD 里还留着上个月的促销价，引用你店铺报价的购物助手也信了它。这些文件单独看都是合法的，只是店铺自己和自己对不上；在 Google 拒绝该商品、或顾客拿到一个不同的总价之前，没有任何东西会告诉你。
 
-Regmark 会读取店铺陈述商品事实的每一个地方：用户看到的页面，页面中的 JSON-LD、microdata 和 Open Graph 标签，你的 Google 与 ACP feed，UCP 目录和店铺 MCP 服务器，店铺 API，以及真实的购物车。它按规格逐一对齐这些数据，报告每一处不一致，给出两个值以及它们各自的确切位置。在 CI 中，它可以在不一致的数据上线之前让构建失败。
+Regmark 对商品进行抽样，比对服务器返回的页面、JSON-LD、microdata、Open Graph、Google 与 ACP feed、UCP 目录和店铺 MCP 服务器中的商品事实。普通审计以店铺 API 为基准，缺失时回退到可见页面。可选的所有权验证购物车探测，为 WooCommerce 和 Shopify 补充结账观测值。发现会展示冲突值及其来源位置；某条规则超出预算时，CI 可以失败。
 
 - **默认只读。** 无需账号、API 密钥或托管服务，没有遥测。它遵守 `robots.txt`，并自行控制请求节奏。
 - **给证据，不打分。** 每条发现都会指明规格、两个值、它们的原始文本和定位信息：JSON-LD 路径、feed 条目或 API 字段。
 - **为 CI 而生。** 提供退出码、逐规则预算、pull request 评论、用于代码扫描的 SARIF，以及 JUnit、JSON、Markdown 和单文件 HTML 报告。
 - **检查代理读到的内容。** UCP 目录、店铺 MCP 服务器、ACP 商品 feed，以及对购物代理和对浏览器说法不一的页面。
 
-## 十秒钟试用
+## 试用本地演示
+
+使用 Node.js 22 或更新版本和固定的 [v0.2.0 发布版本](https://github.com/kairwang01/regmark/releases/tag/v0.2.0)。在空目录中下载单文件 CLI，先校验，再运行：
 
 ```bash
-npx regmark demo
-```
-
-它会审计随工具打包的一家小型模拟店铺，店里预设了 27 个缺陷：feed 里是上周的价格，JSON-LD 只列出三个尺码中的一个，购物车并不兑现“免运费”的宣称，UCP 目录落后于购物车，页面向代理报出的价格比向浏览器报出的更低。任何数据都不会离开你的机器。
-
-<p align="center"><img src="docs/assets/terminal.png" alt="regmark demo 的终端输出：price.mismatch 发现，每条都显示该来源的值、结账的值以及错误值所在的位置" width="880"></p>
-
-它还会写出 `regmark-demo.html`，这是一个自包含的单文件，可以直接打开，也可以发给别人。各来源不一致时，报告标题会呈现 Out of register（套印不准）的效果，就像对位偏移的印张；运行 `npx regmark demo --clean` 则可以看到同一家店铺在没有任何问题时的样子。
-
-<p align="center">
-  <img src="docs/assets/report-out-of-register.png" alt="标题为 Out of register 的 HTML 报告，文字以青、品红、黄三色重影" width="49%">
-  <img src="docs/assets/report-in-register.png" alt="标题为 In register 的 HTML 报告，印得干净利落" width="49%">
-</p>
-
-唯一的要求是 Node.js 22 或更新版本。没有 npm？整个工具就是一个文件：
-
-```bash
-curl -fsSLO https://github.com/kairwang01/regmark/releases/latest/download/regmark.mjs
+curl -fsSLO https://github.com/kairwang01/regmark/releases/download/v0.2.0/regmark.mjs && \
+curl -fsSLO https://github.com/kairwang01/regmark/releases/download/v0.2.0/regmark.mjs.sha256 && \
+sha256sum -c regmark.mjs.sha256 && \
+node regmark.mjs --help && \
 node regmark.mjs demo
 ```
+
+macOS 上请将校验命令替换为 `shasum -a 256 -c regmark.mjs.sha256`。校验失败时不要继续运行。无需安装运行时依赖。**npm 暂不是可用的安装途径：** 2026-10-10 检查 `https://registry.npmjs.org/regmark/latest` 时返回 HTTP 404。请使用发布文件，不要使用 `npx regmark` 或 `npm install regmark`。
+
+演示会审计随工具打包的合成店铺：27 个预设缺陷产生 31 条发现，例如过期的 feed 价格、遗漏的尺码，以及与模拟购物车不一致的运费声明。演示仅在本地运行，无需店铺凭据，不访问真实店铺。这些是演示样例，不代表在真实店铺上的准确率。
+
+<p align="center"><img src="docs/assets/terminal.png" alt="合成店铺输出：price.mismatch 展示来源价格、参考购物车价格及证据位置" width="880"></p>
+
+在浏览器中打开生成的 `regmark-demo.html`。运行干净的对照样例，并将报告另存为一个文件：
+
+```bash
+node regmark.mjs demo --clean --html regmark-clean.html
+```
+
+干净样例应产生零条发现。两个演示命令均退出 `0`，包括有缺陷的样例；CI 门禁请使用 `audit`。
+
+<p align="center">
+  <img src="docs/assets/report-out-of-register.png" alt="合成缺陷样例：标题为 Out of register 的 HTML 报告" width="49%">
+  <img src="docs/assets/report-in-register.png" alt="合成干净对照：标题为 In register 的 HTML 报告" width="49%">
+</p>
+
+[详细安装与排错](docs/quickstart.md) · [复现演示素材](docs/demo.md)。固定版本始终使用原发布实现；尚未发布的源码变更需在源码检出中使用，直到包含这些变更的新版本发布。
 
 ## 审计你自己的店铺
 
 ```bash
-npx regmark audit https://your-shop.example --html report.html
+node regmark.mjs audit https://your-shop.example --sample 5 --html report.html
 ```
 
-不加任何参数时，它会自动判断店铺运行的是 WooCommerce 还是 Shopify，抽样 25 件商品，读取它们的页面和店铺 API 并进行比较。给它更多可比较的数据，它就能发现更多问题：
+先从五件商品开始；不指定 `--sample` 时默认为 25 件。在没有额外配置时，它会识别 WooCommerce 或 Shopify，读取商品页和公开店铺 API，不探测购物车。可以再加入其他来源进行比对：
 
 ```bash
 # 商家 feed（最容易过期的来源），以及它允许有多旧
-npx regmark audit https://your-shop.example --feed /feeds/google.xml --max-age feed=24h
+node regmark.mjs audit https://your-shop.example --feed /feeds/google.xml --max-age feed=24h
 
 # AI 购物代理会读取的内容：UCP 目录、店铺 MCP 服务器、ACP feed
-npx regmark audit https://your-shop.example --ucp --mcp --acp-feed /feeds/acp.jsonl.gz
+node regmark.mjs audit https://your-shop.example --ucp --mcp --acp-feed /feeds/acp.jsonl.gz
 
-# 真实购物车总价和 cloaking 检查，仅用于你已证明归自己所有的店铺
-REGMARK_OWNERSHIP_TOKEN=… npx regmark audit https://staging.your-shop.example --checkout --cloaking
+# 可选的购物车观测值与 cloaking 检查，仅用于已完成所有权验证的测试店铺
+REGMARK_OWNERSHIP_TOKEN=… node regmark.mjs audit https://staging.your-shop.example --checkout --cloaking
 ```
 
-`npx regmark explain <rule>` 会说明一条发现通常由什么引起，以及应该到哪里修复。`npm install -D regmark` 则像其他开发工具一样，把它固定在项目中。[全部参数和配置字段](docs/configuration.md) · [快速上手与排错](docs/quickstart.md)
+`node regmark.mjs explain <rule>` 会说明一条发现通常由什么引起，以及应该到哪里修复。处理发现前，请查看采集问题、跳过的规则和选用的基准。保存的 `checkout` 配置会在不加该参数时也开启购物车探测；请将只读配置与探测配置分开。[全部参数和配置字段](docs/configuration.md) · [快速上手与排错](docs/quickstart.md)
 
 ## 在 GitHub Actions 中使用
 
@@ -117,11 +126,11 @@ Google Merchant Center 其实已经在对你做这种比对：它把 feed 中的
 
 如今，读取这些数据的“读者”越来越多。AI 购物代理会照搬你的结构化数据、UCP 目录或 MCP 服务器给出的内容来报价，而它的用户实际支付的是结账给出的金额。如果这是两个不同的数字，这笔订单和这位顾客的信任就都没了，也没有任何仪表盘会告诉你原因。
 
-Regmark 抢在前面做这个比对：一次覆盖所有来源，可用于测试环境或生产环境，发现差异时还能让构建失败。
+Regmark 可以在发布前，对已配置的受支持来源和抽样商品进行比对。某条规则超出预算时，构建可以失败；它不保证商家审核通过、排名提升或获得 AI 引用。
 
 ## 它读取什么
 
-各个来源的分组方式，就像印张被分离成若干色版。黑版是其他色版对齐的依据，所以印刷行业称它为 K，即 key（主版）。在这里，结账就是主版。
+各个来源的分组方式，就像印张被分离成若干色版。黑版是其他色版对齐的依据，所以印刷行业称它为 K，即 key（主版）。在这里，K 表示参考观测值：通常是店铺 API 或可见页面，只有实际运行了已验证探测时才包含购物车数据。
 
 | 色版 | 信息来源 | 支持范围 |
 |---|---|---|
@@ -130,13 +139,13 @@ Regmark 抢在前面做这个比对：一次覆盖所有来源，可用于测试
 | **Y** | 代理直接读取的内容：UCP 目录（`/.well-known/ucp`）、店铺 MCP 服务器与 ACP 商品 feed | 只读；UCP 2026-08-25 |
 | **K** | 店铺本身：店铺 API 与真实购物车 | WooCommerce 与 Shopify；购物车须在所有权验证之后 |
 
-以哪个来源为准是明确规定的：先看结账，其次是店铺 API，最后才是可见页面。结构化数据、feed 和代理端点从不被当作依据，它们是被检查的对象。[确切的抽样与覆盖范围](docs/configuration.md#which-products-get-audited)
+默认基准优先级依次为结账、店铺 API、可见页面，选择其中可用的观测值。因此，只读审计通常以 API 或页面为准，而非结账。结构化数据、feed 和代理端点与该基准比对。样本通过不代表整个商品目录或未能读取的来源都正确。[确切的抽样与覆盖范围](docs/configuration.md#which-products-get-audited)
 
 ## 它能发现什么
 
 | 规则 | | 检测内容 |
 |---|---|---|
-| `price.mismatch` | error | 某个来源标示的价格，与结账实际收取的不一致 |
+| `price.mismatch` | error | 某个来源标示的价格，与可用参考来源不一致 |
 | `price.currency-ambiguous` | error | 机器可读的价格缺少币种，或币种错误 |
 | `price.tax-basis` | warn | 两个价格恰好相差一个 VAT 或 GST 税率 |
 | `price.sale-expired` | warn | 仍在收取的价格，其促销结束日期已经过去 |
@@ -183,13 +192,13 @@ Regmark 抢在前面做这个比对：一次覆盖所有来源，可用于测试
 | Rich Results Test、schema 校验器 | 单个页面的标记格式是否正确 | 其中的值是否属实 |
 | UCP、ACP 与 feed 校验器 | 端点或文件的结构是否正确 | 其中的值是否与其他任何来源一致 |
 | 页面级“AI 就绪度”评分 | 机器能从单个页面读到什么 | 读到的内容是否与你的 feed 或结账一致 |
-| **Regmark** | 每个来源是否都与结账一致，按规格逐一检查 | 除读取所需之外的标记有效性；排名或可见度 |
+| **Regmark** | 按规格将抽样来源与可用基准比对；可选已验证的购物车证据 | 除读取所需之外的标记有效性；排名或可见度 |
 
 这些工具回答的是不同的问题，配合使用效果很好。[定位与应用场景](docs/positioning.md)
 
 ## 常见问题
 
-**它会改动我店铺里的任何东西吗？** 除非你要求，否则不会。单纯的 `audit` 只读取。`--checkout` 会写入购物车，而且只有在所有权验证之后才会执行；它从不下单。
+**它会改动我店铺里的任何东西吗？** 除非你要求，否则不会。没有结账或 cloaking 配置的 `audit` 仅进行普通读取。`--checkout` 会写入购物车，而且只有在所有权验证之后才会执行；它从不下单。
 
 **它会执行 JavaScript 吗？** 不会。它读取服务器返回的 HTML，大多数爬虫和代理也是如此。只有脚本运行后才出现的价格，它看不到，通常它们也看不到。
 
@@ -219,7 +228,7 @@ Regmark 抢在前面做这个比对：一次覆盖所有来源，可用于测试
 
 ```bash
 git clone https://github.com/kairwang01/regmark && cd regmark
-pnpm install
+pnpm install --frozen-lockfile
 node packages/cli/src/bin.ts demo     # 直接从 TypeScript 源码运行 CLI
 pnpm test && pnpm bench && pnpm typecheck
 ```

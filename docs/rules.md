@@ -289,6 +289,12 @@ Needs `checkout`. The checkout quote is the one `shipping.mismatch` uses.
 
 Applies only when `platform` or `checkout` was collected.
 
+Silent for a product whose backend catalogue is known to be incomplete. For
+example, when a listed WooCommerce variation cannot be fetched or parsed,
+an unmatched feed SKU might belong to that unread variation. The collection
+issue is still reported, and still fails a strict audit. Other products
+whose catalogues were read completely are checked as usual.
+
 - A product none of whose variants is real (see `variant.missing`), and which
   has no product-level sighting from `page`: fire once for the product, without
   `variant`. `surface` is the product's only surface when it has exactly one,

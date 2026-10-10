@@ -174,6 +174,56 @@ test('percent-encoded paths match after normalisation', () => {
   assert.equal(allowed('User-agent: *\nDisallow: /~user', '/%7euser'), false);
 });
 
+for (const [name, raw, encoded] of [
+  ['Chinese', '/商品', '/%E5%95%86%E5%93%81'],
+  ['accented', '/café', '/caf%C3%A9'],
+  ['astral', '/🛒', '/%F0%9F%9B%92'],
+]) {
+  test(`${name} paths match raw and UTF-8 percent-encoded rules`, () => {
+    const forms = [raw, encoded, encoded.toLowerCase()];
+    for (const pattern of forms) {
+      for (const path of forms) {
+        assert.equal(allowed(`User-agent: *\nDisallow: ${pattern}`, path), false, `${pattern} matches ${path}`);
+      }
+    }
+    // The fetcher passes URL.pathname, which percent-encodes raw Unicode.
+    const url = new URL(raw, 'https://shop.example');
+    assert.equal(allowed(`User-agent: *\nDisallow: ${raw}`, url.pathname), false);
+    assert.equal(allowed(`User-agent: *\nDisallow: ${raw}`, '/other'), true);
+    // Equivalent spellings must also have equal specificity, so allow wins.
+    assert.equal(allowed(`User-agent: *\nAllow: ${raw}\nDisallow: ${encoded}`, encoded), true);
+    assert.equal(allowed(`User-agent: *\nDisallow: ${raw}\nAllow: ${encoded}`, raw), true);
+  });
+}
+
+test('Unicode normalisation preserves wildcards, anchors and query strings', () => {
+  const txt = 'User-agent: *\nDisallow: /商品/*?name=café🛒$';
+  const path = '/商品/item?name=café🛒';
+  const url = new URL(path, 'https://shop.example');
+  assert.equal(allowed(txt, path), false);
+  assert.equal(allowed(txt, url.pathname + url.search), false);
+  assert.equal(allowed(txt, '/%E5%95%86%E5%93%81/?name=caf%C3%A9%F0%9F%9B%92'), false);
+  assert.equal(allowed(txt, url.pathname + url.search + '&extra=1'), true);
+  assert.equal(allowed(txt, '/other/item?name=café🛒'), true);
+});
+
+test('Unicode normalisation preserves reserved and double-encoded escapes', () => {
+  const txt = 'User-agent: *\nDisallow: /商品/a%2fb%2Ac%24$';
+  assert.equal(allowed(txt, '/%E5%95%86%E5%93%81/a%2Fb%2ac%24'), false);
+  assert.equal(allowed(txt, '/商品/a/b%2Ac%24'), true);
+  assert.equal(allowed(txt, '/商品/a%2FbANYc%24'), true);
+  assert.equal(allowed(txt, '/商品/a%2Fb%2Ac'), true);
+  assert.equal(allowed('User-agent: *\nDisallow: /商品/%24', '/商品/%24tail'), false);
+  assert.equal(allowed('User-agent: *\nDisallow: /café', '/caf%25C3%25A9'), true);
+  assert.equal(allowed('User-agent: *\nDisallow: /caf%25C3%25A9', '/café'), true);
+});
+
+test('Unicode matching remains case-sensitive and does not fold distinct code points', () => {
+  const txt = 'User-agent: *\nDisallow: /café';
+  assert.equal(allowed(txt, '/caf%C3%89'), true);
+  assert.equal(allowed(txt, '/cafe%CC%81'), true);
+});
+
 test('escapes of reserved characters are left alone', () => {
   // %2F is a slash in disguise and must not be decoded into one.
   assert.equal(allowed('User-agent: *\nDisallow: /a%2fb', '/a/b'), true);

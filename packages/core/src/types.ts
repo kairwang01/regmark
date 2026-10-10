@@ -161,6 +161,13 @@ export type Sighting = {
    * variant.missing, but it is no claim that the shop sells it.
    */
   withheld?: true;
+  /**
+   * Product-scope backend coverage marker: some listed variants could not
+   * be read. It carries only the parent's identity, never variant ids or
+   * offer facts. An unmatched variant is not proof of absence while this
+   * product's backend catalogue is incomplete.
+   */
+  incompleteVariants?: true;
 };
 
 /** One variant, with every surface's statements gathered per fact. */

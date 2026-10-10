@@ -266,23 +266,21 @@ needs `continue-on-error: true` for a later step to see a failed audit:
 
 ## Any other CI
 
-The tool is a single file with no dependencies. It needs Node 22 or later.
-Where npm is available, run a pinned version from the registry:
+The tool is a single file with no runtime installation dependencies and needs
+Node 22 or later. Use a pinned official release and verify its checksum before
+execution. The npm package returned HTTP 404 when checked on 2026-10-10, so
+registry-based installation is not currently a verified path.
 
 ```bash
-npx --yes regmark@0.2.0 audit https://staging.shop.example --feed /feeds/google.xml --junit regmark-junit.xml --json regmark.json
-```
-
-The same file is attached to every release as `regmark.mjs`, for a CI image
-with Node and no package manager. Fetch the release you pin and run it:
-
-```bash
-curl -fsSLO https://github.com/kairwang01/regmark/releases/download/v0.2.0/regmark.mjs
+curl -fsSLO https://github.com/kairwang01/regmark/releases/download/v0.2.0/regmark.mjs && \
+curl -fsSLO https://github.com/kairwang01/regmark/releases/download/v0.2.0/regmark.mjs.sha256 && \
+sha256sum -c regmark.mjs.sha256 && \
 node regmark.mjs audit https://staging.shop.example --feed /feeds/google.xml --junit regmark-junit.xml --json regmark.json
 ```
 
-Each release also carries `regmark.mjs.sha256`. To check the download against
-it, fetch both and run `sha256sum -c regmark.mjs.sha256`.
+The `&&` chain stops before execution if either download or verification fails.
+On macOS, use `shasum -a 256 -c regmark.mjs.sha256` for verification. A pinned
+release does not include later unreleased source fixes.
 
 The exit codes are the same as for the command line: 0 within budget, 1 over
 budget, 2 if the audit could not run, read no product, or (with `--strict`)

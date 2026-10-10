@@ -2,42 +2,36 @@
 title: 使用说明
 slug: usage
 nav: 使用说明
-summary: 从十秒钟的演示，到检查自己的店，再到接进 CI。每一步给出命令，以及跑完之后你会看到什么。
+summary: 下载并校验固定发布包，运行合成演示，再只读检查自己的店并接进 CI。
 ---
 
 ## 先看一眼它是什么样
 
-需要 Node 22 或更新的版本。不用安装，一条命令：
+需要 Node 22 或更新的版本。在空目录中下载固定版本并验证校验和：
 
-```terminal
-$ npx regmark demo
+```bash
+curl -fsSLO https://github.com/kairwang01/regmark/releases/download/v0.2.0/regmark.mjs && \
+curl -fsSLO https://github.com/kairwang01/regmark/releases/download/v0.2.0/regmark.mjs.sha256 && \
+sha256sum -c regmark.mjs.sha256 && \
+node regmark.mjs demo
 ```
 
-这会检查工具自带的一家小店。店里事先埋了 27 个毛病，都是真实店铺里常见的：feed 里还是上周的价格，JSON-LD 只列了三个尺码里的一个，写着包邮但购物车照收运费，UCP 目录比购物车慢半拍，同一个页面报给购物代理的价格比报给浏览器的低。两秒钟后你会在终端里看到完整的结果，当前目录下多出一个 `regmark-demo.html`，那是可以直接打开、也可以发给同事的报告。演示不访问任何外部网站。
+macOS 将校验命令换成 `shasum -a 256 -c regmark.mjs.sha256`。任一步失败，命令链会停止。2026-10-10 检查时 npm 包接口返回 HTTP 404，请使用已校验的发布文件，不要依赖 `npx regmark`。固定发布包不含之后尚未发版的源码修复；需要最新源码时按仓库的[快速上手](https://github.com/kairwang01/regmark/blob/main/docs/quickstart.md#development)运行。
 
-想看「一切正常」是什么样，加上 `--clean`：
+演示仅访问本地合成样板店，无需真实店铺凭据。27 个预设缺陷产生 31 条发现，并生成 `regmark-demo.html`。这不是对真实店铺准确率的测量。演示特意启用了样板店的购物车与 cloaking 检查，普通只读审计不会自动启用。
 
-```terminal
-$ npx regmark demo --clean
-```
-
-不想经过 npm 也行。整个工具打包成了一个文件，下载下来直接用 Node 运行：
+运行干净的对照样例，并保留第一份报告：
 
 ```terminal
-$ curl -fsSLO https://github.com/kairwang01/regmark/releases/latest/download/regmark.mjs
-$ node regmark.mjs demo
+$ node regmark.mjs demo --clean --html regmark-clean.html
 ```
 
-想跑仓库里还没发版的最新代码，可以直接从 GitHub 取。`--allow-git=all` 是给 npm 12 准备的：从这一版起，npm 默认不再从 git 仓库取包，不带这个参数会报错。
-
-```terminal
-$ npx --allow-git=all github:kairwang01/regmark demo
-```
+干净样例应有零发现。两个 `demo` 命令都退出 0；CI 门禁请用 `audit`。切换到干净样例不代表修复了真实店铺。
 
 ## 检查自己的店
 
 ```terminal
-$ npx regmark audit https://your-shop.example
+$ node regmark.mjs audit https://your-shop.example
 ```
 
 什么参数都不带时，它做这几件事：
@@ -47,23 +41,16 @@ $ npx regmark audit https://your-shop.example
 3. 读这些商品的页面：人看到的价格和库存、JSON-LD、microdata、Open Graph。
 4. 把页面上说的和接口里说的逐项比对，打印结果。
 
-整个过程只读不写，遵守 robots.txt，对同一个主机每秒最多发一个请求，所以 25 件商品大约要一分钟。终端里会显示它正在做哪一步。
+没有 checkout 或 cloaking 配置时，上述流程只做普通只读请求，遵守 robots.txt，默认对同一主机每秒最多发一个请求。耗时取决于请求数量和响应速度；配置中的 checkout 对象即使没有命令行开关也会启用探针，请把只读和探针配置分开。
 
-经常用的话，装到全局更方便：
-
-```terminal
-$ npm install -g regmark
-$ regmark audit https://your-shop.example
-```
-
-要在某个项目里把版本固定下来，就像别的开发工具一样装成开发依赖：`npm install -D regmark`。
+后续命令从下载目录运行，或给 `node` 提供 `regmark.mjs` 的完整路径。
 
 ## 给它更多可比的东西
 
 **商品 feed。** 这是最容易过期的一处，建议总是带上：
 
 ```terminal
-$ regmark audit https://your-shop.example --feed /feeds/google.xml
+$ node regmark.mjs audit https://your-shop.example --feed /feeds/google.xml
 ```
 
 feed 的地址可以是相对店铺的路径，也可以是完整网址。支持 Google Merchant 的 RSS、Atom 和制表符分隔三种格式。
@@ -71,13 +58,13 @@ feed 的地址可以是相对店铺的路径，也可以是完整网址。支持
 **feed 的新鲜度。** 今天碰巧没错、但已经九天没更新的 feed，明天就会错。告诉工具它最多可以多旧，超过了就报：
 
 ```terminal
-$ regmark audit https://your-shop.example --feed /feeds/google.xml --max-age feed=24h
+$ node regmark.mjs audit https://your-shop.example --feed /feeds/google.xml --max-age feed=24h
 ```
 
 **购物代理直接读的那几处。** 店铺如果提供了 UCP 目录、店铺 MCP 服务或 ACP 商品 feed，把它们也读进来比。三者都只读：
 
 ```terminal
-$ regmark audit https://your-shop.example --ucp --mcp --acp-feed /feeds/acp.jsonl.gz
+$ node regmark.mjs audit https://your-shop.example --ucp --mcp --acp-feed /feeds/acp.jsonl.gz
 ```
 
 `--ucp` 从 `/.well-known/ucp` 找到店铺的 UCP 目录，`--mcp` 向店铺的 MCP 服务查询同一批商品，`--acp-feed` 读一份 ACP 格式的商品 feed。它们说的价格和库存，会和别的出口一样被拿去同基准比对。
@@ -85,7 +72,7 @@ $ regmark audit https://your-shop.example --ucp --mcp --acp-feed /feeds/acp.json
 **结账实算。** 只有把商品真的放进购物车，才知道实际收多少。这一步支持 WooCommerce 和 Shopify，并且要先证明店是你的，见下一节。
 
 ```terminal
-$ REGMARK_OWNERSHIP_TOKEN=你的令牌 regmark audit https://your-shop.example \
+$ REGMARK_OWNERSHIP_TOKEN=你的令牌 node regmark.mjs audit https://your-shop.example \
     --feed /feeds/google.xml --checkout --ship-to US:94103
 ```
 
@@ -94,13 +81,13 @@ $ REGMARK_OWNERSHIP_TOKEN=你的令牌 regmark audit https://your-shop.example \
 **对代理和对人说的是不是一样。** 加上 `--cloaking`，工具会把抽到的每个页面分别以浏览器和购物代理的身份再读一遍，比的是两边被告知的价格和库存，不是网页源码。这一步要冒充别的客户端，所以同样要先证明店是你的。
 
 ```terminal
-$ REGMARK_OWNERSHIP_TOKEN=你的令牌 regmark audit https://staging.your-shop.example --cloaking
+$ REGMARK_OWNERSHIP_TOKEN=你的令牌 node regmark.mjs audit https://staging.your-shop.example --cloaking
 ```
 
-**指定页面。** 只想查某几个商品：
+**指定页面。** 若只查指定页面而不采样平台目录，使用 `--platform none`：
 
 ```terminal
-$ regmark audit https://your-shop.example --page /product/blue-tee/ --page /product/tote/
+$ node regmark.mjs audit https://your-shop.example --platform none --page /product/blue-tee/ --page /product/tote/
 ```
 
 ## 证明店是你的
@@ -139,7 +126,7 @@ $ regmark audit https://your-shop.example --page /product/blue-tee/ --page /prod
 想知道某一类问题通常是怎么来的、该去哪里改：
 
 ```terminal
-$ regmark explain price.mismatch
+$ node regmark.mjs explain price.mismatch
 ```
 
 ## 留下报告
@@ -161,10 +148,10 @@ $ regmark explain price.mismatch
 做法是先把现状记下来，以后只许变少：
 
 ```terminal
-$ regmark audit https://your-shop.example --budget price.mismatch=7 --budget variant.missing=31
+$ node regmark.mjs audit https://your-shop.example --budget price.mismatch=7 --budget variant.missing=31
 ```
 
-或者写进配置文件。`regmark init https://your-shop.example` 会在当前目录生成一个 `regmark.config.json`，在里面加上：
+或者写进配置文件。`node regmark.mjs init https://your-shop.example` 会在当前目录生成一个 `regmark.config.json`，在里面加上：
 
 ```json
 {
@@ -178,7 +165,7 @@ $ regmark audit https://your-shop.example --budget price.mismatch=7 --budget var
 }
 ```
 
-当前目录下有这个文件时，直接运行 `regmark audit` 就会读它。把它提交进仓库，每修掉一批就把数字往下调。
+当前目录下有这个文件时，直接运行 `node regmark.mjs audit` 就会读它。把它提交进仓库，每修掉一批就把数字往下调。
 
 退出码：0 是全部在预算内，1 是有规则超出预算，2 是检查没能跑起来，或者一件商品都没读到。后一种情况不会被算成通过：预发环境挂了，构建应该红，而不是绿。
 
@@ -230,7 +217,7 @@ jobs:
 
 ## 常见问题
 
-**会不会把我的店打挂？** 不会。对同一个主机每秒最多一个请求，默认只抽 25 件商品。购物车探针碰到店铺的防护拦截时，会清空购物车并停下，不重试。
+**会不会影响店铺负载？** 工具会限速，但不能保证对所有店铺都没有影响；建议先在预发布环境小样本测试。对同一个主机每秒最多一个请求，默认只抽 25 件商品。购物车探针碰到店铺的防护拦截时，会清空购物车并停下，不重试。
 
 **需要大模型的密钥吗？** 不需要。17 条规则全是确定性的比对，同样的输入永远给出同样的结果，也没有任何费用。
 

@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/kairwang01/regmark/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/kairwang01/regmark/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://www.npmjs.com/package/regmark"><img alt="npm" src="https://img.shields.io/npm/v/regmark?color=21355c"></a>
+  <a href="https://github.com/kairwang01/regmark/releases/tag/v0.2.0"><img alt="Release v0.2.0" src="https://img.shields.io/badge/release-v0.2.0-21355c"></a>
   <a href="#use-it-in-github-actions"><img alt="GitHub Action: kairwang01/regmark@v0" src="https://img.shields.io/badge/action-kairwang01%2Fregmark%40v0-21355c?logo=githubactions&logoColor=white"></a>
   <a href="docs/rules.md"><img alt="17 rules" src="https://img.shields.io/badge/rules-17-21355c"></a>
   <a href="LICENSE"><img alt="Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-21355c"></a>
@@ -14,10 +14,10 @@
 <h1 align="center">Regmark</h1>
 
 <p align="center"><b>Does your shop agree with itself?</b><br>
-Catch price, stock and shipping mismatches between product pages, structured data, merchant feeds, AI-agent endpoints and the checkout, locally or in CI.</p>
+Compare product pages, structured data, merchant feeds and AI-agent endpoints with storefront facts, locally or in CI. Add owner-verified cart probes when you need checkout evidence.</p>
 
 <p align="center">
-  <a href="#try-it-in-ten-seconds">Demo</a> ·
+  <a href="#try-the-local-demo">Demo</a> ·
   <a href="docs/quickstart.md">Quickstart</a> ·
   <a href="#use-it-in-github-actions">GitHub Action</a> ·
   <a href="docs/rules.md">Rules</a> ·
@@ -27,57 +27,66 @@ Catch price, stock and shipping mismatches between product pages, structured dat
 
 Your feed says **$22**. Your cart charges **$24**. The JSON-LD still carries last month's sale price, and the shopping assistant that quoted your shop believed it. Every one of those files is valid. The shop just disagrees with itself, and nothing tells you until Google disapproves the product or a customer gets a different total.
 
-Regmark reads every place a shop states a product fact: the page a person sees, its JSON-LD, microdata and Open Graph tags, your Google and ACP feeds, your UCP catalogue and storefront MCP server, the storefront API, and a real cart. It lines them up variant by variant and reports each disagreement with both values and exactly where each one lives. In CI it can fail the build before the mismatch ships.
+Regmark compares sampled product facts from server-rendered pages, JSON-LD, microdata, Open Graph, Google and ACP feeds, UCP catalogues and storefront MCP servers. A normal audit uses the storefront API, falling back to the visible page, as its reference. Optional owner-verified cart probes add checkout observations on WooCommerce and Shopify. Findings show the conflicting values and their source locators; CI can fail when a rule exceeds its budget.
 
 - **Read-only by default.** No account, no API key, no hosted service, no telemetry. It obeys `robots.txt` and paces itself.
 - **Evidence, not scores.** Every finding names the variant, both values, their raw text and a locator: a JSON-LD path, a feed item, an API field.
 - **Made for CI.** Exit codes, per-rule budgets, a pull request comment, SARIF for code scanning, JUnit, JSON, Markdown and a one-file HTML report.
 - **Checks what agents read.** UCP catalogues, storefront MCP servers, ACP product feeds, and pages that tell a shopping agent something different from what they tell a browser.
 
-## Try it in ten seconds
+## Try the local demo
+
+Use Node.js 22 or later and the pinned [v0.2.0 release](https://github.com/kairwang01/regmark/releases/tag/v0.2.0). In an empty directory, download the single-file CLI and verify its checksum before running it:
 
 ```bash
-npx regmark demo
-```
-
-That audits a small shop bundled with the tool, with 27 defects planted in it: a feed with last week's price, JSON-LD that lists one size out of three, a "free shipping" claim the cart does not honour, a UCP catalogue that lags the cart, a page that quotes agents a lower price than browsers. Nothing leaves your machine.
-
-<p align="center"><img src="docs/assets/terminal.png" alt="Terminal output of regmark demo: price.mismatch findings, each showing the surface's value, the checkout's value and where the wrong value lives" width="880"></p>
-
-It also writes `regmark-demo.html`, one self-contained file you can open or send to someone. When the surfaces disagree the headline prints out of register, the way a misaligned press sheet does; run `npx regmark demo --clean` for the same shop with nothing wrong in it.
-
-<p align="center">
-  <img src="docs/assets/report-out-of-register.png" alt="HTML report headed Out of register, the words doubled in cyan, magenta and yellow" width="49%">
-  <img src="docs/assets/report-in-register.png" alt="HTML report headed In register, printed clean" width="49%">
-</p>
-
-Node.js 22 or later is the only requirement. No npm? The whole tool is one file:
-
-```bash
-curl -fsSLO https://github.com/kairwang01/regmark/releases/latest/download/regmark.mjs
+curl -fsSLO https://github.com/kairwang01/regmark/releases/download/v0.2.0/regmark.mjs && \
+curl -fsSLO https://github.com/kairwang01/regmark/releases/download/v0.2.0/regmark.mjs.sha256 && \
+sha256sum -c regmark.mjs.sha256 && \
+node regmark.mjs --help && \
 node regmark.mjs demo
 ```
+
+On macOS, replace the checksum command with `shasum -a 256 -c regmark.mjs.sha256`. Stop if verification fails. There is no package-installation step. **npm is not an available installation path:** `https://registry.npmjs.org/regmark/latest` returned HTTP 404 when checked on 2026-10-10. Use the release file rather than `npx regmark` or `npm install regmark`.
+
+The demo audits a synthetic shop bundled with the tool: 27 seeded defects produce 31 findings. Examples include a stale feed price, an omitted size and a shipping claim that disagrees with the fixture cart. The demo runs locally, needs no shop credentials and contacts no live store. These are demonstration fixtures, not evidence of accuracy on real shops.
+
+<p align="center"><img src="docs/assets/terminal.png" alt="Synthetic fixture output: price.mismatch findings show the surface value, reference checkout value and evidence locator" width="880"></p>
+
+Open the generated `regmark-demo.html` in your browser. To see the clean control without overwriting it:
+
+```bash
+node regmark.mjs demo --clean --html regmark-clean.html
+```
+
+The clean fixture produces zero findings. Both demo commands exit `0`, even for the defective fixture; use `audit` for a CI gate.
+
+<p align="center">
+  <img src="docs/assets/report-out-of-register.png" alt="Synthetic defect fixture: HTML report headed Out of register" width="49%">
+  <img src="docs/assets/report-in-register.png" alt="Synthetic clean control: HTML report headed In register" width="49%">
+</p>
+
+[Step-by-step setup and troubleshooting](docs/quickstart.md) · [Reproduce the demo media](docs/demo.md). A release pin keeps its original implementation; unreleased source changes require a source checkout until a new release is published.
 
 ## Audit your own shop
 
 ```bash
-npx regmark audit https://your-shop.example --html report.html
+node regmark.mjs audit https://your-shop.example --sample 5 --html report.html
 ```
 
-With no flags it works out whether the shop runs WooCommerce or Shopify, samples 25 products, reads their pages and the storefront API, and compares. Give it more to compare and it finds more:
+Start with five products. Without `--sample`, the default is 25. A fresh configuration detects WooCommerce or Shopify and reads product pages and the public storefront API; it does not probe a cart. Give it additional surfaces to compare:
 
 ```bash
 # the merchant feed, the surface that goes stale most often, and how old it may be
-npx regmark audit https://your-shop.example --feed /feeds/google.xml --max-age feed=24h
+node regmark.mjs audit https://your-shop.example --feed /feeds/google.xml --max-age feed=24h
 
 # what AI shopping agents read: the UCP catalogue, the storefront MCP server, an ACP feed
-npx regmark audit https://your-shop.example --ucp --mcp --acp-feed /feeds/acp.jsonl.gz
+node regmark.mjs audit https://your-shop.example --ucp --mcp --acp-feed /feeds/acp.jsonl.gz
 
-# real cart totals and the cloaking check, on a shop you have shown is yours
-REGMARK_OWNERSHIP_TOKEN=… npx regmark audit https://staging.your-shop.example --checkout --cloaking
+# optional cart observations and cloaking check, after proving ownership of your staging shop
+REGMARK_OWNERSHIP_TOKEN=… node regmark.mjs audit https://staging.your-shop.example --checkout --cloaking
 ```
 
-`npx regmark explain <rule>` says what usually causes a finding and where to fix it. `npm install -D regmark` pins it in a project like any other dev tool. [Every flag and config field](docs/configuration.md) · [Quickstart and troubleshooting](docs/quickstart.md)
+`node regmark.mjs explain <rule>` says what usually causes a finding and where to fix it. Check collection issues, skipped rules and the chosen reference before acting. A saved `checkout` configuration enables cart probes even without the flag; keep read-only and probe configurations separate. [Every flag and config field](docs/configuration.md) · [Quickstart and troubleshooting](docs/quickstart.md)
 
 ## Use it in GitHub Actions
 
@@ -117,11 +126,11 @@ Google Merchant Center already runs this comparison on you. It checks the price 
 
 Now more readers are arriving. An AI shopping agent quotes whatever your structured data, your UCP catalogue or your MCP server says, and its user pays whatever your checkout says. If those are two numbers, that sale and that shopper's trust are gone, and no dashboard will tell you why.
 
-Regmark runs the comparison first, across every surface at once, on staging or production, and can fail a build when it finds a difference.
+Regmark can run that comparison before publication, across the supported surfaces you configure and the products it samples. It can fail a build when a rule exceeds its budget; it does not guarantee merchant approval, rankings or AI citations.
 
 ## What it reads
 
-Surfaces are grouped the way a press sheet is separated into plates. The black plate is the one the others are aligned to, which is why printers call it K, for key. Here the checkout is the key plate.
+Surfaces are grouped the way a press sheet is separated into plates. The black plate is the one the others are aligned to, which is why printers call it K, for key. Here K holds the reference observations: normally the storefront API or visible page, with cart data only when a verified probe ran.
 
 | Plate | Surface | Supported |
 |---|---|---|
@@ -130,13 +139,13 @@ Surfaces are grouped the way a press sheet is separated into plates. The black p
 | **Y** | What agents read directly: the UCP catalogue (`/.well-known/ucp`), the storefront MCP server and the ACP product feed | Read-only; UCP 2026-08-25 |
 | **K** | The shop itself: the storefront API, and a real cart | WooCommerce and Shopify; the cart after ownership is verified |
 
-Which surface is believed is explicit: the checkout first, then the storefront API, then the visible page. Structured data, feeds and agent endpoints are never believed. They are what gets checked. [Exact sampling and coverage](docs/configuration.md#which-products-get-audited)
+The default reference priority is checkout, storefront API, then visible page, using whichever observation is available. In a read-only audit that normally means the API or page, not checkout. Structured data, feeds and agent endpoints are compared against that reference. A passing sample does not certify the whole catalogue or unreadable surfaces. [Exact sampling and coverage](docs/configuration.md#which-products-get-audited)
 
 ## What it catches
 
 | Rule | | Catches |
 |---|---|---|
-| `price.mismatch` | error | A surface states a price the checkout does not charge |
+| `price.mismatch` | error | A surface states a price that differs from the available reference |
 | `price.currency-ambiguous` | error | A machine-readable price with no currency, or the wrong one |
 | `price.tax-basis` | warn | Two prices exactly one VAT or GST rate apart |
 | `price.sale-expired` | warn | A sale end date in the past on a price still being charged |
@@ -183,13 +192,13 @@ There is no flag that skips this. The probe never reaches a payment step, emptie
 | Rich Results Test, schema validators | That one page's markup is well formed | Whether its values are true |
 | UCP, ACP and feed validators | That an endpoint or a file has the right shape | Whether its values match anything else |
 | Page-level "AI readiness" scores | What a machine can read from one page | Whether that agrees with your feed or your checkout |
-| **Regmark** | That every surface agrees with the checkout, per variant | Markup validity beyond what it needs to read; rankings or visibility |
+| **Regmark** | Sampled surfaces against the available reference, per variant; optional verified cart evidence | Markup validity beyond what it needs to read; rankings or visibility |
 
 These tools answer different questions and work well together. [Positioning and use cases](docs/positioning.md)
 
 ## FAQ
 
-**Does it change anything on my shop?** Not unless you ask. A plain `audit` only reads. `--checkout` writes to a cart, and only after ownership is verified; it never places an order.
+**Does it change anything on my shop?** Not unless you ask. An `audit` with no checkout or cloaking settings only reads normally. `--checkout` writes to a cart, and only after ownership is verified; it never places an order.
 
 **Does it run JavaScript?** No. It reads the HTML the server returns, as most crawlers and agents do. A price that only appears after scripts run is invisible to it, and often to them.
 
@@ -219,7 +228,7 @@ If Regmark reports something on your shop that is not wrong, that is the most us
 
 ```bash
 git clone https://github.com/kairwang01/regmark && cd regmark
-pnpm install
+pnpm install --frozen-lockfile
 node packages/cli/src/bin.ts demo     # the CLI, straight from the TypeScript sources
 pnpm test && pnpm bench && pnpm typecheck
 ```

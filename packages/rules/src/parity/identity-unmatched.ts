@@ -18,6 +18,9 @@ export default defineRule({
   help: 'A feed or a page still lists something the shop no longer sells, or lists it under an identifier nothing else uses. Remove the stale entry, or give every surface the same SKU or GTIN for it.',
   needsAny: ['platform', 'checkout'],
   check(product) {
+    // Failure to read a listed variant cannot prove the shop stopped
+    // selling it. This uncertainty belongs only to the affected product.
+    if (product.productLevel.some((s) => s.incompleteVariants && (s.surface === 'platform' || s.surface === 'checkout'))) return [];
     const real = product.variants.filter(isReal);
     if (real.length === 0) {
       // A page headline price is a statement about the product itself, so the page vouches for it.

@@ -2603,9 +2603,13 @@ function buildGraph(all) {
     if (!clusters.has(root2)) clusters.set(root2, []);
     clusters.get(root2).push(s);
   });
-  const products = [...clusters.values()].map((c, i) => toProduct(c, amb, i)).sort((a, b) => a.key.localeCompare(b.key));
+  const observed = [...clusters.values()].filter(
+    (cluster) => cluster.some((s) => !(s.scope === "product" && BACKEND.has(s.surface) && s.incompleteVariants))
+  );
+  const products = observed.map((c, i) => toProduct(c, amb, i)).sort((a, b) => a.key.localeCompare(b.key));
   attachViews(products, views);
-  return { products, surfaces: uniqueSurfaces(sightings) };
+  const retained = new Set(observed.flat());
+  return { products, surfaces: uniqueSurfaces(sightings.filter((s) => retained.has(s))) };
 }
 
 // packages/core/src/rules.ts
@@ -2882,7 +2886,11 @@ function rulesFor(robots, token) {
   return matched.flatMap((g) => g.rules);
 }
 function normalisePercent(s) {
-  return s.replace(/%([0-9A-Fa-f]{2})/g, (_escape, hex) => {
+  const ascii = s.replace(
+    /[^\x00-\x7f]+/g,
+    (text7) => Array.from(Buffer.from(text7, "utf8"), (byte) => "%" + byte.toString(16).padStart(2, "0").toUpperCase()).join("")
+  );
+  return ascii.replace(/%([0-9A-Fa-f]{2})/g, (_escape, hex) => {
     const ch = String.fromCharCode(parseInt(hex, 16));
     return /^[A-Za-z0-9\-._~]$/.test(ch) ? ch : "%" + hex.toUpperCase();
   });
@@ -3408,7 +3416,7 @@ function renderSarif(result) {
 }
 
 // packages/report/src/junit.ts
-var ILLEGAL_XML = /[^\t\n\r\x20-\x7E\xA0-퟿-�\u{10000}-\u{10FFFF}]/gu;
+var ILLEGAL_XML = /[^\t\n\r\x20-\x7E\u00A0-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/gu;
 function xml(text7) {
   return text7.replace(ILLEGAL_XML, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
@@ -4374,6 +4382,7 @@ var identity_unmatched_default = defineRule({
   help: "A feed or a page still lists something the shop no longer sells, or lists it under an identifier nothing else uses. Remove the stale entry, or give every surface the same SKU or GTIN for it.",
   needsAny: ["platform", "checkout"],
   check(product3) {
+    if (product3.productLevel.some((s) => s.incompleteVariants && (s.surface === "platform" || s.surface === "checkout"))) return [];
     const real = product3.variants.filter(isReal);
     if (real.length === 0) {
       if (product3.productLevel.some((s) => s.surface === "page")) return [];
@@ -26598,19 +26607,22 @@ async function readCatalog2(ctx, options) {
   const parents2 = listed.map((entry) => entry.parent);
   for (const entry of listed) {
     if (options.select && !selects2(options.select, entry.parent, parents2, ctx)) continue;
-    if (entry.parent.type === "simple" || entry.parent.variationIds.length === 0) {
+    if (entry.parent.type === "simple" || entry.parent.variationIds.length === 0 && !entry.incompleteVariants) {
       sightings.push(buildSighting3(entry.parent, entry.name, entry.body, entry.pointer, entry.fetchedAt, String(entry.parent.id), void 0));
       continue;
     }
+    let incompleteVariants = entry.incompleteVariants;
     for (const variationId of entry.parent.variationIds) {
       const url = `${base}/products/${variationId}`;
       const read2 = await getJson(ctx, url, "platform");
       if (!read2.ok) {
         issues.push(read2.issue);
+        incompleteVariants = true;
         continue;
       }
       if (!isRecord3(read2.body)) {
         issues.push(makeIssue("platform", "parse-error", "variation is not an object", url));
+        incompleteVariants = true;
         continue;
       }
       sightings.push(
@@ -26624,6 +26636,11 @@ async function readCatalog2(ctx, options) {
           entry.attributes.get(variationId)
         )
       );
+    }
+    if (incompleteVariants) {
+      const ids = { productId: String(entry.parent.id) };
+      if (entry.parent.permalink !== "") ids.url = entry.parent.permalink;
+      sightings.push({ surface: "platform", scope: "product", ids, incompleteVariants: true });
     }
   }
   return { sightings, issues, parents: parents2 };
@@ -26661,10 +26678,16 @@ function readParent(item, listUrl, index2, fetchedAt) {
   const issues = [];
   const variationIds = [];
   const attributes2 = /* @__PURE__ */ new Map();
+  let incompleteVariants = false;
+  if (item.type === "variable" && !Array.isArray(item.variations)) {
+    issues.push(makeIssue("platform", "parse-error", "variations is not an array", `${pointer}/variations`));
+    incompleteVariants = true;
+  }
   const variations = Array.isArray(item.variations) ? item.variations : [];
   variations.forEach((variation, position) => {
     if (!isRecord3(variation) || !isId2(variation.id)) {
       issues.push(makeIssue("platform", "parse-error", "variation entry has no numeric id", `${pointer}/variations/${position}`));
+      incompleteVariants = true;
       return;
     }
     variationIds.push(variation.id);
@@ -26679,7 +26702,7 @@ function readParent(item, listUrl, index2, fetchedAt) {
     variationIds
   };
   const name = typeof item.name === "string" && item.name !== "" ? item.name : void 0;
-  return { listed: { parent: parent2, name, body: item, pointer, fetchedAt, attributes: attributes2 }, issues };
+  return { listed: { parent: parent2, name, body: item, pointer, fetchedAt, attributes: attributes2, incompleteVariants }, issues };
 }
 function buildSighting3(parent2, name, body, pointer, fetchedAt, variantId, options) {
   const ids = { productId: String(parent2.id), variantId };
@@ -27152,25 +27175,25 @@ function resolveLoc(loc, sitemapUrl) {
 }
 async function discoverFromSitemap(ctx, sitemapUrl, issues) {
   const locs = async (url) => {
-    const res = await ctx.fetcher.get(url);
-    if (res.status < 200 || res.status > 299) throw new Error(`HTTP ${res.status}`);
-    return { index: /<sitemapindex[\s>]/i.test(res.body), urls: [...res.body.matchAll(LOC)].map((m) => resolveLoc(decodeXml(m[1]), url)) };
-  };
-  try {
-    const top = await locs(sitemapUrl);
-    let pages = top.urls;
-    if (top.index) {
-      const children2 = [...top.urls].sort((a, b) => Number(/product/i.test(b)) - Number(/product/i.test(a))).slice(0, 3);
-      pages = [];
-      for (const child of children2) pages.push(...(await locs(child)).urls);
+    try {
+      const res = await ctx.fetcher.get(url);
+      if (res.status < 200 || res.status > 299) throw new Error(`HTTP ${res.status}`);
+      return { index: /<sitemapindex[\s>]/i.test(res.body), urls: [...res.body.matchAll(LOC)].map((m) => resolveLoc(decodeXml(m[1]), res.url)) };
+    } catch (err) {
+      const robots = err instanceof FetchRefused && err.code === "robots";
+      issues.push({ surface: "page", code: robots ? "robots-disallowed" : "fetch-failed", message: `sitemap: ${err instanceof Error ? err.message : String(err)}`, locator: url });
+      return { index: false, urls: [] };
     }
-    const products = pages.filter((u) => /\/products?\//i.test(u));
-    return products.length ? products : pages;
-  } catch (err) {
-    const robots = err instanceof FetchRefused && err.code === "robots";
-    issues.push({ surface: "page", code: robots ? "robots-disallowed" : "fetch-failed", message: `sitemap: ${err.message}`, locator: sitemapUrl });
-    return [];
+  };
+  const top = await locs(sitemapUrl);
+  let pages = top.urls;
+  if (top.index) {
+    const children2 = [...top.urls].sort((a, b) => Number(/product/i.test(b)) - Number(/product/i.test(a))).slice(0, 3);
+    pages = [];
+    for (const child of children2) pages.push(...(await locs(child)).urls);
   }
+  const products = pages.filter((u) => /\/products?\//i.test(u));
+  return products.length ? products : pages;
 }
 var unique = (items) => [...new Set(items)];
 async function guarded(surface, what, collect) {

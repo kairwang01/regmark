@@ -94,3 +94,47 @@ test('a product listed by a held-back row and by an offered one names only the s
   assert.deepEqual(brief(findings), [{ variant: undefined, surface: 'feed' }]);
   assert.match(findings[0]!.message, /^listed by feed,/);
 });
+
+test('an incomplete backend catalogue cannot prove that an unmatched variant is absent', () => {
+  const findings = run(rule, [
+    variant('platform', { sku: 'TEE-S', variantId: '21', productId: '20', url: CAP_URL }),
+    whole('platform', CAP_URL, { incompleteVariants: true }),
+    variant('feed', { sku: 'TEE-S', url: CAP_URL }),
+    variant('feed', { sku: 'TEE-M', url: CAP_URL }),
+  ]);
+  assert.deepEqual(findings, []);
+});
+
+test('when all variants failed to load, the incomplete parent still prevents an absence claim', () => {
+  const findings = run(rule, [
+    mugPlatform(),
+    whole('platform', CAP_URL, { incompleteVariants: true }),
+    variant('feed', { sku: 'TEE-S', url: CAP_URL }),
+  ]);
+  assert.deepEqual(findings, []);
+});
+
+test('incomplete coverage is local to its product, and does not hide other stale variants or products', () => {
+  const findings = run(rule, [
+    whole('platform', CAP_URL, { incompleteVariants: true }),
+    variant('feed', { sku: 'TEE-M', url: CAP_URL }),
+    mugPlatform(),
+    variant('feed', { sku: 'MUG-1', url: SHOP_URL }),
+    variant('feed', { sku: 'MUG-STALE', url: SHOP_URL }),
+    variant('feed', { sku: 'OLD-9', url: OLD_URL }),
+  ]);
+  assert.deepEqual(findings.map((f) => [f.product, f.variant]), [
+    ['shop.example/product/mug', 'MUG-STALE'],
+    ['shop.example/product/old', undefined],
+  ]);
+});
+
+test('incomplete coverage on a feed is not evidence of an incomplete backend', () => {
+  const findings = run(rule, [
+    mugPlatform(),
+    variant('feed', { sku: 'MUG-1', url: SHOP_URL }),
+    variant('feed', { sku: 'MUG-STALE', url: SHOP_URL }),
+    whole('feed', SHOP_URL, { incompleteVariants: true }),
+  ]);
+  assert.deepEqual(brief(findings), [{ variant: 'MUG-STALE', surface: 'feed' }]);
+});

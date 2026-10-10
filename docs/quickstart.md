@@ -2,67 +2,60 @@
 
 Run a known example first, then audit a small sample of your shop. The bundled CLI requires Node.js 22 or later. Source development requires Node.js 22.18 or later for native TypeScript execution.
 
-## 1. See a finding without connecting a shop
+## 1. Download and verify a pinned release
+
+Start in an empty directory with Node.js 22 or later. Download both files from the official [v0.2.0 release](https://github.com/kairwang01/regmark/releases/tag/v0.2.0):
 
 ```bash
-npx regmark demo
+mkdir regmark-try && \
+cd regmark-try && \
+curl -fsSLO https://github.com/kairwang01/regmark/releases/download/v0.2.0/regmark.mjs && \
+curl -fsSLO https://github.com/kairwang01/regmark/releases/download/v0.2.0/regmark.mjs.sha256 && \
+sha256sum -c regmark.mjs.sha256 && \
+node regmark.mjs --help
 ```
 
-This downloads the package, starts a temporary local fixture shop, audits it and closes it. Open `regmark-demo.html` in your browser. The fixture has defects planted in it, each with the findings it should produce; for example, its feed says `22.00 USD` while its cart charges `24.00 USD` for the same variant, and one of its pages tells shopping agents a lower price than it tells browsers.
+Expect `regmark.mjs: OK`. On macOS, replace the checksum command with `shasum -a 256 -c regmark.mjs.sha256`. Do not run the bundle if verification fails. The release is a single file with no runtime package-installation step. The download needs network access; the local demo does not contact a live shop.
+
+**npm availability:** `https://registry.npmjs.org/regmark/latest` returned HTTP 404 on 2026-10-10. `npx regmark` and `npm install regmark` are not verified installation paths. Use the release file above; the examples below consistently use `node regmark.mjs`.
+
+The checksum and clean-directory `--help`, `demo` and `demo --clean` commands were verified with the published v0.2.0 bundle on Node 24.19.0. A pinned release keeps its original implementation, including any limitations fixed later in source. Read the [configuration reference at v0.2.0](https://github.com/kairwang01/regmark/blob/v0.2.0/docs/configuration.md) for that release; use a [source checkout](#development) for unreleased changes. The [GitHub Action](ci.md) is another installation path.
+
+## 2. See a finding without connecting a shop
 
 ```bash
-npx regmark demo --clean --html regmark-clean.html
-```
-
-The clean fixture should produce zero findings. Both demo commands exit `0`: they demonstrate the reports, including an intentionally failing shop. Use `audit` for a CI gate.
-
-The first run needs network access to obtain the package. The demo itself uses only its local fixture.
-
-## 2. Choose how to run it
-
-| Method | Use when | Command |
-|---|---|---|
-| npx | Trying it, or an occasional audit | `npx regmark demo` |
-| Project dev dependency | Pinning the version a project's scripts use | `npm install --save-dev regmark`, then `npx regmark audit …` |
-| Global command | Running audits repeatedly | `npm install --global regmark` |
-| Release file | A CI image with Node and no package manager | Download and run `regmark.mjs` below |
-| GitHub Action | GitHub Actions | `uses: kairwang01/regmark@v0`, see the [CI guide](ci.md) |
-| Source checkout | Developing or trying unreleased changes | See [Development](#development) |
-
-For a pinned release file, download both files from the same release:
-
-```bash
-curl -fsSLO https://github.com/kairwang01/regmark/releases/download/v0.2.0/regmark.mjs
-curl -fsSLO https://github.com/kairwang01/regmark/releases/download/v0.2.0/regmark.mjs.sha256
-sha256sum -c regmark.mjs.sha256
 node regmark.mjs demo
 ```
 
-On macOS, use `shasum -a 256 -c regmark.mjs.sha256` for verification. The release bundle has no runtime package installation step. New source features become available in release downloads when the maintainers publish a version containing them. Use the configuration reference from the same tag as your pinned release.
+This starts a temporary local synthetic fixture shop, audits it and closes it. Open `regmark-demo.html` in your browser. The 27 seeded defects produce 31 findings: for example, its feed says `22.00 USD` while its fixture cart charges `24.00 USD` for the same variant. The demo deliberately enables the fixture's cart and cloaking probes; a normal audit does not. No shop credentials are needed.
 
-The remaining examples use the globally installed `regmark`; you can replace it with `node regmark.mjs` or the `npx` invocation.
+```bash
+node regmark.mjs demo --clean --html regmark-clean.html
+```
+
+Open `regmark-clean.html` for the zero-finding control. Both demo commands exit `0`, including the intentionally defective fixture. Use `audit` for a CI gate. The two fixtures demonstrate output; switching to the clean one is not evidence of a real shop being fixed or a measured accuracy rate.
 
 ## 3. Audit your shop with read-only requests
 
 ```bash
-regmark audit https://shop.example --sample 5 --html report.html --json report.json
+node regmark.mjs audit https://shop.example --sample 5 --html report.html --json report.json
 ```
 
 Replace `https://shop.example` with the shop you want to inspect. Add the feed if you know its URL:
 
 ```bash
-regmark audit https://shop.example --feed /feeds/google.xml \
+node regmark.mjs audit https://shop.example --feed /feeds/google.xml \
   --sample 5 --html report.html --json report.json
 ```
 
 A relative feed URL is resolved against the shop's origin. An absolute feed URL on another host is allowed because you explicitly named it. `--feed` expects a URL, not a local filesystem path.
 
-Regmark tries WooCommerce, then Shopify. It reads the public catalogue when available, and the server-returned HTML for each sampled product. It does not execute JavaScript. The default baseline is the platform API, falling back to the visible page. What a real cart charges is only read when a verified checkout probe runs, on WooCommerce or Shopify.
+Regmark tries WooCommerce, then Shopify. It reads the public catalogue when available, and the server-returned HTML for each sampled product. It does not execute JavaScript. With no checkout configuration, the default baseline is the platform API, falling back to the visible page. What a real cart charges is only read when a verified checkout probe runs, on WooCommerce or Shopify.
 
 Add the surfaces shopping agents read when the shop has them. They are read-only too:
 
 ```bash
-regmark audit https://shop.example --ucp --mcp --acp-feed /feeds/acp.jsonl.gz \
+node regmark.mjs audit https://shop.example --ucp --mcp --acp-feed /feeds/acp.jsonl.gz \
   --sample 5 --html report.html
 ```
 
@@ -79,8 +72,8 @@ Each host is paced at one request per second by default, so catalogue, page and 
 5. Repeat the same audit with the same sample and seed to compare results.
 
 ```bash
-regmark explain price.mismatch
-regmark rules
+node regmark.mjs explain price.mismatch
+node regmark.mjs rules
 ```
 
 For example, a feed price of `22.00 USD` against a platform price of `24.00 USD` points to a disagreement with the platform; it does not establish that checkout charges `24.00 USD`. Add a verified probe when that distinction matters.
@@ -90,7 +83,7 @@ A normal `audit` exits `1` when an error rule exceeds its default zero budget. T
 ## 5. Save the setup
 
 ```bash
-regmark init https://shop.example
+node regmark.mjs init https://shop.example
 ```
 
 Edit the generated `regmark.config.json`:
@@ -109,17 +102,17 @@ Edit the generated `regmark.config.json`:
 ```
 
 ```bash
-regmark audit --html report.html --json report.json
+node regmark.mjs audit --html report.html --json report.json
 ```
 
 CLI flags override matching file fields. Budgets merge per rule. A `checkout` object in the config turns on cart probing, even without `--checkout`; keep a separate read-only config if you use both modes. Prefer the environment variable for the ownership token. [Full precedence rules](configuration.md#precedence).
 
 ## Optional: the cart probe and the cloaking check
 
-Use a staging shop you control. Create a token containing 16–128 letters, digits, `_` or `-`, serve `regmark-verify=<token>` at `/.well-known/regmark.txt`, and put that token in the `REGMARK_OWNERSHIP_TOKEN` environment variable or CI secret. DNS TXT verification is also supported.
+These checks are optional. Use a staging shop you control; do not add them to the read-only trial above. Create a token containing 16–128 letters, digits, `_` or `-`, serve `regmark-verify=<token>` at `/.well-known/regmark.txt`, and put that token in the `REGMARK_OWNERSHIP_TOKEN` environment variable or CI secret. DNS TXT verification is also supported.
 
 ```bash
-regmark audit https://staging.shop.example --feed /feeds/google.xml \
+node regmark.mjs audit https://staging.shop.example --feed /feeds/google.xml \
   --checkout --ship-to US:94103 --cloaking --html report.html
 ```
 
@@ -131,7 +124,9 @@ The probe creates cart/session state, adds one unit per tested variant, sets the
 
 | Symptom | What to check or do |
 |---|---|
-| `regmark` command not found | Use the full `npx` command, the release file, or install globally |
+| `regmark` command not found, or npm returns 404 | Run `node regmark.mjs` from the directory where you downloaded and verified the bundle |
+| Cannot find `regmark.mjs` | Change to the download directory, or use its absolute path after `node` |
+| Checksum verification fails | Stop; re-download the bundle and checksum from the same pinned official release and verify again |
 | TypeScript source fails before running | Use Node 22.18+ for source development; the bundled release supports Node 22+ |
 | Nothing is printed in a CI log for a while | Add `--verbose`; request pacing applies to catalogue and page reads |
 | No product could be read | Inspect collection issues; set `--platform`, or use `--platform none --page /product/example/` |
@@ -147,7 +142,7 @@ The probe creates cart/session state, adds one unit per tested variant, sets the
 To inspect a particular static page without sampling a platform catalogue:
 
 ```bash
-regmark audit https://shop.example --platform none --page /product/example/ \
+node regmark.mjs audit https://shop.example --platform none --page /product/example/ \
   --html page-report.html
 ```
 
@@ -167,4 +162,4 @@ pnpm bench
 pnpm typecheck
 ```
 
-The source demo and tests need no platform credentials. `pnpm bundle` builds the single-file CLI. See [Contributing](../CONTRIBUTING.md) before changing rules or collectors, and the [CI guide](ci.md) to adopt a recurring audit.
+For a source checkout, use Node.js 22.18 or later. The source demo and tests need no platform credentials. `pnpm bundle` builds the single-file CLI. See [Contributing](../CONTRIBUTING.md) before changing rules or collectors, and the [CI guide](ci.md) to adopt a recurring audit.

@@ -150,25 +150,26 @@ function resolveLoc(loc: string, sitemapUrl: string): string {
  */
 async function discoverFromSitemap(ctx: CollectContext, sitemapUrl: string, issues: CollectIssue[]): Promise<string[]> {
   const locs = async (url: string): Promise<{ index: boolean; urls: string[] }> => {
-    const res = await ctx.fetcher.get(url);
-    if (res.status < 200 || res.status > 299) throw new Error(`HTTP ${res.status}`);
-    return { index: /<sitemapindex[\s>]/i.test(res.body), urls: [...res.body.matchAll(LOC)].map((m) => resolveLoc(decodeXml(m[1]!), url)) };
-  };
-  try {
-    const top = await locs(sitemapUrl);
-    let pages = top.urls;
-    if (top.index) {
-      const children = [...top.urls].sort((a, b) => Number(/product/i.test(b)) - Number(/product/i.test(a))).slice(0, 3);
-      pages = [];
-      for (const child of children) pages.push(...(await locs(child)).urls);
+    try {
+      const res = await ctx.fetcher.get(url);
+      if (res.status < 200 || res.status > 299) throw new Error(`HTTP ${res.status}`);
+      return { index: /<sitemapindex[\s>]/i.test(res.body), urls: [...res.body.matchAll(LOC)].map((m) => resolveLoc(decodeXml(m[1]!), res.url)) };
+    } catch (err) {
+      const robots = err instanceof FetchRefused && err.code === 'robots';
+      issues.push({ surface: 'page', code: robots ? 'robots-disallowed' : 'fetch-failed', message: `sitemap: ${err instanceof Error ? err.message : String(err)}`, locator: url });
+      return { index: false, urls: [] };
     }
-    const products = pages.filter((u) => /\/products?\//i.test(u));
-    return products.length ? products : pages;
-  } catch (err) {
-    const robots = err instanceof FetchRefused && err.code === 'robots';
-    issues.push({ surface: 'page', code: robots ? 'robots-disallowed' : 'fetch-failed', message: `sitemap: ${(err as Error).message}`, locator: sitemapUrl });
-    return [];
+  };
+  const top = await locs(sitemapUrl);
+  let pages = top.urls;
+  if (top.index) {
+    const children = [...top.urls].sort((a, b) => Number(/product/i.test(b)) - Number(/product/i.test(a))).slice(0, 3);
+    pages = [];
+    // A failed child contributes an issue, without discarding successful siblings.
+    for (const child of children) pages.push(...(await locs(child)).urls);
   }
+  const products = pages.filter((u) => /\/products?\//i.test(u));
+  return products.length ? products : pages;
 }
 
 const unique = <T>(items: readonly T[]): T[] => [...new Set(items)];
